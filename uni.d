@@ -180,10 +180,10 @@ struct MultiArray(Types...)
         if(new_size > sz[n])
         {//extend
             size_t delta = (new_size - sz[n]);
-            writeln("Before scaling:", delta);
+//            writeln("Before scaling:", delta);
             delta = spaceFor!(bitSizeOf!(Types[n]))(delta);
             sz[n] += delta;
-            writeln("After scaling:", delta);
+//            writeln("After scaling:", delta);
             storage.length +=  delta;//extend space at end
 			
             //raw_slice!x must follow resize as it could be moved!
@@ -193,7 +193,7 @@ struct MultiArray(Types...)
                 auto start = raw_ptr!(n+1);
 				//len includes delta
                 size_t len = (storage.ptr+storage.length-start);
-				writeln("next levels length: ", len);
+
                 copy(retro(start[0..len-delta])
                     , retro(start[delta..len]));
 				
@@ -2205,6 +2205,7 @@ struct Trie(Value, Key, Prefix...)
 
             for(int i=0;i<r.length; i++)
             {
+                writeln(i, " - ", r[i]);
                 static if(type == TrieType.Map)
                     size_t keyIdx = getIndex(r[i][1]);
                 else
