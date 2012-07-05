@@ -126,7 +126,7 @@ size_t trie_table(C)(in C[] str, size_t index)
 	return r;
 }
 
-alias Trie!(size_t, char, sliceBits!(4, 7), sliceBits!(0, 4)) MyTrie;
+alias Trie!(ubyte, char, sliceBits!(4, 7), sliceBits!(0, 4)) MyTrie;
 
 MyTrie trie1;
 
@@ -151,7 +151,7 @@ shared static this()
 
 void strideTest(Result[] data)
 {
-	foreach(mtd; TypeTuple!(stride, optiStride, old_table, packed_table/*, trie_table*/))
+	foreach(mtd; TypeTuple!(stride, optiStride, old_table, packed_table, trie_table))
 	{
 		foreach(x; data)
 			bench!(siftThrough!(mtd))(mtd.stringof[0..10]~"-", x.name, x.data);

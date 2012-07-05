@@ -1,7 +1,4 @@
-// This code has been taken from std.uni by Dmitry Olshansky at
-// https://raw.github.com/blackwhale/phobos/gsoc-2/std/uni.d
-
-// Written in the D programming language.
+﻿// Written in the D programming language.
 
 /++
     Functions which operate on Unicode characters.
@@ -87,11 +84,13 @@ import std.stdio;
 
 private:
 
+enum lastDchar = 0x10FFFF;
+
 auto force(T, F)(F from)
-    if(isIntegral!T && !is(T == F))
+	if(isIntegral!T && !is(T == F))
 {
-    assert(from <= T.max && from >= T.min);
-    return cast(T)from;
+	assert(from <= T.max && from >= T.min);
+	return cast(T)from;
 }
 
 auto force(T, F)(F from)
@@ -103,30 +102,30 @@ auto force(T, F)(F from)
 //cheap algorithm grease ;)
 auto adaptIntRange(T, F)(F[] src)
 {
-    static struct ConvertIntegers//@@@BUG when in the 9 hells will map be copyable again?!
-    {
-        private F[] data;
+	static struct ConvertIntegers//@@@BUG when in the 9 hells will map be copyable again?!
+	{
+		private F[] data;
 
-        @property T front()
-        {
-            return force!T(data.front);
-        }
+		@property T front()
+		{
+			return force!T(data.front);
+		}
 
-        void popFront(){ data.popFront(); }
+		void popFront(){ data.popFront(); }
 
-        @property bool empty()const { return data.empty; }
+		@property bool empty()const { return data.empty; }
 
-        @property size_t length()const { return data.length; }
+		@property size_t length()const { return data.length; }
 
-        auto opSlice(size_t s, size_t e)
-        {
-            return ConvertIntegers(data[s..e]);
+		auto opSlice(size_t s, size_t e)
+		{
+		    return ConvertIntegers(data[s..e]);
         }
 
         //doesn't work with slices @@@BUG 7097
         @property size_t opDollar(){   return data.length; }
-    }
-    return ConvertIntegers(src);
+	}
+	return ConvertIntegers(src);
 }
 
 //repeat bit X times pattern in val assuming it's length is 'bits'
@@ -185,7 +184,6 @@ struct MultiArray(Types...)
             sz[n] += delta;
 //            writeln("After scaling:", delta);
             storage.length +=  delta;//extend space at end
-			
             //raw_slice!x must follow resize as it could be moved!
             //next 3 stmts move all data past this array, last-one-goes-first
             static if(n != dim-1)
@@ -196,7 +194,7 @@ struct MultiArray(Types...)
 
                 copy(retro(start[0..len-delta])
                     , retro(start[delta..len]));
-				
+
                 start[0..delta] = 0;
                 //writeln("OFFSETS before:", offsets);
                 //offsets are used for raw_slice, ptr etc.
@@ -592,10 +590,11 @@ unittest
 }
 
 */
-
+@safe:
 //hope to see simillar stuff in public interface... once Allocators are out
 //@@@BUG moveFront and friends? dunno, for now it's POD-only
-size_t genericReplace(Policy=void, T, Range)
+
+@trusted size_t genericReplace(Policy=void, T, Range)
     (ref T dest, size_t from, size_t to, Range stuff)
 {
     size_t delta = to - from;
@@ -633,7 +632,7 @@ size_t genericReplace(Policy=void, T, Range)
 
 //Simple storage manipulation policy
 //TODO: stop working around the bugs rorts them!
-public struct GcPolicy
+@trusted public struct GcPolicy
 {
     static T[] dup(T)(const T[] arr)
     {
@@ -675,7 +674,7 @@ public struct GcPolicy
 }
 
 //ditto
-struct ReallocPolicy
+@trusted struct ReallocPolicy
 {
     import std.exception, core.stdc.stdlib;
     static T[] dup(T)(const T[] arr)
@@ -761,6 +760,7 @@ unittest
 //addInterval, skipUpTo, dropUpTo & byInterval iteration
 mixin template BasicSetOps()
 {
+@trusted:
     alias typeof(this) This;
     /**
         $(P $(D RleBitSet)s support natural syntax for set algebra, namely:)
@@ -822,7 +822,10 @@ mixin template BasicSetOps()
         static if(op == "|")    //union
         {
             static if(is(U:dchar))
-                return this.addInterval(rhs, rhs+1);
+			{
+                this.addInterval(rhs, rhs+1);
+				return this;
+			}
             else
                 return this.add(rhs);
         }
@@ -842,11 +845,11 @@ mixin template BasicSetOps()
     }
 
     ///Range that spans each codepoint in this set.
-    @property auto byChar()
+    @property auto byChar() const
     {
         static struct CharRange
         {
-            this(This set)
+            this(in This set)
             {
                 this.r = set.byInterval;
                 cur = r.front.a;
@@ -895,12 +898,13 @@ mixin template BasicSetOps()
                 formattedWrite(sink, "[%d..%d) ", i.a, i.b);
     }
 
-private:
-    ref add(uint a, uint b)
+	ref add(uint a, uint b)
     {
         addInterval(a, b);
         return this;
     }
+	enum isSet = true;
+private:
 
     ref intersect(in This rhs)
     {
@@ -952,20 +956,15 @@ private:
         return this;
     }
 
-    enum isSet = true;
 };
 
-public struct RleBitSet(T, SP=GcPolicy)
+///RleBitSet is ...
+@trusted public struct RleBitSet(T, SP=GcPolicy)
     if(isUnsigned!T)
 {
+
 public:
-    /*this(C)(in C[] regexSet)
-        if(is(C : dchar))
-    {
-        assert(0);
-    }
-*/
-    this()(uint[] intervals...)
+     this()(uint[] intervals...) //@@@BUG text is not safe yet?!
     in
     {
         assert(intervals.length % 2 == 0, "Odd number of interval bounds [a, b)!");
@@ -1133,13 +1132,32 @@ public:
         }
     }
 
-    bool opIndex(uint val)
+    bool opIndex(uint val)const
     {
         foreach(i; byInterval)
             if(val < i.b)
                 return val >= i.a;
         return false;
     }
+
+	@property size_t size()const
+	{
+		size_t sum = 0 ;
+		for(size_t i=0; i<data.length; i+=2)
+			sum += data[i+1];//sum up positive intervals
+		return sum;
+	}
+
+	ref invert()
+	{
+		//TODO: implement inversion
+		return this;
+	}
+
+	@property bool empty()const
+	{
+		return data.length == 0;
+	}
 
     mixin BasicSetOps;
 private:
@@ -1441,14 +1459,8 @@ private:
     $(D CodepointSet) is a packed data structure for sets of codepoints.
     Memory usage is 6 bytes per each contigous interval in a set.
 */
-public struct InversionList(SP=GcPolicy)
+@trusted public struct InversionList(SP=GcPolicy)
 {
-    this(C)(in C[] regexSet)
-        if(is(C : dchar))
-    {
-        assert(0);
-    }
-
     this()(uint[] intervals...)
     in
     {
@@ -1520,6 +1532,38 @@ public struct InversionList(SP=GcPolicy)
     {
         return assumeSorted(data[]).lowerBound(val).length & 1;
     }
+
+	///Number of characters in this set
+	@property size_t size()
+	{
+		size_t sum = 0;
+		foreach(iv; byInterval)
+		{
+			sum += iv.b - iv.a;
+		}
+		return sum;
+	}
+
+	///Do an in-place inversion of set.  See also '!' unary operator.
+	ref invert()
+	{
+		if(data.length == 0)
+		{
+			addInterval(0, lastDchar+1);
+			return this;
+		}
+		if(data[0] != 0)
+			genericReplace(data, 0, 0, [0]);
+		if(data[data.length-1] != lastDchar+1)
+			genericReplace(data, data.length, data.length, [lastDchar+1]);
+
+		return this;
+	}
+
+	@property bool empty() const
+	{
+		return data.length == 0;
+	}
 
     mixin BasicSetOps;
 private:
@@ -1709,7 +1753,7 @@ private:
 };
 
 ///Packed array of 24-bit integers.
-struct Uint24Array(SP=GcPolicy)
+@trusted struct Uint24Array(SP=GcPolicy)
 {
     this(Range)(Range range)
         if(isInputRange!Range && hasLength!Range)
@@ -1805,7 +1849,7 @@ private:
     ushort[] data;
 }
 
-unittest//Uint24 tests
+@trusted unittest//Uint24 tests //@@@BUG@@ iota is system ?!
 {
     InversionList!GcPolicy val;
     foreach(Policy; TypeTuple!(GcPolicy, ReallocPolicy))
@@ -1844,7 +1888,7 @@ private alias TypeTuple!(AbsTypes, RleTypes) AllSets;
 
 }
 
-unittest//core set primitives test
+@trusted unittest//core set primitives test
 {
     foreach(CodeList; AllSets)
     {
@@ -1925,7 +1969,7 @@ unittest//constructors
     assert(a.repr == [10, 15, 5, 15]);
 }
 
-unittest
+@trusted unittest
 {   //full set operations
     foreach(CodeList; AllSets)
     {
@@ -2031,7 +2075,7 @@ private alias RleBitSet!ubyte uList;
 private alias RleBitSet!ushort mList;
 private alias RleBitSet!uint cList;
 
-unittest// set operations and integer overflow ;)
+@system unittest// set operations and integer overflow ;)
 {
     uList a, b, c, d;
     a = uList(20, 40, 100,      300, 400,     1200);
@@ -2045,7 +2089,7 @@ unittest// set operations and integer overflow ;)
     assert(c == d, text(c, " vs ", d));
 }
 
-unittest// ditto
+@system unittest// ditto
 {
     foreach(i, List; TypeTuple!(mList, cList))
     {
@@ -2064,7 +2108,8 @@ unittest// ditto
     }
 }
 
-unittest//even more set operations with BIG intervals
+//@@@BUG Error: safe function '__unittest13' cannot call system function 'opAssign' WTF?
+@system unittest//even more set operations with BIG intervals
 {
     foreach(List; TypeTuple!(mList, cList))
     {
@@ -2092,7 +2137,7 @@ unittest//even more set operations with BIG intervals
                        10_000_000, 12_000_000));
     }
 }
-
+@system:
 unittest// vs single dchar
 {
     mList a = mList(10, 100, 120, 200);
@@ -2113,26 +2158,11 @@ unittest//iteration
     assert(equal(x.byInterval, [ tuple(100, 500), tuple(600, 900), tuple(1200, 1500)]), text(x.byInterval));
 }
 
-template WrapBinary(alias filter, alias bFn)
-{
-    auto WrapBinary(A)(A a, A b)
-    {
-        return bFn(filter(a), filter(b));
-    }
-}
 
-template MapWrap(alias Fn, Ts...)
-{
-    static if(Ts.length > 0)
-        alias TypeTuple!(WrapBinary!(Fn, Ts[0]), MapWrap!(Fn, Ts[1..$])) MapPipe;
-    else
-        alias TypeTuple!() MapPipe;
-}
-
-struct Trie(Value, Key, Prefix...)
+@trusted struct Trie(Value, Key, Prefix...)
     if(Prefix.length >= 1)
 {
-    enum TrieType{ Value, Set, Map };
+
     static if(is(Value dummy : SetAsSlot!(U), U))
     {
         alias U V;
@@ -2188,8 +2218,19 @@ struct Trie(Value, Key, Prefix...)
             static if(isDynamicArray!Keys)
             {
                 alias GetComparators!(Prefix.length, cmpK) Comps;
-                multiSort!(Comps, SwapStrategy.unstable)
-                    (keys);
+				static if(type == TrieType.Set || (type == TrieType.Value && is(V == bool)))
+				{
+	                multiSort!(Comps, SwapStrategy.unstable)
+		                (keys);
+				}
+				else static if(is(Unqual!Keys  == V[]))
+				{
+					/* NOP */
+					//we consider indexes to be presorted as need as index in array is treated as key
+					//and value of elements is value
+				}
+				else
+					static assert(0, "Unsupported type of array "~Keys.stringof~" for Trie of "~V.stringof);
                 auto r = keys;
             }
             else static if(type == TrieType.Map)
@@ -2203,25 +2244,29 @@ struct Trie(Value, Key, Prefix...)
             else
                 static assert(false, "unsupported constructor for "~Keys.stringof);
 
-            for(int i=0;i<r.length; i++)
+            for(size_t i=0;i<r.length; i++)
             {
-                //writeln(i, " - ", r[i]);
                 static if(type == TrieType.Map)
                     size_t keyIdx = getIndex(r[i][1]);
+				else static if(type == TrieType.Value && !is(V == bool) && is(Key : size_t))
+				//value and not bool  and key is implictly convertible to size_t  == simple map,
+				//key is index i
+				{
+					size_t keyIdx = i;
+				}
                 else
                     size_t keyIdx = getIndex(r[i]);
                 if(keyIdx != prevKeyIdx)
                 {
-                    static if(type == TrieType.Set
-                              || type == TrieType.Map)
-                    {
-                        addValue!last(idxs, r.front.init, keyIdx - j);
-                        addValue!last(idxs, r[i]);
-                    }
-                    else
+                    static if(type == TrieType.Value && is(V == bool))
                     {
                         addValue!last(idxs, false, keyIdx - j);
                         addValue!last(idxs, true);
+                    }
+					else
+					{
+                        addValue!last(idxs, r.front.init, keyIdx - j);
+                        addValue!last(idxs, r[i]);
                     }
                     prevKeyIdx = keyIdx;
                     j = keyIdx+1;
@@ -2247,7 +2292,7 @@ struct Trie(Value, Key, Prefix...)
     }
 
     ///Construct boolean Trie from set.
-    this(Set)(Set set, Key maxKey=Key.max)
+    this(Set)(in Set set, Key maxKey=Key.max)
         if(is(typeof(Set.init.isSet)))
     {
         enum last = Prefix.length-1;
@@ -2341,7 +2386,7 @@ struct Trie(Value, Key, Prefix...)
         return Prefix[i].entity(a[1]) < Prefix[i].entity(b[1]);
     }
 private:
-
+    enum TrieType{ Value, Set, Map };
     //for multi-sort
     template GetComparators(size_t n, alias cmpFn)
     {
@@ -2405,7 +2450,7 @@ private:
                 size_t nextPB = (indices[level]+pageSize)/pageSize*pageSize;
                 size_t j = indices[level];
                 size_t n =  nextPB-j;//can fill right in this page
-                
+				
                 if(numVals > n)
                     numVals -= n;
                 else
@@ -2740,10 +2785,10 @@ unittest
                        , sliceBits!(6, 9) 
                        , sliceBits!(0, 6)
                        )(redundant4, max4);
-    foreach(i; 0..max4){        
+    foreach(i; 0..max4){		
         if(i in redundant4)
             assert(trie4[i], text(cast(uint)i));
-    }
+	}
     trieStats(trie4);
 
     string[] redundantS = ["tea", "tackle", "teenage", "start", "stray"];
@@ -3098,6 +3143,7 @@ template bitSizeOf(T)
         enum bitSizeOf = T.sizeof*8;
 }
 
+@safe:
 public: //Public API continues
 /++
     Whether or not $(D c) is a Unicode whitespace character.
