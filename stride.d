@@ -10,7 +10,7 @@ auto bench(alias method)(string title, string name, in char[] data)
 	sw.stop();
 	auto spent = sw.peek().usecs;
 
-	writefln("%16s [%6s], %9s, %.2f;"
+	writefln("%16s [%6s], %9s, %.2f"
 		, title,  name[0..min($,6)], spent/1000.0,  data.length*1000000.0/spent/1024/1024);
 }
 
