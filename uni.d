@@ -2205,7 +2205,7 @@ struct Trie(Value, Key, Prefix...)
 
             for(int i=0;i<r.length; i++)
             {
-                writeln(i, " - ", r[i]);
+                //writeln(i, " - ", r[i]);
                 static if(type == TrieType.Map)
                     size_t keyIdx = getIndex(r[i][1]);
                 else

@@ -146,7 +146,7 @@ shared static this()
 		pktable[i/2]  = cast(ubyte)(table[i] | (table[i+1]<<4));
 	trie1 = MyTrie(table.dup);                                          
 
-	writeln(table);
+	//writeln(table);
 }
 
 void strideTest(Result[] data)
