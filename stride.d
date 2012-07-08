@@ -71,7 +71,7 @@ body
         if (!(c & 0x02)) return 6;
     }
  Lerr:
-    throw new UTFException("Invalid UTF-8 sequence", index);
+    return 1; //throw new UTFException("Invalid UTF-8 sequence", index);
 }
 
 //optimized version:
@@ -105,7 +105,7 @@ body
         if (!(c & 0x02)) return 6;
     }
  Lerr:
-    throw new UTFException("Invalid UTF-8 sequence", index);
+    return 1; //throw new UTFException("Invalid UTF-8 sequence", index);
 }
 
 //tabulated versions
@@ -114,7 +114,7 @@ size_t plain_table(C)(in C[] str, size_t index)
 	immutable c = str[index];
 	size_t r = full_table[c];
 	if(!r)
-		throw new UTFException("Invalid UTF-8 sequence", index);
+		return 1;//throw new UTFException("Invalid UTF-8 sequence", index);
 	return r;
 }
 
@@ -125,7 +125,7 @@ size_t if_table(C)(in C[] str, size_t index)
         return 1;
 	size_t r = table[c-0x80];
 	if(!r)
-		throw new UTFException("Invalid UTF-8 sequence", index);
+		return 1; //throw new UTFException("Invalid UTF-8 sequence", index);
 	return r;
 }
 
@@ -137,7 +137,7 @@ size_t packed_table(C)(in C[] str, size_t index)
         return 1;
 	size_t r = (pktable[(c-0x80)/2] >> (index&1)*4) & 0xF;
 	if(!r)
-		throw new UTFException("Invalid UTF-8 sequence", index);
+		return 1; //throw new UTFException("Invalid UTF-8 sequence", index);
 	return r;
 }
 
@@ -148,7 +148,7 @@ size_t trie_table(C)(in C[] str, size_t index)
         return 1;
 	size_t r = trie1[c-0x80];
 	if(!r)
-		throw new UTFException("Invalid UTF-8 sequence", index);
+		return 1; //throw new UTFException("Invalid UTF-8 sequence", index);
 	return r;
 }
 
@@ -200,7 +200,7 @@ size_t case_stride(C)(in C[] str, size_t index)
 		return 1;
 	case 0x80: .. case 0x87:
 	case 0x8F: //5 & 6 lengths are not supported any longer see unicode 6.0+
-		throw new UTFException("Invalid UTF-8 sequence", index);
+		return 1;// throw new UTFException("Invalid UTF-8 sequence", index);
 	case 0x88: .. case 0x8B:
 		return 2; 
 	case 0x8C: .. case 0x8D:
@@ -215,6 +215,22 @@ size_t siftThrough(alias func)(in char[] data)
 	size_t idx=0;
 	while(idx < data.length)
 		idx += func(data, idx);
+	return idx;
+}
+
+size_t force_trie_table(C)(in C[] str)
+{
+	size_t idx=0;
+	while(idx < str.length)
+	{
+		immutable c = str[idx];
+	    if (c < 0x80)
+	        idx += 1;
+		size_t r = trie1[c-0x80];
+		if(!r)
+			idx += 1; //throw new UTFException("Invalid UTF-8 sequence", index);
+		idx +=  r;
+	}
 	return idx;
 }
 
@@ -252,6 +268,8 @@ void strideTest(Result[] data)
 		foreach(x; data)
 			bench!(siftThrough!(mtd))(mtd.stringof[0..10]~"-", x.name, x.data);
 	}
+	foreach(x; data)
+		bench!force_trie_table("forced-trie-table", x.name, x.data);
 }
 
 void main(string argv[])
