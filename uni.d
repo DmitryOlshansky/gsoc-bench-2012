@@ -1,4 +1,4 @@
-﻿// Written in the D programming language.
+// Written in the D programming language.
 
 /++
     Functions which operate on Unicode characters.
@@ -763,7 +763,7 @@ mixin template BasicSetOps()
 @trusted:
     alias typeof(this) This;
     /**
-        $(P $(D RleBitSet)s support natural syntax for set algebra, namely:)
+        $(P Sets support natural syntax for set algebra, namely:)
         $(BOOKTABLE
             $(TR $(TH Operator) $(TH Math notation) $(TH Description) )
             $(TR $(TD &) $(TD a ∩ b) $(TD intersection) )
@@ -964,7 +964,19 @@ private:
 {
 
 public:
-     this()(uint[] intervals...) //@@@BUG text is not safe yet?!
+	this(Set)(in Set set)
+		if(is(typeof(Set.init.isSet)))
+	{
+		size_t top=0;
+		foreach(iv; set.byInterval)
+		{
+				appendPad(data, iv.a - top);
+				appendPad(data, iv.b - iv.a);
+				top = iv.b;
+		}
+	}
+
+    this()(uint[] intervals...) //@@@BUG text is not safe yet?!
     in
     {
         assert(intervals.length % 2 == 0, "Odd number of interval bounds [a, b)!");
@@ -1461,7 +1473,20 @@ private:
 */
 @trusted public struct InversionList(SP=GcPolicy)
 {
-    this()(uint[] intervals...)
+	this(Set)(in Set set)
+		if(is(typeof(Set.init.isSet)))
+	{//TODO: optimize
+        uint[] arr;
+        foreach(iv; set.byInterval)
+        {
+            arr ~= iv.a;
+            arr ~= iv.b;
+        }
+		data = Uint24Array!(SP)(arr);
+	}
+
+    this(T)(in T[] intervals...)
+        if(isIntegral!T)
     in
     {
         assert(intervals.length % 2 == 0, "Odd number of interval bounds [a, b)!");
