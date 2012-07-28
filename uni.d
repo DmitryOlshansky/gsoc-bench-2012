@@ -1557,7 +1557,7 @@ private:
 
     bool opIndex(uint val)
     {
-        return assumeSorted(data[]).lowerBound(val).length & 1;
+        return assumeSorted(data[]).lowerBound!(SearchPolicy.gallop)(val).length & 1;
     }
 
 	///Number of characters in this set
@@ -2543,8 +2543,10 @@ private:
     }
 
     //last index is not stored in table, it is used as offset to values in a block.
-    MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), V) table;
-    pragma(msg, typeof(table));
+    static if(is(V  == bool))//always pack bool
+        MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), BitPacked!(1, V)) table;
+    else
+        MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), V) table;
 }
 
 /**
