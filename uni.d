@@ -1002,10 +1002,11 @@ public:
         data = SP.dup(data);
     }
 
-    const ~this() 
-    {
-        SP.destroy(data);
-    }
+    static if(is(SP == ReallocPolicy))
+        const ~this() 
+        {
+            SP.destroy(data);
+        }
 
     ///Make a mutable copy of this set.
     @property auto dup()const
@@ -1174,8 +1175,28 @@ public:
 		return data.length == 0;
 	}
 
+    void store(OutputRange)(OutputRange sink) const
+        if(isOutputRange!(OutputRange, T))
+    {
+        foreach(v; data)
+            put(sink, v);
+    }
+
+    @safe @property size_t bytes() pure const nothrow 
+    {
+        return data.length*T.sizeof;
+    }
+
     mixin BasicSetOps;
 private:
+    static if(is(SP == GcPolicy))
+        static RleBitSet fromRawArray(T[] input) @trusted pure nothrow
+        {//assumes it's a GC-ed slice
+            RleBitSet set=void;    
+            set.data = input;
+            return set;        
+        }
+    
     struct Marker//denotes position in RleBitSet
     {
         uint idx;
