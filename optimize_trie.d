@@ -58,10 +58,10 @@ void main(string[] argv)
 
 void test_3_level(in RleBitSet!uint set)
 {
-  foreach(lvl_1; TypeTuple!(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, /*13, 14, 15, 16*/))
-        foreach(lvl_2; TypeTuple!(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12/*, 13, 14, 15, 16*/))
+  foreach(lvl_1; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))
+        foreach(lvl_2; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))
         {
-            static if(lvl_1 + lvl_2  < 21)
+            static if(lvl_1 + lvl_2  <= 16)
             {
                 enum lvl_3 = 21-lvl_2-lvl_1;
                 alias Trie!(bool, dchar, sliceBits!(21-lvl_1, 21)
@@ -76,11 +76,11 @@ void test_3_level(in RleBitSet!uint set)
 
 void test_4_level(in RleBitSet!uint set)
 {
-  foreach(lvl_1; TypeTuple!(2, 3, 4, 5, 6, 7, 8, 9, 10))
-        foreach(lvl_2; TypeTuple!(2, 3, 4, 5, 6, 7, 8, 9, 10))
-            foreach(lvl_3; TypeTuple!(2, 3, 4, 5, 6, 7, 8, 9, 10))
+  foreach(lvl_1; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12))
+        foreach(lvl_2; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12))
+            foreach(lvl_3; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12))
         {
-            static if(lvl_1 + lvl_2 + lvl_3  < 21)
+            static if(lvl_1 + lvl_2 + lvl_3  <= 16)
             {
                 enum lvl_4 = 21-lvl_3-lvl_2-lvl_1;
                 alias Trie!(bool, dchar, sliceBits!(21-lvl_1, 21)
