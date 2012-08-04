@@ -685,7 +685,10 @@ unittest
     static void destroy(T)(ref T arr)
         if(isDynamicArray!T && is(Unqual!T == T))
     {
-        arr[] = cast(typeof(T.init[0]))(0xdead_beef); 
+        debug 
+        {
+            arr[] = cast(typeof(T.init[0]))(0xdead_beef); 
+        }
     }
 
     static void destroy(T)(ref T arr)
@@ -743,7 +746,8 @@ unittest
 
     static void destroy(T)(ref T[] arr)
     {
-        free(arr.ptr);
+        if(arr.ptr)
+            free(arr.ptr);
         arr = null;
     }
 }
@@ -776,6 +780,11 @@ unittest
     }
 }
 
+template isCodepointSet(T)
+{
+    enum isCodepointSet = is(typeof(T.init.isSet));
+}
+
 //bootstrap full set operations from 3 primitives:
 //addInterval, skipUpTo, dropUpTo & byInterval iteration
 mixin template BasicSetOps()
@@ -793,7 +802,7 @@ mixin template BasicSetOps()
         )
     */
     const This opBinary(string op, U)(U rhs) 
-        if(is(typeof(U.init.isSet)) || is(U:dchar))
+        if(isCodepointSet!U || is(U:dchar))
     {
         static if(op == "&" || op == "|" || op == "~")
         {//symmetric ops thus can swap arguments to reuse r-value
@@ -837,7 +846,7 @@ mixin template BasicSetOps()
 
     ///The 'op=' versions of the above overloaded operators.
     ref This opOpAssign(string op, U)(in U rhs)
-        if(is(typeof(U.init.isSet)) || is(U:dchar))
+        if(isCodepointSet!U || is(U:dchar))
     {
         static if(op == "|")    //union
         {
@@ -918,7 +927,7 @@ mixin template BasicSetOps()
                 formattedWrite(sink, "[%d..%d) ", i.a, i.b);
     }
 
-	ref add(uint a, uint b)
+	ref add()(uint a, uint b)
     {
         addInterval(a, b);
         return this;
@@ -926,7 +935,8 @@ mixin template BasicSetOps()
 	enum isSet = true;
 private:
 
-    ref intersect(in This rhs)
+    ref intersect(U)(in U rhs)
+        if(isCodepointSet!U)
     {
         Marker mark;
         foreach( i; rhs.byInterval())
@@ -938,7 +948,7 @@ private:
         return this;
     }
 
-    ref intersect(dchar ch)
+    ref intersect()(dchar ch)
     {
         foreach(i; byInterval)
             if(i.a >= ch && ch < i.b)
@@ -947,14 +957,15 @@ private:
         return this;
     }
 
-    ref sub(dchar ch)
+    ref sub()(dchar ch)
     {
         //workaround a BUG, somehow overload below doesn't survive if base class has sub(dchar)
         return subChar(ch);
     }
 
     //same as the above except that skip & drop parts are swapped
-    ref sub(in This rhs)
+    ref sub(U)(in U rhs)
+        if(isCodepointSet!U)
     {
         uint top;
         Marker mark;
@@ -966,7 +977,8 @@ private:
         return this;
     }
 
-    ref add(in This rhs)
+    ref add(U)(in U rhs)
+        if(isCodepointSet!U)
     {
         Marker start;
         foreach(i; rhs.byInterval())
@@ -982,10 +994,9 @@ private:
 @trusted public struct RleBitSet(T, SP=GcPolicy)
     if(isUnsigned!T)
 {
-
 public:
 	this(Set)(in Set set)
-		if(is(typeof(Set.init.isSet)))
+		if(isCodepointSet!Set)
 	{
 		size_t top=0;
 		foreach(iv; set.byInterval)
@@ -2229,7 +2240,6 @@ unittest//iteration
     auto x = uList(100, 500, 600, 900, 1200, 1500);
     assert(equal(x.byInterval, [ tuple(100, 500), tuple(600, 900), tuple(1200, 1500)]), text(x.byInterval));
 }
-
 
 @trusted struct Trie(Value, Key, Prefix...)
     if(Prefix.length >= 1)

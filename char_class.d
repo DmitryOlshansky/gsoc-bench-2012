@@ -97,11 +97,12 @@ else
 
     shared static this()
     {
-        rleAlpha = unicodeLu | unicodeLl | unicodeLt | 
-                unicodeLo | unicodeLm;
-        rleMark = unicodeMn| unicodeMc | unicodeMe;
-        rleSymbol = unicodeSm | unicodeSc | unicodeSk | unicodeSo;
-        rleNumber = unicodeNd | unicodeNl | unicodeNo;
+        //@@@BUG@@@ can't get opAssign to do conversion
+        rleAlpha = RleBitSet!uint( unicodeLu | unicodeLl | unicodeLt | 
+                unicodeLo | unicodeLm);
+        rleMark = RleBitSet!uint(unicodeMn| unicodeMc | unicodeMe);
+        rleSymbol = RleBitSet!uint(unicodeSm | unicodeSc | unicodeSk | unicodeSo);
+        rleNumber = RleBitSet!uint(unicodeNd | unicodeNl | unicodeNo);
 
 
         invAlpha = InvList(rleAlpha);

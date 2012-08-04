@@ -56,7 +56,7 @@ void main(string[] argv)
         static assert(0, "Pick a version level3 or level4");
 }
 
-void test_3_level(in RleBitSet!uint set)
+void test_3_level(Set)(in Set set)
 {
   foreach(lvl_1; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))
         foreach(lvl_2; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))
@@ -74,7 +74,7 @@ void test_3_level(in RleBitSet!uint set)
         }
 }
 
-void test_4_level(in RleBitSet!uint set)
+void test_4_level(Set)(in Set set)
 {
   foreach(lvl_1; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12))
         foreach(lvl_2; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12))
