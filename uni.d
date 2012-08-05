@@ -2422,7 +2422,7 @@ unittest//iteration
                 addValue!last(idxs, false, a - i);
                 i = a;
 
-                assert(i < maxKey, "set has keys > maxKey in Trie c-tor");
+                assert(i <= maxKey, "set has keys > maxKey in Trie c-tor");
                 addValue!last(idxs, true, b - i);
                 i = b;
 

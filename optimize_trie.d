@@ -25,7 +25,7 @@ void test_all(alias fn)()
     fn(unicodeWhite_Space);
     writeln("Alpha\n\n");
     fn(rleAlpha);
-    /*writeln("Mark\n\n");
+    writeln("Mark\n\n");
     fn(rleMark);
     writeln("Number\n\n");
     fn(rleNumber);
@@ -39,7 +39,7 @@ void test_all(alias fn)()
     fn(rleGraphical);
     writeln("Control\n\n");
     fn(unicodeCc);
-    writeln("Format\n\n");*/
+    writeln("Format\n\n");
     fn(unicodeCf);
     writeln("Noncharacter\n\n");
     fn(unicodeCn);
@@ -51,8 +51,24 @@ void main(string[] argv)
         test_all!test_4_level();
     else version(level3)
         test_all!test_3_level();
+    else version(level2)
+        test_all!test_2_level();
     else
         static assert(0, "Pick a version level3 or level4");
+}
+
+void test_2_level(Set)(in Set set)
+{
+  foreach(lvl_1; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))
+        {
+            enum lvl_2 = 21-lvl_1;
+            alias Trie!(bool, dchar, sliceBits!(21-lvl_1, 21)
+                , sliceBits!(0, 21-lvl_1)
+                ) CurTrie;
+
+                CurTrie t = CurTrie(set);
+                writefln("%d_%d, %d", lvl_1, lvl_2, t.bytes);
+        }
 }
 
 void test_3_level(Set)(in Set set)
