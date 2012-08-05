@@ -423,6 +423,11 @@ struct PackedArrayView(T, size_t bits)
     static if(bits % 8)
     {
         T opIndex(size_t idx)inout
+        in
+        {
+            assert(idx/factor < original.length, text(idx/factor, " vs ", original.length));
+        }
+        body
         {        
             static if(bits == 1)
             {
@@ -431,6 +436,7 @@ struct PackedArrayView(T, size_t bits)
             }
             else
             {
+
                 return cast(T)
                 ((original[idx/factor] >> bits*(idx%factor))
                      & mask);       
@@ -1018,7 +1024,8 @@ public:
     body
     {
         size_t top=0;
-        for(size_t i = 0;  i < intervals.length; i+=2){
+        for(size_t i = 0;  i < intervals.length; i+=2)
+        {
             appendPad(data, intervals[i] - top);
             appendPad(data, intervals[i+1] - intervals[i]);
             top = intervals[i+1];
@@ -1037,7 +1044,7 @@ public:
         }
 
     ///Make a mutable copy of this set.
-    @property auto dup()const
+    @property auto dup() const
     {
         RleBitSet s;
         s.data = SP.dup(data);
@@ -1104,8 +1111,7 @@ public:
         return IntervalRange(this);
     }
 
-    bool opEquals(U,SP)(ref const RleBitSet!(U,SP) rhs) const
-        if(isUnsigned!U)
+    bool equal(U,SP)(const ref RleBitSet!(U,SP) rhs) const
     {
         static if(T.sizeof == 4 && U.sizeof == 4)//short-circuit full versions
             return repr == rhs.repr;
@@ -1174,6 +1180,18 @@ public:
             }
             return idx == data.length && ridx == rhs.data.length;
         }
+    }
+
+    bool opEquals(U,SP)(const ref RleBitSet!(U,SP) rhs) const
+        if(isUnsigned!U)
+    {
+        return this.equal(rhs);
+    }
+
+    bool opEquals(U,SP)(in RleBitSet!(U,SP) rhs) const
+        if(isUnsigned!U)
+    {
+        return this.equal(rhs);
     }
 
     bool opIndex(uint val)const
@@ -3239,12 +3257,14 @@ bool propertyNameLess(Char)(const(Char)[] a, const(Char)[] b)
     return comparePropertyName(a, b) < 0;
 }
 
+//@@@BUG - has to be public so that std.range.lowerBound works
 public bool workaround(T)(in UnicodeProperty!T a, in UnicodeProperty!T b)
 {
     return propertyNameLess(a.name,b.name);
 }
 
-public bool searchUnicodeSet(T, alias table)(string name, ref RleBitSet!T dest)
+//
+bool searchUnicodeSet(T, alias table)(string name, ref RleBitSet!T dest)
 {
     auto range = assumeSorted!(workaround)(table);    
     auto val = typeof(table[0])(name, typeof(table[0].set).init);
@@ -3260,18 +3280,89 @@ public bool searchUnicodeSet(T, alias table)(string name, ref RleBitSet!T dest)
 
 public @property auto unicodeSetByName(T=uint)(string name)
 {
-    RleBitSet!T result;
-    alias propertyNameLess uless;
-    if(searchUnicodeSet!(T, tinyUnicodeProps)(name, result) 
-            || searchUnicodeSet!(T, smallUnicodeProps)(name, result)
-            || searchUnicodeSet!(T, smallUnicodeProps)(name, result))
-        return result;
+    alias RleBitSet!T Set;
+    Set result;
+    alias comparePropertyName ucmp;
+
+    //unicode property
+    //helper: direct access with a sanity check
+    if(ucmp(name, "L") == 0 || ucmp(name, "Letter") == 0)
+    {
+        result |= unicodeLu;
+        result |= unicodeLl;
+        result |= unicodeLt;
+        result |= unicodeLo;
+        result |= unicodeLm;
+    }
+    else if(ucmp(name,"LC") == 0 || ucmp(name,"Cased Letter")==0)
+    {
+        result |= unicodeLl;
+        result |= unicodeLu;
+        result |= unicodeLt;//Title case
+    }
+    else if(ucmp(name, "M") == 0 || ucmp(name, "Mark") == 0)
+    {
+        result |= unicodeMn;
+        result |= unicodeMc;
+        result |= unicodeMe;
+    }
+    else if(ucmp(name, "N") == 0 || ucmp(name, "Number") == 0)
+    {
+        result |= unicodeNd;
+        result |= unicodeNl;
+        result |= unicodeNo;
+    }
+    else if(ucmp(name, "P") == 0 || ucmp(name, "Punctuation") == 0)
+    {
+        result |= unicodePc;
+        result |= unicodePd;
+        result |= unicodePs;
+        result |= unicodePe;
+        result |= unicodePi;
+        result |= unicodePf;
+        result |= unicodePo;
+    }
+    else if(ucmp(name, "S") == 0 || ucmp(name, "Symbol") == 0)
+    {
+        result |= unicodeSm;
+        result |= unicodeSc;
+        result |= unicodeSk;
+        result |= unicodeSo;
+    }
+    else if(ucmp(name, "Z") == 0 || ucmp(name, "Separator") == 0)
+    {
+        result |= unicodeZs;
+        result |= unicodeZl;
+        result |= unicodeZp;
+    }
+    else if(ucmp(name, "C") == 0 || ucmp(name, "Other") == 0)
+    {
+        result |= unicodeCo;
+        result |= unicodeLo;
+        result |= unicodeNo;
+        result |= unicodeSo;
+        result |= unicodePo;
+    }
+    else if(ucmp(name, "any") == 0)
+        result = Set(0,0x110000);
+    else if(ucmp(name, "ascii") == 0)
+        result = Set(0,0x80);
     else
-        throw new Exception("no unicode set by name of "~ name);
+    {
+        if(searchUnicodeSet!(T, tinyUnicodeProps)(name, result) 
+                || searchUnicodeSet!(T, smallUnicodeProps)(name, result)
+                || searchUnicodeSet!(T, fullUnicodeProps)(name, result))
+            return result;        
+        else
+            throw new Exception("no unicode set by name of "~ name);
+    }
+    return result;
 }
 
 unittest{
-    assert( unicodeSetByName("InHebrew") == unicodeInHebrew);
+    assert(unicodeSetByName("InHebrew") == unicodeInHebrew);
+    assert(unicodeSetByName("separator") == (unicodeZs | unicodeZl | unicodeZp));
+    assert(unicodeSetByName("In-Kharoshthi") == unicodeInKharoshthi);
 }
 
 @safe:

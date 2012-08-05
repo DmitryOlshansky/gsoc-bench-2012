@@ -6,13 +6,12 @@ RleBitSet!uint rleAlpha, rleMark, rleNumber, rleSymbol
 
 shared static this()
 {
-    rleAlpha = unicodeLu | unicodeLl | unicodeLt | 
-            unicodeLo | unicodeLm;
-    rleMark = unicodeMn| unicodeMc | unicodeMe;
-    rleSymbol = unicodeSm | unicodeSc | unicodeSk | unicodeSo;
-    rleNumber = unicodeNd | unicodeNl | unicodeNo;
-    rlePunct = unicodePd | unicodePs | unicodePe | unicodePc | unicodePo | unicodePi | unicodePf;
-    //rleSpace = unicodeZs;  
+    rleAlpha = unicodeSetByName("Letter");
+    rleMark = unicodeSetByName("Mark");
+    rleSymbol = unicodeSetByName("Symbol");
+    rleNumber = unicodeSetByName("Number");
+    rlePunct = unicodeSetByName("Punctuation");
+   // rleSpace = unicodeZs;  
     rleGraphical =  rleAlpha | rleMark  | rleNumber | rlePunct | rleSpace | rleSymbol;
     //rleControl = unicodeCc;
     //rleFormat = unicodeCf;
@@ -26,7 +25,7 @@ void test_all(alias fn)()
     fn(unicodeWhite_Space);
     writeln("Alpha\n\n");
     fn(rleAlpha);
-    writeln("Mark\n\n");
+    /*writeln("Mark\n\n");
     fn(rleMark);
     writeln("Number\n\n");
     fn(rleNumber);
@@ -40,7 +39,7 @@ void test_all(alias fn)()
     fn(rleGraphical);
     writeln("Control\n\n");
     fn(unicodeCc);
-    writeln("Format\n\n");
+    writeln("Format\n\n");*/
     fn(unicodeCf);
     writeln("Noncharacter\n\n");
     fn(unicodeCn);
@@ -69,7 +68,7 @@ void test_3_level(Set)(in Set set)
                     , sliceBits!(0, lvl_3)) CurTrie;
  
                     CurTrie t = CurTrie(set);
-                    writefln("Trie %d_%d_%d bytes, %d", lvl_1, lvl_2, lvl_3, t.bytes);
+                    writefln("%d_%d_%d, %d", lvl_1, lvl_2, lvl_3, t.bytes);
             }
         }
 }

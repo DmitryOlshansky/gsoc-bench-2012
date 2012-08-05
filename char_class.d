@@ -97,19 +97,23 @@ else
 
     shared static this()
     {
-        //@@@BUG@@@ can't get opAssign to do conversion
-        rleAlpha = RleBitSet!uint( unicodeLu | unicodeLl | unicodeLt | 
-                unicodeLo | unicodeLm);
-        rleMark = RleBitSet!uint(unicodeMn| unicodeMc | unicodeMe);
-        rleSymbol = RleBitSet!uint(unicodeSm | unicodeSc | unicodeSk | unicodeSo);
-        rleNumber = RleBitSet!uint(unicodeNd | unicodeNl | unicodeNo);
+
+        rleAlpha = unicodeSetByName("Letter");
+        rleMark = unicodeSetByName("Mark");
+        rleSymbol = unicodeSetByName("Symbol");
+        rleNumber = unicodeSetByName("number");
 
 
         invAlpha = InvList(rleAlpha);
         invMark = InvList(rleMark);
         invNumber = InvList(rleNumber);
         invSymbol = InvList(rleSymbol);
-        
+
+        triAlpha = MyTrie(rleAlpha);
+        triMark = MyTrie(rleMark);
+        triNumber = MyTrie(rleNumber);
+        triSymbol = MyTrie(rleSymbol);
+
     }
 
 }
