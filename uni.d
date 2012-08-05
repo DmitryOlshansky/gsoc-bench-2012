@@ -70,7 +70,7 @@ module uni;
 
 static import std.ascii;
 import std.traits, std.range, std.algorithm, std.typecons,
-    std.conv, std.typetuple;
+    std.format, std.conv, std.typetuple;
 import std.array; //@@BUG UFCS doesn't work with 'local' imports
 
 enum dchar lineSep = '\u2028'; /// UTF line separator
@@ -148,7 +148,7 @@ unittest
     }
 }
 
-//multiple arrays squashed to one memory block
+//multiple arrays squashed into one memory block
 struct MultiArray(Types...)
 {
     this(size_t[] sizes...)
@@ -230,6 +230,22 @@ struct MultiArray(Types...)
 			return (storage.ptr+storage.length - raw_ptr!n)*size_t.sizeof;
 	}
 
+    void store(OutputRange)(OutputRange sink)
+        if(isOutputRange!(OutputRange, ubyte))         
+    {
+        formattedWrite(sink, "[%( 0x%x, %)]", offsets[]);
+        formattedWrite(sink, ", [%( 0x%x, %)]", sz[]);
+        formattedWrite(sink, ", [%( 0x%x, %)]", storage);
+    }
+    
+    static MultiArray fromRawArray(size_t[] raw_offsets, size_t[] raw_sizes, size_t[] data)
+    {
+        MultiArray tmp;
+        tmp.offsets[] = raw_offsets[];
+        tmp.sz[] = raw_sizes[];
+        tmp.storage = data;
+        return tmp;
+    }
 private:
     @property auto raw_ptr(size_t n)()inout
     {
@@ -431,6 +447,7 @@ struct PackedArrayView(T, size_t bits)
         {        
             static if(bits == 1)
             {
+                
                 T t = cast(T)bt(original.ptr, idx);
                 return t;
             }
@@ -1221,7 +1238,7 @@ public:
 		return data.length == 0;
 	}
 
-    void store(OutputRange)(OutputRange sink) const
+    void store(OutputRange)(scope OutputRange sink) const
         if(isOutputRange!(OutputRange, T))
     {
         foreach(v; data)
@@ -1274,7 +1291,7 @@ private:
         }
         else
         {
-            T[] scratch_space;//TODO mem leak
+            T[] scratch_space;
             size_t s=0;
             foreach(i, v; to_insert)
                 if(v > T.max)
@@ -1293,6 +1310,7 @@ private:
             {// some of (T.max, 0) ended up there
                 SP.append(scratch_space, adaptIntRange!T(to_insert[s..$]));
                 SP.replaceImpl(dest, from, to, scratch_space);
+                SP.destroy(scratch_space);
                 return from+scratch_space.length-1;
             }
         }
@@ -2262,7 +2280,6 @@ unittest//iteration
 @trusted struct Trie(Value, Key, Prefix...)
     if(Prefix.length >= 1)
 {
-
     static if(is(Value dummy : SetAsSlot!(U), U))
     {
         alias U V;
@@ -2298,6 +2315,7 @@ unittest//iteration
     this(Keys)(Keys keys)
         if(!is(typeof(Keys.init.isSet)))
     {
+        ConstructState[Prefix.length] emptyFull; //empty page index, full page index
         enum last = Prefix.length-1;
         enum pageBits=Prefix[$-1].bitSize, pageSize = 1<<pageBits;
         size_t maxIdx = 1;
@@ -2360,13 +2378,13 @@ unittest//iteration
                 {
                     static if(type == TrieType.Value && is(V == bool))
                     {
-                        addValue!last(idxs, false, keyIdx - j);
-                        addValue!last(idxs, true);
+                        addValue!last(idxs, false, emptyFull[], keyIdx - j);
+                        addValue!last(idxs, true, emptyFull[]);
                     }
 					else
 					{
-                        addValue!last(idxs, r.front.init, keyIdx - j);
-                        addValue!last(idxs, r[i]);
+                        addValue!last(idxs, r.front.init, emptyFull[], keyIdx - j);
+                        addValue!last(idxs, r[i], emptyFull[]);
                     }
                     prevKeyIdx = keyIdx;
                     j = keyIdx+1;
@@ -2377,19 +2395,17 @@ unittest//iteration
                                || type == TrieType.Map)
                      {
                         idxs[last]--;
-                        addValue!last(idxs, r[i]);
+                        addValue!last(idxs, r[i], emptyFull[]);
                      }
                 }
 
             }
             static if(type == TrieType.Set)
-                addValue!last(idxs, Key.init, maxIdx-j);
+                addValue!last(idxs, Key.init, emptyFull[], maxIdx-j);
             else static if(type == TrieType.Map)
-                addValue!last(idxs, r.front.init, maxIdx-j);
+                addValue!last(idxs, r.front.init, emptyFull[], maxIdx-j);
             else
-                addValue!last(idxs, false, maxIdx-j);
-
-			table.length!last = table.length!last - pageSize;
+                addValue!last(idxs, false, emptyFull[], maxIdx-j);
         }
     }
 
@@ -2397,9 +2413,12 @@ unittest//iteration
     this(Set)(in Set set, Key maxKey=Key.max)
         if(is(typeof(Set.init.isSet)))
     {
+        ConstructState[Prefix.length] emptyFull; //empty page index, full page index
+        foreach(ref v; emptyFull)
+            v = ConstructState(true, true, uint.max, uint.max);
         enum last = Prefix.length-1;
         enum pageBits=Prefix[$-1].bitSize, pageSize = 1<<pageBits;
-        maxKey =((maxKey + pageSize/2)>>pageBits)<<pageBits;
+        maxKey =((maxKey + pageSize-1)>>pageBits)<<pageBits;
 
         auto ivals = set.byInterval;
         size_t[Prefix.length] idxs;
@@ -2419,19 +2438,16 @@ unittest//iteration
                     break;
                 uint a = ivals.front.a, b = ivals.front.b;
 
-                addValue!last(idxs, false, a - i);
+                addValue!last(idxs, false, emptyFull[], a - i);
                 i = a;
-
-                assert(i <= maxKey, "set has keys > maxKey in Trie c-tor");
-                addValue!last(idxs, true, b - i);
+                assert(i <= maxKey, text("set has keys > maxKey in Trie c-tor: ", i, " vs ", maxKey));
+                addValue!last(idxs, true, emptyFull[], b - i);
                 i = b;
 
                 ivals.popFront();
             }
-            addValue!last(idxs, false, maxKey - i);
+            addValue!last(idxs, false, emptyFull[], maxKey - i);
         }
-
-		table.length!last = table.length!last - pageSize;
     }
 
     inout(V) opIndex(Key key) inout
@@ -2468,7 +2484,26 @@ unittest//iteration
     {
         return Prefix[i].entity(a[1]) < Prefix[i].entity(b[1]);
     }
+
+    void store(OutputRange)(scope OutputRange sink)
+        if(isOutputRange!(OutputRange, ubyte))
+    {
+        table.store(sink);
+    }
+
+    static Trie fromRawArray(size_t[] raw_offs, size_t[] raw_sz, size_t[] raw_data)
+    {
+        Trie t;
+        t.table = typeof(t.table).fromRawArray(raw_offs, raw_sz, raw_data);
+        return t;
+    }
+
 private:
+    struct ConstructState//used during creation of Trie
+    {
+        bool empty, full; //current page is empty? full?
+        uint idx_empty, idx_full;
+    }
     enum TrieType{ Value, Set, Map };
     //for multi-sort
     template GetComparators(size_t n, alias cmpFn)
@@ -2503,16 +2538,22 @@ private:
     }
 
     //true if page was allocated, false is it was mapped or not an end of page yet
-    void addValue(size_t level, T)(size_t[] indices, T val, size_t numVals=1)
-    body
+    void addValue(size_t level, T)(size_t[] indices, T val, ConstructState[] emptyFull, size_t numVals=1)
     {
         enum pageSize = 1<<Prefix[level].bitSize;
         if(numVals == 0)
             return;
         do
         {
-            //need to take pointer again, memory block  may move
+            //need to take pointer again, memory block  may move on resize
             auto ptr = table.slice!(level);
+            static if(is(T : bool))
+            {
+                if(val)
+                    emptyFull[level].empty = false;
+                else
+                    emptyFull[level].full = false;
+            }
             if(numVals == 1)
             {
                 static if(level == Prefix.length-1 && type != TrieType.Value)
@@ -2520,7 +2561,7 @@ private:
                 else// can incurr narrowing conversion
                     ptr[indices[level]] = force!(typeof(ptr[indices[level]]))(val);
                 indices[level]++;
-                numVals = 0;
+                numVals = 0;                
             }
             else
             {
@@ -2537,7 +2578,6 @@ private:
                 }
 				static if(level < Prefix.length-1)
 					assert(indices[level] <= 2^^Prefix[level+1].bitSize);
-
                 static if(level == Prefix.length-1 && type != TrieType.Value)
                 {
                     for(int i=0;i<n; i++)
@@ -2559,11 +2599,28 @@ private:
                 NextIdx next_lvl_index;
                 if(indices[level] % pageSize == 0)
                 {
+                    static if(is(T : bool))
+                    {
+                        if(emptyFull[level].empty)
+                        {
+                            if(emptyFull[level].idx_empty == uint.max)
+                            {
+                                emptyFull[level].idx_empty = cast(uint)(indices[level]/pageSize - 1);
+                                goto L_allocate_page;
+                            }
+                            else
+                            {
+                                next_lvl_index = cast(NextIdx)emptyFull[level].idx_empty;
+                                indices[level] -= pageSize;//it is a duplicate
+                                goto L_know_index;
+                            }
+                        }                        
+                    }
                     auto last = indices[level]-pageSize;
                     auto slice = ptr[indices[level] - pageSize..indices[level]];
                     size_t j;
                     for(j=0; j<last; j+=pageSize)
-                    {
+                    {                        
                         if(equal(ptr[j..j+pageSize], slice[0..pageSize]))
                         {
                             //get index to it, reuse ptr space for the next block
@@ -2584,8 +2641,9 @@ private:
                     }
 
                     if(j == last)
-                    {							
-                        next_lvl_index = cast(NextIdx)(indices[level]/pageSize - 1);
+                    {                        	
+                    L_allocate_page:	
+                        next_lvl_index = cast(NextIdx)(indices[level]/pageSize - 1);	                    
                         //allocate next page
                         version(none)
                         {
@@ -2601,7 +2659,14 @@ private:
                         }
                         table.length!level = table.length!level + pageSize;
                     }
-                    addValue!(level-1)(indices, next_lvl_index);
+                    L_know_index:
+                    static if(is(T : bool))
+                    {
+                        emptyFull[level].empty = true;
+                        emptyFull[level].full = true;
+                    }
+
+                    addValue!(level-1)(indices, next_lvl_index, emptyFull);
                 }
             }
         }
