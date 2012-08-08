@@ -1,7 +1,5 @@
 import bench_suite, std.stdio, std.typetuple, std.conv;
 
-
-
 version(std_uni)
 	import std.uni;
 else{
@@ -98,10 +96,10 @@ else
     shared static this()
     {
 
-        rleAlpha = unicodeSetByName("Letter");
-        rleMark = unicodeSetByName("Mark");
-        rleSymbol = unicodeSetByName("Symbol");
-        rleNumber = unicodeSetByName("number");
+        rleAlpha = unicodeSet("Letter");
+        rleMark = unicodeSet("Mark");
+        rleSymbol = unicodeSet("Symbol");
+        rleNumber = unicodeSet("number");
 
 
         invAlpha = InvList(rleAlpha);

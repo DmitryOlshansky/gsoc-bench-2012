@@ -1,30 +1,17 @@
-import std.stdio, std.typetuple, uni;
+import std.stdio, std.algorithm, std.string, std.conv
+	, std.typetuple, std.format, uni;
 
 RleBitSet!uint rleAlpha, rleMark, rleNumber, rleSymbol
         , rlePunct, rleSpace, rleGraphical, rleControl
         , rleFormat, rleNonCharacter, rleWhite;
 
-template GetBitSlicing(size_t Top, Sizes...)
-{
-    static if(Sizes.length > 0)
-        alias TypeTuple!(sliceBits!(Top - Sizes[0], Top)
-            , GetBitSlicing!(Top - Sizes[0], Sizes[1..$])) GetBitSlicing;
-    else
-        alias TypeTuple!()  GetBitSlicing;
-}
-
-template CodepointTrie(Sizes...)
-{
-    alias Trie!(bool, dchar, GetBitSlicing!(21, Sizes)) CodepointTrie;
-}
-
 shared static this()
 {
-    rleAlpha = unicodeSetByName("Letter");
-    rleMark = unicodeSetByName("Mark");
-    rleSymbol = unicodeSetByName("Symbol");
-    rleNumber = unicodeSetByName("Number");
-    rlePunct = unicodeSetByName("Punctuation");
+    rleAlpha = unicodeSet("Alphabetic");
+    rleMark = unicodeSet("Mark");
+    rleSymbol = unicodeSet("Symbol");
+    rleNumber = unicodeSet("Number");
+    rlePunct = unicodeSet("Punctuation");
    // rleSpace = unicodeZs;  
     rleGraphical =  rleAlpha | rleMark  | rleNumber | rlePunct | rleSpace | rleSymbol;
     //rleControl = unicodeCc;
@@ -33,19 +20,37 @@ shared static this()
     //rleWhite = unicodeWhite_Space;
 }
 
-void test_all(alias fn)()
+void outputCode(size_t N)(uint[N] value, string name)
 {
-    fn(unicodeWhite_Space, "White");
-    fn(rleAlpha, "Alpha");
-    fn(rleMark, "Mark");
-    fn(rleNumber, "Number");
-    fn(rlePunct, "Punctuation");
-    fn(rleSymbol, "Symbol");
-    fn(unicodeZs, "Space");
-    fn(rleGraphical, "Graphical");
-    fn(unicodeCc, "Control");
-    fn(unicodeCf, "Format");
-    fn(unicodeCn, "Noncharacter");
+	auto args = join(map!(x => to!string(x))(value[]), ",");
+	auto targ = join(map!(x => to!string(x))(value[]), "");	
+	formattedWrite(stderr.lockingTextWriter,
+		`auto t%s = CodepointTrie!(%s)(unicodeSet("%s"));
+		 formattedWrite(stderr.lockingTextWriter, 
+			"auto best%s%s = CodepointTrie!(%s).fromRawArray(");`
+		,  name, args, name, name, N, args);
+	
+	formattedWrite(stderr.lockingTextWriter, `
+		 t%s.store(stderr.lockingTextWriter); 
+		 formattedWrite(stderr.lockingTextWriter, ");\n");
+		 `, name);
+}
+
+void test_all(alias fn)()
+{   
+	stderr.writeln("import std.stdio, std.conv, std.format, uni;\n void main(){");
+	outputCode(fn(unicodeWhite_Space, "White"), "White_Space");
+    outputCode(fn(rleAlpha, "Alpha"), "Alphabetic");
+    outputCode(fn(rleMark, "Mark"), "Mark");
+    outputCode(fn(rleNumber, "Number"), "Number");
+    outputCode(fn(rlePunct, "Punctuation"), "Punctuation");
+    outputCode(fn(rleSymbol, "Symbol"), "Symbol");
+    outputCode(fn(unicodeZs, "Space"), "Space_Separator");
+    outputCode(fn(rleGraphical, "Graphical"), "Graphical");
+    outputCode(fn(unicodeCc, "Control"), "Control");
+    outputCode(fn(unicodeCf, "Format"), "Format");
+    outputCode(fn(unicodeCn, "Noncharacter"), "Cn");
+    stderr.writeln("\n}");
 }
 
 void main(string[] argv)
@@ -60,7 +65,7 @@ void main(string[] argv)
         static assert(0, "Pick a version level3 or level4");
 }
 
-void test_2_level(Set)(in Set set, string name)
+uint[2] test_2_level(Set)(in Set set, string name)
 {
     writefln("%s\n\n", name);
     size_t best = size_t.max;
@@ -77,12 +82,10 @@ void test_2_level(Set)(in Set set, string name)
             blvl[] = [lvl_1, lvl_2];
         } 
     }
-    stderr.writefln(`auto best%s2`
-                `CodepointTrie!(%s, %s)(unicodeSetByname("%s");`
-                , name, blvl[0], blvl[1],  name);
+	return blvl;
 }
 
-void test_3_level(Set)(in Set set, string name)
+uint[3] test_3_level(Set)(in Set set, string name)
 {
     writefln("%s\n\n", name);
     size_t best = size_t.max;
@@ -103,13 +106,10 @@ void test_3_level(Set)(in Set set, string name)
                 }
             }
         }
-
-    stderr.writefln(`auto best%s3`
-                `CodepointTrie!(%s, %s, %s)(unicodeSetByname("%s");`
-                , name, blvl[0], blvl[1], blvl[2], name);
+	return blvl;
 }
 
-void test_4_level(Set)(in Set set, string name)
+uint[4] test_4_level(Set)(in Set set, string name)
 {
     size_t best = size_t.max;
     uint[4] blvl;
@@ -131,7 +131,5 @@ void test_4_level(Set)(in Set set, string name)
                 }
             }
         }
-    stderr.writefln(`auto best%s4`
-                `CodepointTrie!(%s, %s, %s, %s)(unicodeSetByname("%s");`
-                , name, blvl[0], blvl[1], blvl[2], blvl[3], name);
+	return blvl;
 }

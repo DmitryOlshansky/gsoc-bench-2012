@@ -2680,6 +2680,24 @@ private:
         MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), V) table;
 }
 
+template GetBitSlicing(size_t Top, Sizes...)
+{
+    static if(Sizes.length > 0)
+        alias TypeTuple!(sliceBits!(Top - Sizes[0], Top)
+            , GetBitSlicing!(Top - Sizes[0], Sizes[1..$])) GetBitSlicing;
+    else
+        alias TypeTuple!()  GetBitSlicing;
+}
+
+/**
+    General Trie template warapper to simplify mapping unicode dchar
+    to bool. 
+*/
+template CodepointTrie(Sizes...)
+{
+    alias Trie!(bool, dchar, GetBitSlicing!(21, Sizes)) CodepointTrie;
+}
+
 /**
     Wrapping T by SetAsSlot indicates that T should be considered
     as a set of values.
@@ -3343,7 +3361,7 @@ bool searchUnicodeSet(T, alias table)(string name, ref RleBitSet!T dest)
     return false;
 }
 
-public @property auto unicodeSetByName(T=uint)(string name)
+public @property auto unicodeSet(T=uint)(string name)
 {
     alias RleBitSet!T Set;
     Set result;
@@ -3425,9 +3443,9 @@ public @property auto unicodeSetByName(T=uint)(string name)
 }
 
 unittest{
-    assert(unicodeSetByName("InHebrew") == unicodeInHebrew);
-    assert(unicodeSetByName("separator") == (unicodeZs | unicodeZl | unicodeZp));
-    assert(unicodeSetByName("In-Kharoshthi") == unicodeInKharoshthi);
+    assert(unicodeSet("InHebrew") == unicodeInHebrew);
+    assert(unicodeSet("separator") == (unicodeZs | unicodeZl | unicodeZp));
+    assert(unicodeSet("In-Kharoshthi") == unicodeInKharoshthi);
 }
 
 @safe:
