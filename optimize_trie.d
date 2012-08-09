@@ -23,7 +23,6 @@ shared static this()
 void outputCode(size_t N)(uint[N] value, string name)
 {
 	auto args = join(map!(x => to!string(x))(value[]), ",");
-	auto targ = join(map!(x => to!string(x))(value[]), "");	
 	formattedWrite(stderr.lockingTextWriter,
 		`auto t%s = CodepointTrie!(%s)(unicodeSet("%s"));
 		 formattedWrite(stderr.lockingTextWriter, 
@@ -62,7 +61,11 @@ void main(string[] argv)
     else version(level2)
         test_all!test_2_level();
     else
-        static assert(0, "Pick a version level3 or level4");
+	{
+		//test_all!test_4_level();
+		//test_all!test_3_level();
+		test_all!test_2_level();
+	}
 }
 
 uint[2] test_2_level(Set)(in Set set, string name)

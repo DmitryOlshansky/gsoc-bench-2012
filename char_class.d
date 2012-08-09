@@ -44,14 +44,16 @@ void myTest(Result[] data)
 	}
         else
         {
+	    foreach(i, m; stdTests)
+	       	bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
             /*bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
             bench!(clasifyIndex!invMark)("inv-uint-mark", x.name, x.data);
             bench!(clasifyIndex!invNumber)("inv-uint-num", x.name, x.data);
-            bench!(clasifyIndex!invSymbol)("inv-uint-sym", x.name, x.data);*/
+            bench!(clasifyIndex!invSymbol)("inv-uint-sym", x.name, x.data);
             bench!(clasifyIndex!triAlpha)("tri-uint-alpha", x.name, x.data);
             bench!(clasifyIndex!triMark)("tri-uint-mark", x.name, x.data);
             bench!(clasifyIndex!triNumber)("tri-uint-num", x.name, x.data);
-            bench!(clasifyIndex!triSymbol)("tri-uint-sym", x.name, x.data);                     
+            bench!(clasifyIndex!triSymbol)("tri-uint-sym", x.name, x.data); */                    
             //BUG with foreach over TypeTuple, uses only the first one i.e. rleAlpha or invAlpha
             //foreach(i, m; invTests)
             //	bench!(clasifyIndex!m)("invlist-"~to!string(i), x.name, x.data);
