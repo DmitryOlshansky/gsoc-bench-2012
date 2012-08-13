@@ -3630,7 +3630,7 @@ int sicmp(C1, C2)(in C1[] str1, in C2[] str2)
     return ridx == str2.length ? 0 : -1;
 }
 
-private bool fullCasedMatch(C)(dchar lhs, dchar rhs, ref inout(C)[] str)
+private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
 {
     alias fullCaseTable ftab;
     size_t idx = fullCaseTrie[lhs];
@@ -3639,12 +3639,14 @@ private bool fullCasedMatch(C)(dchar lhs, dchar rhs, ref inout(C)[] str)
     {
         size_t start = idx - ftab[idx].n;
         size_t end = ftab[idx].size + start;
+        assert(ftab[start].entry_len == 1);
+        lhs = ftab[start].ch;//to use when diff is required
         for(idx=start; idx<end; idx++)
         {
             if(ftab[idx].entry_len == 1)
             {
                 if(ftab[idx].ch == rhs)
-                    return true;
+                    return 0;
             }
             else 
             {//OK it's a long chunk, like 'ss' for German
@@ -3652,12 +3654,12 @@ private bool fullCasedMatch(C)(dchar lhs, dchar rhs, ref inout(C)[] str)
                 if(rhs == seq[0] 
                     && str.skipOver(seq[1..$]))
                 {
-                    return true;
+                    return 0;
                 }
             }
         }
     }
-    return false;
+    return 1;
 }
 
 int icmp(C1, C2)(inout(C1)[] str1, inout(C2)[] str2)
@@ -3677,11 +3679,11 @@ int icmp(C1, C2)(inout(C1)[] str1, inout(C2)[] str2)
         int diff = lhs - rhs;
         if(!diff)
             continue;
-        if(fullCasedMatch(lhs, rhs, str2))
+        if(fullCasedCmp(lhs, rhs, str2) == 0)
             continue;
-        else if(fullCasedMatch(rhs, lhs, str1))
+        else if(fullCasedCmp(rhs, lhs, str1) == 0)
             continue;
-
+        diff = lhs - rhs;//lhs & rhs are remapped to the start of bucket
         return diff;
     }
 }
@@ -3689,21 +3691,25 @@ int icmp(C1, C2)(inout(C1)[] str1, inout(C2)[] str2)
 unittest
 {   
     foreach(cfunc; TypeTuple!(icmp, sicmp)) 
-    foreach(S1; TypeTuple!(string, wstring, dstring))
-    foreach(S2; TypeTuple!(string, wstring, dstring))
     {
-        assert(cfunc("".to!S1, "".to!S2) == 0);
-        assert(cfunc("A".to!S1, "".to!S2) > 0);
-        assert(cfunc("".to!S1, "0".to!S2) < 0);
-        assert(cfunc("abc".to!S1, "abc".to!S2) == 0);
-        assert(cfunc("abcd".to!S1, "abc".to!S2) > 0);
-        assert(cfunc("abc".to!S1, "abcd".to!S2) < 0);
-        assert(cfunc("Abc".to!S1, "aBc".to!S2) == 0);
-        assert(cfunc("авГуст".to!S1, "АВгУСТ".to!S2) == 0);
+        foreach(S1; TypeTuple!(string, wstring, dstring))
+        foreach(S2; TypeTuple!(string, wstring, dstring))
+        {
+            assert(cfunc("".to!S1, "".to!S2) == 0);
+            assert(cfunc("A".to!S1, "".to!S2) > 0);
+            assert(cfunc("".to!S1, "0".to!S2) < 0);
+            assert(cfunc("abc".to!S1, "abc".to!S2) == 0);
+            assert(cfunc("abcd".to!S1, "abc".to!S2) > 0);
+            assert(cfunc("abc".to!S1, "abcd".to!S2) < 0);
+            assert(cfunc("Abc".to!S1, "aBc".to!S2) == 0);
+            assert(cfunc("авГуст".to!S1, "АВгУСТ".to!S2) == 0);
+        }
+        //check that the order is propely agonstic to the case
+        auto strs = [ "Apple", "ORANGE",  "orAcle", "amp", "banana"];
+        sort!((a,b) => cfunc(a,b) < 0)(strs);    
+        assert(strs == ["amp", "Apple",  "banana", "orAcle", "ORANGE"]);        
     }
-    auto strs = [ "Apple", "ORANGE",  "orAcle", "amp", "banana"];
-    sort!((a,b) => sicmp(a,b) < 0)(strs);    
-    assert(strs == ["amp", "Apple",  "banana", "orAcle", "ORANGE"]);
+    assert(icmp("ßa", "ssa") == 0);
 }
 
 

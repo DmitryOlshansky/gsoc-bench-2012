@@ -235,7 +235,9 @@ void loadCaseFolding(string f)
     
     writeln("immutable fullCaseTable = [");
     foreach(v; fullTable){
-            writefln("    FullCaseEntry(\"%s\", %s, %s),", v.value, v.n, v.size);        
+            if(v.entry_len > 1)
+                assert(v.n >= 1); // meaning that start of bucket is always single char
+            writefln("    FullCaseEntry(\"%s\", %s, %s),", v.value, v.n, v.size);
     }
     writeln("];");
 
