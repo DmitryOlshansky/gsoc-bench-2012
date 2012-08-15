@@ -27,11 +27,34 @@ FullCaseEntry[] fullTable;
 
 string[] blacklist = [];
 
-enum mixedCCEntry = q{
+enum mixedCCEntry = `
 struct SimpleCaseEntry
 {
     uint ch;
-    ubyte n, size;// n - number in batch, size - size of batch
+    ubyte n, bucket;// n - number in bucket
+    @property ubyte size()
+    {
+        return bucket & 0x3F;
+    }
+    @property auto isLower()
+    {
+        return bucket & 0x40;
+    }
+    @property auto isUpper()
+    {
+        return bucket & 0x80;
+    }
+    this(uint dch, ubyte num, ubyte size, bool lower, bool upper)
+    {
+        ch = dch;
+        n = num;
+        bucket = size;
+        if(lower)
+            bucket |= 0x40;
+        if(upper)
+            bucket |= 0x80;
+        
+    }
 }
 
 struct FullCaseEntry
@@ -62,8 +85,7 @@ struct FullCaseEntry
         size = batch_size;
     }
 }
-
-};
+`;
 
 
 //size optimal sets
@@ -164,6 +186,10 @@ void loadCaseFolding(string f)
     })(f, r);
 
     write(mixedCCEntry);
+        
+    auto lx = props["Ll"] | props["Other_Lowercase"];
+    auto ux = props["Lu"] | props["Other_Uppercase"];
+    
     foreach(ch; simple.keys()){
         dchar[8] entry;
         int size=0;
@@ -177,7 +203,8 @@ void loadCaseFolding(string f)
             }
         }    
         foreach(i, value; entry[0..size]){
-            simpleTable ~= SimpleCaseEntry(value, cast(ubyte)i, cast(ubyte)size);
+            simpleTable ~= SimpleCaseEntry(value, cast(ubyte)i
+                , cast(ubyte)size, value in lx, value in ux);
         }
     }
 
@@ -200,10 +227,10 @@ void loadCaseFolding(string f)
         }
     }
 
-    //handpicked, re-check later on (say with Unicode 7)
+    //handpicked sizes, re-check later on (say with Unicode 7)
     //also hardcoded in a few places below
     alias uni.Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)) MyTrie;
-    
+        
     ushort[dchar] simpleIndices;
     foreach(i, v; array(map!(x => x.ch)(simpleTable)))
         simpleIndices[v] = cast(ushort)i;
@@ -225,6 +252,8 @@ void loadCaseFolding(string f)
     foreach(k, v; fullIndices){
         assert(ft[k] == fullIndices[k]);
     }
+    
+    
 
     writeln("immutable simpleCaseTable = [");
     foreach(i, v; simpleTable)
@@ -360,15 +389,6 @@ void optimizeSets()
                 fullProps[k] = v;
         }
     }
-    /*stderr.writeln("TINY");
-    foreach(k,v; tinyProps)
-        stderr.writeln(k, ", ", v.bytes);
-    stderr.writeln("\nSMALL");
-    foreach(k,v; smallProps)
-        stderr.writeln(k, ", ", v.bytes);
-    stderr.writeln("\nFULL");
-    foreach(k,v; fullProps)
-        stderr.writeln(k, ", ", v.bytes);*/
 }
 
 string identName(string s)

@@ -3781,6 +3781,9 @@ bool isUpper(dchar c) //@safe pure nothrow
 
     If $(D c) is a Unicode uppercase character, then its lowercase equivalent
     is returned. Otherwise $(D c) is returned.
+     
+    Warning: certain alphabets like German, Greek have no 1:1
+    upper-lower mapping. Use overload of toLower which takes full string instead.
   +/
 deprecated dchar toUniLower(dchar c) //@safe pure nothrow
 {
@@ -3791,7 +3794,7 @@ deprecated dchar toUniLower(dchar c) //@safe pure nothrow
     If $(D c) is a Unicode uppercase character, then its lowercase equivalent
     is returned. Otherwise $(D c) is returned.
     
-    Warning: certain alphabets like German, Greek and some have no 1:1
+    Warning: certain alphabets like German, Greek have no 1:1
     upper-lower mapping. Use overload of toLower which takes full string instead.
   +/
 dchar toLower(dchar c) // @safe pure nothrow
@@ -3856,6 +3859,9 @@ dchar toLower(dchar c) // @safe pure nothrow
 
     If $(D c) is a Unicode lowercase character, then its uppercase equivalent
     is returned. Otherwise $(D c) is returned.
+     
+    Warning: certain alphabets like German, Greek have no 1:1
+    upper-lower mapping. Use overload of toUpper which takes full string instead.
   +/
 deprecated dchar toUniUpper(dchar c) //@safe pure nothrow
 {
@@ -3865,59 +3871,48 @@ deprecated dchar toUniUpper(dchar c) //@safe pure nothrow
 /++
     If $(D c) is a Unicode lowercase character, then its uppercase equivalent
     is returned. Otherwise $(D c) is returned.
+     
+    Warning: certain alphabets like German, Greek have no 1:1
+    upper-lower mapping. Use overload of toUpper which takes full string instead.
   +/
 dchar toUpper(dchar c) //@safe pure nothrow
 {
-    if(std.ascii.isLower(c))
+    //optimize ASCII case
+    if(c < 'a')
+        return c;
+    if(c <= 'z')
         c -= 32;
-    else if(c >= 0x00E0)
+    else
     {
-        if((c >= 0x00E0 && c <= 0x00F6) ||
-           (c >= 0x00F8 && c <= 0x00FE))
+        /*size_t idx = simpleCaseTrie[c];
+        alias simpleCaseTable stab;
+        if(idx != EMPTY_CASE_TRIE)
         {
-            c -= 32;
-        }
-        else if(c == 0x00FF)
-            c = 0x0178;
-        else if((c >= 0x0100 && c < 0x0138) ||
-                (c > 0x0149 && c < 0x0178))
-        {
-            if(c == 0x0131)
-                c = 0x0049;
-            else if(c & 1)
-                --c;
-        }
-        else if((c >= 0x0139 && c < 0x0149) ||
-                (c > 0x0178 && c < 0x017F))
-        {
-            if((c & 1) == 0)
-                --c;
-        }
-        else if(c == 0x017F)
-            c = 0x0053;
-        else if(c >= 0x0200 && c <= 0x0217)
-        {
-            if(c & 1)
-                --c;
-        }
-        else if(c >= 0x0430 && c<= 0x044F)
-            c -= 32;
-        else if((c >= 0x0451 && c <= 0x045C) ||
-                (c >=0x045E && c<= 0x045F))
-        {
-            c -= 80;
-        }
-        else if(c >= 0x0460 && c <= 0x047F)
-        {
-            if(c & 1)
-                --c;
-        }
-        else if(c >= 0x0561 && c < 0x0587)
-            c -= 48;
-        else if(c >= 0xFF41 && c <= 0xFF5A)
-            c -= 32;
+            size_t sz = stab[idx].size;
+            idx = idx - stab[idx].n;
+            switch(sz){
+            default:
+                assert(false);//no even buckets of size 5 currently
+            case 5:
+                if(stab[idx+4].isUpper)
+                    return stab[idx+4].ch;
+                goto case;
+            case 4:
+                if(stab[idx+3].isUpper)
+                    return stab[idx+3].ch;
+                goto case;
+            case 3:
+                if(stab[idx+2].isUpper)
+                    return stab[idx+2].ch;
+                goto case;
+            case 2:
+                if(stab[idx+1].isUpper)
+                    return stab[idx+1].ch;
+                if(stab[idx].isUpper)
+                    return stab[idx].ch;
+            }
+        }*/
     }
-
     return c;
 }
 
