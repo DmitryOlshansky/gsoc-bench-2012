@@ -18,6 +18,7 @@ alias RleBitSet!uint CodepointSet;
 CodepointSet[string] props;
 string[string] aliases;
 CodepointSet[string] normalization;
+CodepointSet lowerCaseSet, upperCaseSet;
 
 mixin(mixedCCEntry);
 //case folding mapping
@@ -32,15 +33,15 @@ struct SimpleCaseEntry
 {
     uint ch;
     ubyte n, bucket;// n - number in bucket
-    @property ubyte size()
+    @property ubyte size()const
     {
         return bucket & 0x3F;
     }
-    @property auto isLower()
+    @property auto isLower()const
     {
         return bucket & 0x40;
     }
-    @property auto isUpper()
+    @property auto isUpper()const
     {
         return bucket & 0x80;
     }
@@ -119,18 +120,19 @@ import uni;\n");
         , "Scripts.txt");
     downloadIfNotExists(prefix ~ "DerivedNormalizationProps.txt"
         , "DerivedNormalizationProps.txt");
-    loadCaseFolding("CaseFolding.txt");
     loadBlocks("Blocks.txt");
     loadProperties("PropList.txt");
     loadProperties("DerivedGeneralCategory.txt");
     loadProperties("DerivedCoreProperties.txt");
     loadProperties("Scripts.txt");
+    loadCaseFolding("CaseFolding.txt");
     loadNormalization("DerivedNormalizationProps.txt");
 
     optimizeSets();
 
     writeProperties();
     writeNormalization();
+    writeTries();
 }
 
 
@@ -185,11 +187,12 @@ void loadCaseFolding(string f)
             }
     })(f, r);
 
+    //make some useful sets by hand
+    lowerCaseSet = props["Ll"] | props["Other_Lowercase"];
+    upperCaseSet = props["Lu"] | props["Other_Uppercase"];
+
     write(mixedCCEntry);
         
-    auto lx = props["Ll"] | props["Other_Lowercase"];
-    auto ux = props["Lu"] | props["Other_Uppercase"];
-    
     foreach(ch; simple.keys()){
         dchar[8] entry;
         int size=0;
@@ -204,7 +207,7 @@ void loadCaseFolding(string f)
         }    
         foreach(i, value; entry[0..size]){
             simpleTable ~= SimpleCaseEntry(value, cast(ubyte)i
-                , cast(ubyte)size, value in lx, value in ux);
+                , cast(ubyte)size, value in lowerCaseSet, value in upperCaseSet);
         }
     }
 
@@ -227,37 +230,10 @@ void loadCaseFolding(string f)
         }
     }
 
-    //handpicked sizes, re-check later on (say with Unicode 7)
-    //also hardcoded in a few places below
-    alias uni.Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)) MyTrie;
-        
-    ushort[dchar] simpleIndices;
-    foreach(i, v; array(map!(x => x.ch)(simpleTable)))
-        simpleIndices[v] = cast(ushort)i;
-
-    ushort[dchar] fullIndices;
-    foreach(i, v; fullTable)
-    {
-        if(v.entry_len == 1)
-            fullIndices[v.ch] = cast(ushort)i;
-    }
-
-    auto st = MyTrie(simpleIndices, ushort.max);
-    auto ft = MyTrie(fullIndices, ushort.max);
-
-    foreach(k, v; simpleIndices){
-        assert(st[k] == simpleIndices[k]);
-    }
-
-    foreach(k, v; fullIndices){
-        assert(ft[k] == fullIndices[k]);
-    }
-    
-    
-
     writeln("immutable simpleCaseTable = [");
     foreach(i, v; simpleTable)
-        writeln("    ", v, i == simpleTable.length-1 ? "" : ", ");
+        writefln("    SimpleCaseEntry(0x%04x, %s, %s, %s, %s)%s", v.ch, v.n, v.size, cast(bool)v.isLower, cast(bool)v.isUpper
+                , i == simpleTable.length-1 ? "" : ",");
     writeln("];");
     
     writeln("immutable fullCaseTable = [");
@@ -268,12 +244,6 @@ void loadCaseFolding(string f)
     }
     writeln("];");
 
-    write("immutable simpleCaseTrie = Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)).fromRawArray(");
-    st.store(stdout.lockingTextWriter);
-    writeln(");");
-    write("immutable fullCaseTrie = Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)).fromRawArray(");
-    ft.store(stdout.lockingTextWriter);
-    writeln(");");
 }
 
 void loadBlocks(string f)
@@ -471,25 +441,60 @@ void writeProperties()
     printPropertyTable(tinyProps, "tinyUnicodeProps");
     printPropertyTable(smallProps, "smallUnicodeProps");
     printPropertyTable(fullProps, "fullUnicodeProps");
+}
 
-    auto lx = props["Ll"] | props["Other_Lowercase"];
-    auto ux = props["Lu"] | props["Other_Uppercase"];
-    auto lowerCase = CodepointTrie!(10, 11)(lx);
+void writeTries()
+{
+    //handpicked sizes, re-check later on (say with Unicode 7)
+    //also hardcoded in a few places below
+    alias uni.Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)) MyTrie;
+        
+    ushort[dchar] simpleIndices;
+    foreach(i, v; array(map!(x => x.ch)(simpleTable)))
+        simpleIndices[v] = cast(ushort)i;
+
+    ushort[dchar] fullIndices;
+    foreach(i, v; fullTable)
+    {
+        if(v.entry_len == 1)
+            fullIndices[v.ch] = cast(ushort)i;
+    }
+
+    auto st = MyTrie(simpleIndices, ushort.max);
+    auto ft = MyTrie(fullIndices, ushort.max);
+
+    foreach(k, v; simpleIndices){
+        assert(st[k] == simpleIndices[k]);
+    }
+
+    foreach(k, v; fullIndices){
+        assert(ft[k] == fullIndices[k]);
+    }
+    
+    auto lowerCase = CodepointTrie!(10, 11)(lowerCaseSet);
     write("immutable lowerCaseTrie = CodepointTrie!(10, 11).fromRawArray(");
     lowerCase.store(stdout.lockingTextWriter());
     writeln(");");
-    auto upperCase = CodepointTrie!(10, 11)(ux);
-    write("immutable upperCaseTrie = CodepointTrie!(10, 11).fromRawArray[");
+    auto upperCase = CodepointTrie!(10, 11)(upperCaseSet);
+    write("immutable upperCaseTrie = CodepointTrie!(10, 11).fromRawArray(");
     upperCase.store(stdout.lockingTextWriter());
     writeln(");");
-}
 
+    write("immutable simpleCaseTrie = Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)).fromRawArray(");
+    st.store(stdout.lockingTextWriter);
+    writeln(");");
+    write("immutable fullCaseTrie = Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)).fromRawArray(");
+    ft.store(stdout.lockingTextWriter);
+    writeln(");");
+
+
+}
 
 void writeNormalization()
 {
     foreach(key, value; normalization)
     {
-        writef("immutable %s = %s", key, charsetString(value));
+        writefln("immutable %s = %s", key, charsetString(value));
     }
 }
 
