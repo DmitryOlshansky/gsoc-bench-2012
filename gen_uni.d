@@ -15,7 +15,6 @@ static import std.ascii;
 
 alias RleBitSet!uint CodepointSet;
 
-CodepointSet[int] casefold;//entries by delta
 CodepointSet[string] props;
 string[string] aliases;
 CodepointSet[string] normalization;
@@ -107,10 +106,9 @@ import uni;\n");
     loadNormalization("DerivedNormalizationProps.txt");
 
     optimizeSets();
-/*
-    writeCaseFolding();
+
     writeProperties();
-    writeNormalization();*/
+    writeNormalization();
 }
 
 
@@ -373,11 +371,6 @@ void optimizeSets()
         stderr.writeln(k, ", ", v.bytes);*/
 }
 
-void writeCaseFolding()
-{
-
-}
-
 string identName(string s)
 {
     auto app = appender!(char[])();
@@ -458,6 +451,17 @@ void writeProperties()
     printPropertyTable(tinyProps, "tinyUnicodeProps");
     printPropertyTable(smallProps, "smallUnicodeProps");
     printPropertyTable(fullProps, "fullUnicodeProps");
+
+    auto lx = props["Ll"] | props["Other_Lowercase"];
+    auto ux = props["Lu"] | props["Other_Uppercase"];
+    auto lowerCase = CodepointTrie!(10, 11)(lx);
+    write("immutable lowerCaseTrie = CodepointTrie!(10, 11).fromRawArray(");
+    lowerCase.store(stdout.lockingTextWriter());
+    writeln(");");
+    auto upperCase = CodepointTrie!(10, 11)(ux);
+    write("immutable upperCaseTrie = CodepointTrie!(10, 11).fromRawArray[");
+    upperCase.store(stdout.lockingTextWriter());
+    writeln(");");
 }
 
 
@@ -468,7 +472,6 @@ void writeNormalization()
         writef("immutable %s = %s", key, charsetString(value));
     }
 }
-
 
 //fussy compare for unicode property names as per UTS-18
 int comparePropertyName(Char)(const(Char)[] a, const(Char)[] b)
