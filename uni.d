@@ -70,7 +70,7 @@ module uni;
 
 static import std.ascii;
 import std.traits, std.range, std.algorithm, std.typecons,
-    std.format, std.conv, std.typetuple;
+    std.format, std.conv, std.typetuple, std.exception, core.stdc.stdlib;
 import std.array; //@@BUG UFCS doesn't work with 'local' imports
 
 enum dchar lineSep = '\u2028'; /// UTF line separator
@@ -443,40 +443,22 @@ struct PackedArrayView(T, size_t bits)
         }
         body
         {        
-            /*static if(bits == 1)
-            {
-                
-                T t = cast(T)bt(original.ptr, idx);
-                return t;
-            }
-            else*/
-            {
-
-                return cast(T)
-                ((original[idx/factor] >> bits*(idx%factor))
-                     & mask);       
-            }
+            return cast(T)((original[idx/factor] >> bits*(idx%factor)) & mask);      
         }
 
         void opIndexAssign(T val, size_t idx)
         in
         {
             static if(isIntegral!T)
-                assert(val <= mask, text("mask: ",mask, " bits: ", bits, "value:", val, " > ", mask));
+                assert(val <= mask, 
+                    text("mask: ",mask, " bits: ", bits
+                        , "value:", val, " > ", mask));
         }
         body
         {
-            /*static if(bits == 1)
-            {
-                val ? bts(original.ptr, idx) : btr(original.ptr, idx);
-                assert(this[idx] == val);
-            }
-            else*/
-            {
-                size_t tgt_shift = bits*(idx%(factor));
-                original[idx/factor] &= ~(mask<<tgt_shift);
-                original[idx/factor] |= cast(size_t)val << tgt_shift;
-            }
+            size_t tgt_shift = bits*(idx%(factor));
+            original[idx/factor] &= ~(mask<<tgt_shift);
+            original[idx/factor] |= cast(size_t)val << tgt_shift;
         }
     }
     else
@@ -490,6 +472,7 @@ struct PackedArrayView(T, size_t bits)
     void opSliceAssign(T val, size_t start, size_t end)
     {
         //rounded to factor granuarity
+        //TODO: re-test and implement
         /*size_t pad_start = (start+factor/2)/factor*factor;//rounded up
         size_t pad_end = end/factor*factor; //rounded down
         size_t i;
@@ -606,6 +589,11 @@ private:
      T* arr;
 }
 
+auto sliceOverIndexed(T)(size_t a, size_t b, T* x)
+{
+    return SliceOverIndexed!T(a, b, x);
+}
+
 private auto packedArrayView(T, size_t bits)(inout(size_t)[] arr)inout
 {
     return inout(PackedArrayView!(T, bits))(arr);
@@ -719,8 +707,7 @@ unittest
 
 //ditto
 @trusted struct ReallocPolicy
-{
-    import std.exception, core.stdc.stdlib;
+{    
     static T[] dup(T)(const T[] arr)
     {
         auto result = alloc!T(arr.length);
@@ -3582,7 +3569,7 @@ else
 
 enum EMPTY_CASE_TRIE = ushort.max;//from what gen_uni uses internally
 
-/** ICEes compiler
+/*@@@BUG@@@ ICEes compiler
 private string switchFromSet(alias set)()
 {
     string result;
@@ -3629,116 +3616,132 @@ enum controlSwitch = `
     case '\u0000':..case '\u0008':case '\u000E':..case '\u001F':case '\u007F':..case '\u0084':case '\u0086':..case '\u009F': case '\u0009':..case '\u000C': case '\u0085':
 `;
 
-private Input decodeGrapheme(alias put, Input)(Input range)
+template genericDecodeGrapheme(bool getValue)
 {
-    enum GraphemeState {
-        Start,
-        CR,
-        L,
-        V,
-        LVT
-    };
-    auto state = GraphemeState.Start;
-    dchar ch;
-    while(!range.empty)
+    static if(getValue)
+        alias Grapheme Value;
+    else
+        alias void Value;
+
+    Value genericDecodeGrapheme(Input)(ref Input range)
     {
-        ch = range.front;
-        final switch(state) with(GraphemeState)
+        enum GraphemeState {
+            Start,
+            CR,
+            L,
+            V,
+            LVT
+        };
+        static if(getValue)
+            Grapheme grapheme;
+        auto state = GraphemeState.Start;
+        enum eat = q{
+            static if(getValue)
+                grapheme ~= ch;
+            range.popFront();
+        };
+        dchar ch;
+
+        while(!range.empty)
         {
-        case Start:
-            switch(ch)
+            ch = range.front;
+            final switch(state) with(GraphemeState)
             {
-            case '\r':
-                state = CR;
-                range.popFront();
+            case Start:
+                switch(ch)
+                {
+                case '\r':
+                    state = CR;
+                    mixin(eat);
+                break;
+                //
+                mixin(hangul_L);
+                    state = L;
+                    mixin(eat);
+                break;
+                //
+                mixin(hangul_LV);
+                mixin(hangul_V);
+                    state = V;
+                    mixin(eat);
+                    break;
+                //
+                mixin(hangul_LVT);
+                    state = LVT;
+                    mixin(eat);
+                    break;
+                //
+                mixin(hangul_T);
+                    state = LVT;
+                    mixin(eat);
+                    break;
+                
+                mixin(controlSwitch);
+                    mixin(eat);
+                    goto L_End;
+                
+                default:
+                    mixin(eat);
+                    goto L_End_Extend;
+                }
             break;
-            //
-            mixin(hangul_L);
-                state = L;
-                range.popFront();
+            case CR:
+                if(ch == '\n')
+                    mixin(eat);
+                goto L_End_Extend;
             break;
-            //
-            mixin(hangul_LV);
-            mixin(hangul_V);
-                state = V;
-                range.popFront();
-                break;
-            //
-            mixin(hangul_LVT);
-                state = LVT;
-                range.popFront();
-                break;
-            //
-            mixin(hangul_T);
-                state = LVT;
-                range.popFront();
-                break;
-            
-            mixin(controlSwitch);
-                range.popFront();
-                goto L_End;
-                break;
-            
-            default:
-                range.popFront();
-                goto L_End_Extend;
-                break;
+            case L:
+                if(unicodeL[ch])
+                    mixin(eat);
+                else if(unicodeV[ch] || unicodeLV[ch])
+                {
+                    state = V;
+                    mixin(eat);
+                }
+                else if(unicodeLVT[ch])
+                {
+                    state = LVT;
+                    mixin(eat);
+                }
+                else
+                    goto L_End_Extend;
+            break;
+            case V:
+                if(unicodeV[ch])
+                    mixin(eat);
+                else if(unicodeT[ch])
+                {
+                    state = LVT;
+                    mixin(eat);
+                }
+                else 
+                    goto L_End_Extend;
+            break;
+            case LVT:
+                if(unicodeT[ch])
+                {
+                    mixin(eat);
+                }
+                else
+                    goto L_End_Extend;
+            break;
             }
-        break;
-        case CR:
-            if(ch == '\n')
-                range.popFront();
-            goto L_End_Extend;
-        break;
-        case L:
-            if(unicodeL[ch])
-                range.popFront();
-            else if(unicodeV[ch] || unicodeLV[ch])
-            {
-                state = V;
-                range.popFront();
-            }
-            else if(unicodeLVT[ch])
-            {
-                state = LVT;
-                range.popFront();
-            }
-            else
-                goto L_End_Extend;
-        break;
-        case V:
-            if(unicodeV[ch])
-                range.popFront();
-            else if(unicodeT[ch])
-            {
-                state = LVT;
-                range.popFront();
-            }
-            else 
-                goto L_End_Extend;
-        break;
-        case LVT:
-            if(unicodeT[ch])
-            {
-                range.popFront();
-            }
-            else
-                goto L_End_Extend;
-        break;
-        }    
+        }
+    L_End_Extend:
+        
+        while(!range.empty)
+        {
+            ch = range.front;
+            //extend & spacing marks
+            if(!unicodeGrapheme_Extend[ch] && !unicodeMc[ch])
+                break;
+            mixin(eat);
+        }
+    L_End:
+        static if(getValue)
+            return grapheme;
     }
-L_End_Extend:
-    
-    while(!range.empty)
-    {
-        ch = range.front;
-        //extend & spacing marks
-        if(!unicodeGrapheme_Extend[ch] && !unicodeMc[ch])
-            break;
-        range.popFront();
-    }
-L_End:
-    return range;
+
 }
 
 unittest
@@ -3750,12 +3753,249 @@ unittest
 @trusted:
 public: //Public API continues
 
+///
 size_t graphemeStride(C)(in C[] input, size_t idx)
+    if(is(C : dchar))
 {
-    static void noop(dchar ch){}
     auto src = input[idx..$];
-    auto r = decodeGrapheme!(noop)(src);
-    return src.length - r.length;
+    auto n = src.length;
+    genericDecodeGrapheme!(false)(src);
+    return n - src.length;
+}
+
+
+///
+
+Grapheme decodeGrapheme(Input)(ref Input inp)
+    if(isInputRange!Input && is(Unqual!(ElementType!Input) == dchar))
+{
+    return genericDecodeGrapheme!true(inp);
+}
+
+unittest
+{
+    Grapheme gr;
+    string s = "  ";
+    gr = decodeGrapheme(s);
+    assert(gr.length == 1 && gr[0] == ' ');
+}
+
+/++
+
++/
+struct Grapheme
+{
+public:
+    this(in dchar[] seq...)
+    {
+        if(seq.length <= small_cap)
+        {
+            foreach(idx, ch; seq)
+                write24(small_.ptr, ch, idx);
+            slen_ = cast(ubyte)seq.length;
+        }
+        else
+        {
+            setBig();
+            auto raw_cap = 3*(seq.length+1);
+            auto p = cast(ubyte*)enforce(malloc(raw_cap));
+            foreach(idx, ch; seq)
+                write24(p, ch, idx);
+            ptr_ = p;
+            len_ = seq.length;
+            cap_ = seq.length;
+        }
+    }
+
+    /// Get codepoint at given index in this cluster.
+    dchar opIndex(size_t index) const
+    {
+        return read24(isBig ? ptr_ : small_.ptr, index);
+    }
+
+    /++
+        Write codepoint at given index of this cluster.
+
+        Warning use of this facility may invalidate cluster, see validate.
+     +/
+    void opIndexAssign(dchar ch, size_t index)
+    {
+        write24(isBig ? ptr_ : small_.ptr, ch, index);
+    }
+
+    /++
+        Random-access range over Grapheme's codepoints.
+
+        Warning: Invalidates when this Grapheme leaves scope.
+    +/
+    auto opSlice(size_t a, size_t b)
+    {
+        return sliceOverIndexed(a, b, &this);
+    }
+
+    ///Grapheme cluster length in codepoints.
+    @property size_t length() const 
+    { 
+        return isBig ? len_ : slen_ & 0x7F; 
+    }
+
+    /// Append $(D ch) to this grapheme.
+    ref opOpAssign(string op)(dchar ch)
+    {
+        static if(op == "~")
+        {
+            if(!isBig)
+            {
+                if(slen_ + 1 > small_cap)
+                    convertToBig();// & fallthrough to "big" branch
+                else
+                {
+                    write24(small_.ptr, ch, smallLength); 
+                    slen_++;
+                    return this;
+                }
+            }
+
+            assert(isBig);
+            if(len_ + 1 > cap_)
+            {
+                cap_ += grow;                
+                ptr_ = cast(ubyte*)enforce(realloc(ptr_, 3*(cap_+1)));
+            }
+            write24(ptr_, ch, len_++);
+            return this;
+        }
+        else
+            static assert(false, "No operation "~op~" defined for Grapheme");
+    }
+
+    ///Append all of codepoints from input range inp to this Grapheme.
+    ref opOpAssign(string op, Input)(Input inp)
+        if(isInputRange!Input)
+    {
+        static if(op == "~")
+        {
+            foreach(dchar ch; inp)
+                this ~= ch;
+            return this;
+        }
+        else
+            static assert(false, "No operation "~op~" defined for Grapheme");
+    }
+
+    /++
+        True if this object contains valid extended grapheme cluster.
+    +/
+    @property bool valid() const
+    {
+        return true; //TODO: do validation through graphemeStride
+    }
+
+    this(this)
+    {
+        if(isBig)
+        {//dup it
+            auto raw_cap = 3*(cap_+1);
+            auto p = cast(ubyte*)enforce(malloc(raw_cap));
+            p[0..raw_cap] = ptr_[0..raw_cap];
+            ptr_ = p;
+        }
+    }
+
+    ~this()
+    {
+        if(isBig)
+            free(ptr_);
+    }
+private:
+    enum small_bytes = (4*size_t.sizeof-1);
+    //out of the blue grow rate, needs testing 
+    //(though graphemes are typically small < 9)
+    enum grow = 20;
+    enum small_cap = small_bytes/3;
+    enum small_flag = 0x80, small_mask = 0x7F;
+    //16 bytes in 32bits, should be enough for majority of cases
+    union
+    {
+        struct
+        {
+            ubyte* ptr_; 
+            size_t cap_;           
+            size_t len_;
+            size_t padding_;
+        }
+        struct
+        {
+            ubyte[small_bytes] small_;
+            ubyte slen_;
+        }
+    }
+
+    void convertToBig()
+    {
+        int k = smallLength;
+        ubyte* p = cast(ubyte*)enforce(malloc(3*(grow+1)));
+        for(int i=0; i<k; i++)
+            write24(p, read24(small_.ptr, i), i);
+        //now we can overwrite small array data
+        ptr_ = p;
+        len_ = slen_;
+        assert(grow > len_);
+        cap_ = grow;
+        setBig();
+    }
+
+    static dchar read24(const ubyte* base, size_t i)
+    {
+        return (*cast(const dchar*)&base[i*3]) & 0xFF_FFFF;
+    }
+
+    static void write24(ubyte* base, dchar ch, size_t i)
+    {
+        dchar* p = cast(dchar*)&base[i*3];
+        *p = (*p & 0xFF00_0000) | ch;
+    }
+
+    void setBig(){ slen_ |= small_flag; }
+    void setSmall(){ slen_ &= ~small_flag; }
+
+    @property size_t smallLength(){ return slen_ & small_mask; }
+    @property ubyte isBig() const { return slen_ & small_flag; }
+}
+
+unittest
+{ //not valid clusters (but it just a test)
+    auto g  = Grapheme('a', 'b', 'c', 'd', 'e');
+    assert(g[0] == 'a');
+    assert(g[1] == 'b');
+    assert(g[2] == 'c');
+    assert(g[3] == 'd');
+    assert(g[4] == 'e');
+    g[3] = 'Й';
+    assert(g[2] == 'c');
+    assert(g[3] == 'Й', text(g[3], " vs ", 'Й'));
+    assert(g[4] == 'e');
+
+    g ~= 'ц';
+    g ~= '~';
+    assert(g[0] == 'a');
+    assert(g[1] == 'b');
+    assert(g[2] == 'c');
+    assert(g[3] == 'Й');
+    assert(g[4] == 'e');
+    assert(g[5] == 'ц');
+    assert(g[6] == '~');
+    
+    Grapheme copy = g;
+    copy[0] = 'X';
+    copy[1] = '-';
+    assert(g[0] == 'a' && copy[0] == 'X');
+    assert(g[1] == 'b' && copy[1] == '-');
+    assert(equal(g[2..g.length], copy[2..copy.length]));
+    copy = Grapheme("АБВГДЕЁЖХИКЛМ");
+    assert(equal(copy[0..8], "АБВГДЕЁЖ"));
+    copy ~= "xyz";
+    assert(equal(copy[13..15], "xy"));
 }
 
 /++
