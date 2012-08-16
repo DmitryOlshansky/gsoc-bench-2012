@@ -33,15 +33,15 @@ struct SimpleCaseEntry
 {
     uint ch;
     ubyte n, bucket;// n - number in bucket
-    @property ubyte size()const
+    @property ubyte size() const
     {
         return bucket & 0x3F;
     }
-    @property auto isLower()const
+    @property auto isLower() const
     {
         return bucket & 0x40;
     }
-    @property auto isUpper()const
+    @property auto isUpper() const
     {
         return bucket & 0x80;
     }
@@ -107,7 +107,7 @@ void main(string[] argv)
 import uni;\n");
     auto prefix = "http://www.unicode.org/Public/UNIDATA/";
     downloadIfNotExists(prefix~"CaseFolding.txt"
-        , "Casefolding.txt");
+        , "CaseFolding.txt");
     downloadIfNotExists(prefix~"Blocks.txt"
         , "Blocks.txt");
     downloadIfNotExists(prefix~"PropList.txt"
@@ -120,11 +120,15 @@ import uni;\n");
         , "Scripts.txt");
     downloadIfNotExists(prefix ~ "DerivedNormalizationProps.txt"
         , "DerivedNormalizationProps.txt");
+    downloadIfNotExists(prefix ~ "HangulSyllableType.txt",
+        "HangulSyllableType.txt");
     loadBlocks("Blocks.txt");
     loadProperties("PropList.txt");
-    loadProperties("DerivedGeneralCategory.txt");
     loadProperties("DerivedCoreProperties.txt");
+    loadProperties("DerivedGeneralCategory.txt");
+    
     loadProperties("Scripts.txt");
+    loadProperties("HangulSyllableType.txt");
     loadCaseFolding("CaseFolding.txt");
     loadNormalization("DerivedNormalizationProps.txt");
 
@@ -138,6 +142,7 @@ import uni;\n");
 
 void scanUniData(alias Fn)(string name, Regex!char r)
 {
+    stderr.writeln(name);
     foreach(line; File(name).byLine)
     {
         auto m = match(line, r);
@@ -188,8 +193,9 @@ void loadCaseFolding(string f)
     })(f, r);
 
     //make some useful sets by hand
-    lowerCaseSet = props["Ll"] | props["Other_Lowercase"];
-    upperCaseSet = props["Lu"] | props["Other_Uppercase"];
+
+    lowerCaseSet = props["Lowercase"];
+    upperCaseSet = props["Uppercase"];
 
     write(mixedCCEntry);
         
@@ -272,8 +278,10 @@ void loadProperties(string inp)
             auto sb = m.captures[2];
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
-            if(name !in props)
+            if(name !in props){
+                stderr.writeln(name);
                 props[name] = CodepointSet.init;
+            }
             props[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
             if(!aliasStr.empty)
             {
@@ -394,7 +402,7 @@ void printSetTable(SetHash)(SetHash hash)
 
 void printPropertyTable(T)(RleBitSet!T[string] hash, string tabname)
 {
-    string tname = "UnicodeProperty!"~T.stringof;
+    string tname = "immutable(UnicodeProperty!"~T.stringof~")";
     writef("\nimmutable %s[] %s = [\n", tname, tabname);
     string[] lines;
     string[] namesOnly;
