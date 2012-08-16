@@ -3582,8 +3582,189 @@ else
 
 enum EMPTY_CASE_TRIE = ushort.max;//from what gen_uni uses internally
 
+/** ICEes compiler
+private string switchFromSet(alias set)()
+{
+    string result;
+    foreach(ch; set.byChar)
+    {
+        result ~= std.string.format(`case '\u%04x:\n`, ch);
+    }
+    return result;
+}
+
+
+string f()
+{
+    return switchFromSet!(unicodeL);
+}
+pragma(msg, f());
+*/
+
+enum hangul_L = `
+    case '\u1100': .. case '\u115E':
+    case '\uA960': .. case '\uA97C':
+    case '\u115F':
+`;
+
+enum hangul_LV = `
+    case '\uAC00': case '\uAC1C': case '\uAC38': case '\uAC54': case '\uAC70': case '\uAC8C': case '\uACA8': case '\uACC4': case '\uACE0': case '\uACFC': case '\uAD18': case '\uAD34': case '\uAD50': case '\uAD6C': case '\uAD88': case '\uADA4': case '\uADC0': case '\uADDC': case '\uADF8': case '\uAE14': case '\uAE30': case '\uAE4C': case '\uAE68': case '\uAE84': case '\uAEA0': case '\uAEBC': case '\uAED8': case '\uAEF4': case '\uAF10': case '\uAF2C': case '\uAF48': case '\uAF64': case '\uAF80': case '\uAF9C': case '\uAFB8': case '\uAFD4': case '\uAFF0': case '\uB00C': case '\uB028': case '\uB044': case '\uB060': case '\uB07C': case '\uB098': case '\uB0B4': case '\uB0D0': case '\uB0EC': case '\uB108': case '\uB124': case '\uB140': case '\uB15C': case '\uB178': case '\uB194': case '\uB1B0': case '\uB1CC': case '\uB1E8': case '\uB204': case '\uB220': case '\uB23C': case '\uB258': case '\uB274': case '\uB290': case '\uB2AC': case '\uB2C8': case '\uB2E4': case '\uB300': case '\uB31C': case '\uB338': case '\uB354': case '\uB370': case '\uB38C': case '\uB3A8': case '\uB3C4': case '\uB3E0': case '\uB3FC': case '\uB418': case '\uB434': case '\uB450': case '\uB46C': case '\uB488': case '\uB4A4': case '\uB4C0': case '\uB4DC': case '\uB4F8': case '\uB514': case '\uB530': case '\uB54C': case '\uB568': case '\uB584': case '\uB5A0': case '\uB5BC': case '\uB5D8': case '\uB5F4': case '\uB610': case '\uB62C': case '\uB648': case '\uB664': case '\uB680': case '\uB69C': case '\uB6B8': case '\uB6D4': case '\uB6F0': case '\uB70C': case '\uB728': case '\uB744': case '\uB760': case '\uB77C': case '\uB798': case '\uB7B4': case '\uB7D0': case '\uB7EC': case '\uB808': case '\uB824': case '\uB840': case '\uB85C': case '\uB878': case '\uB894': case '\uB8B0': case '\uB8CC': case '\uB8E8': case '\uB904': case '\uB920': case '\uB93C': case '\uB958': case '\uB974': case '\uB990': case '\uB9AC': case '\uB9C8': case '\uB9E4': case '\uBA00': case '\uBA1C': case '\uBA38': case '\uBA54': case '\uBA70': case '\uBA8C': case '\uBAA8': case '\uBAC4': case '\uBAE0': case '\uBAFC': case '\uBB18': case '\uBB34': case '\uBB50': case '\uBB6C': case '\uBB88': case '\uBBA4': case '\uBBC0': case '\uBBDC': case '\uBBF8': case '\uBC14': case '\uBC30': case '\uBC4C': case '\uBC68': case '\uBC84': case '\uBCA0': case '\uBCBC': case '\uBCD8': case '\uBCF4': case '\uBD10': case '\uBD2C': case '\uBD48': case '\uBD64': case '\uBD80': case '\uBD9C': case '\uBDB8': case '\uBDD4': case '\uBDF0': case '\uBE0C': case '\uBE28': case '\uBE44': case '\uBE60': case '\uBE7C': case '\uBE98': case '\uBEB4': case '\uBED0': case '\uBEEC': case '\uBF08': case '\uBF24': case '\uBF40': case '\uBF5C': case '\uBF78': case '\uBF94': case '\uBFB0': case '\uBFCC': case '\uBFE8': case '\uC004': case '\uC020': case '\uC03C': case '\uC058': case '\uC074': case '\uC090': case '\uC0AC': case '\uC0C8': case '\uC0E4': case '\uC100': case '\uC11C': case '\uC138': case '\uC154': case '\uC170': case '\uC18C': case '\uC1A8': case '\uC1C4': case '\uC1E0': case '\uC1FC': case '\uC218': case '\uC234': case '\uC250': case '\uC26C': case '\uC288': case '\uC2A4': case '\uC2C0': case '\uC2DC': case '\uC2F8': case '\uC314': case '\uC330': case '\uC34C': case '\uC368': case '\uC384': case '\uC3A0': case '\uC3BC': case '\uC3D8': case '\uC3F4': case '\uC410': case '\uC42C': case '\uC448': case '\uC464': case '\uC480': case '\uC49C': case '\uC4B8': case '\uC4D4': case '\uC4F0': case '\uC50C': case '\uC528': case '\uC544': case '\uC560': case '\uC57C': case '\uC598': case '\uC5B4': case '\uC5D0': case '\uC5EC': case '\uC608': case '\uC624': case '\uC640': case '\uC65C': case '\uC678': case '\uC694': case '\uC6B0': case '\uC6CC': case '\uC6E8': case '\uC704': case '\uC720': case '\uC73C': case '\uC758': case '\uC774': case '\uC790': case '\uC7AC': case '\uC7C8': case '\uC7E4': case '\uC800': case '\uC81C': case '\uC838': case '\uC854': case '\uC870': case '\uC88C': case '\uC8A8': case '\uC8C4': case '\uC8E0': case '\uC8FC': case '\uC918': case '\uC934': case '\uC950': case '\uC96C': case '\uC988': case '\uC9A4': case '\uC9C0': case '\uC9DC': case '\uC9F8': case '\uCA14': case '\uCA30': case '\uCA4C': case '\uCA68': case '\uCA84': case '\uCAA0': case '\uCABC': case '\uCAD8': case '\uCAF4': case '\uCB10': case '\uCB2C': case '\uCB48': case '\uCB64': case '\uCB80': case '\uCB9C': case '\uCBB8': case '\uCBD4': case '\uCBF0': case '\uCC0C': case '\uCC28': case '\uCC44': case '\uCC60': case '\uCC7C': case '\uCC98': case '\uCCB4': case '\uCCD0': case '\uCCEC': case '\uCD08': case '\uCD24': case '\uCD40': case '\uCD5C': case '\uCD78': case '\uCD94': case '\uCDB0': case '\uCDCC': case '\uCDE8': case '\uCE04': case '\uCE20': case '\uCE3C': case '\uCE58': case '\uCE74': case '\uCE90': case '\uCEAC': case '\uCEC8': case '\uCEE4': case '\uCF00': case '\uCF1C': case '\uCF38': case '\uCF54': case '\uCF70': case '\uCF8C': case '\uCFA8': case '\uCFC4': case '\uCFE0': case '\uCFFC': case '\uD018': case '\uD034': case '\uD050': case '\uD06C': case '\uD088': case '\uD0A4': case '\uD0C0': case '\uD0DC': case '\uD0F8': case '\uD114': case '\uD130': case '\uD14C': case '\uD168': case '\uD184': case '\uD1A0': case '\uD1BC': case '\uD1D8': case '\uD1F4': case '\uD210': case '\uD22C': case '\uD248': case '\uD264': case '\uD280': case '\uD29C': case '\uD2B8': case '\uD2D4': case '\uD2F0': case '\uD30C': case '\uD328': case '\uD344': case '\uD360': case '\uD37C': case '\uD398': case '\uD3B4': case '\uD3D0': case '\uD3EC': case '\uD408': case '\uD424': case '\uD440': case '\uD45C': case '\uD478': case '\uD494': case '\uD4B0': case '\uD4CC': case '\uD4E8': case '\uD504': case '\uD520': case '\uD53C': case '\uD558': case '\uD574': case '\uD590': case '\uD5AC': case '\uD5C8': case '\uD5E4': case '\uD600': case '\uD61C': case '\uD638': case '\uD654': case '\uD670': case '\uD68C': case '\uD6A8': case '\uD6C4': case '\uD6E0': case '\uD6FC': case '\uD718': case '\uD734': case '\uD750': case '\uD76C': case '\uD788':
+`;
+
+enum hangul_LVT = `
+    case '\uAC01':..case '\uAC1B':case '\uAC1D':..case '\uAC37':case '\uAC39':..case '\uAC53':case '\uAC55':..case '\uAC6F':case '\uAC71':..case '\uAC8B':case '\uAC8D':..case '\uACA7':case '\uACA9':..case '\uACC3':case '\uACC5':..case '\uACDF':case '\uACE1':..case '\uACFB':case '\uACFD':..case '\uAD17':case '\uAD19':..case '\uAD33':case '\uAD35':..case '\uAD4F':case '\uAD51':..case '\uAD6B':case '\uAD6D':..case '\uAD87':case '\uAD89':..case '\uADA3':case '\uADA5':..case '\uADBF':case '\uADC1':..case '\uADDB':case '\uADDD':..case '\uADF7':case '\uADF9':..case '\uAE13':case '\uAE15':..case '\uAE2F':case '\uAE31':..case '\uAE4B':case '\uAE4D':..case '\uAE67':case '\uAE69':..case '\uAE83':case '\uAE85':..case '\uAE9F':case '\uAEA1':..case '\uAEBB':case '\uAEBD':..case '\uAED7':case '\uAED9':..case '\uAEF3':case '\uAEF5':..case '\uAF0F':case '\uAF11':..case '\uAF2B':case '\uAF2D':..case '\uAF47':case '\uAF49':..case '\uAF63':case '\uAF65':..case '\uAF7F':case '\uAF81':..case '\uAF9B':case '\uAF9D':..case '\uAFB7':case '\uAFB9':..case '\uAFD3':case '\uAFD5':..case '\uAFEF':case '\uAFF1':..case '\uB00B':case '\uB00D':..case '\uB027':case '\uB029':..case '\uB043':case '\uB045':..case '\uB05F':case '\uB061':..case '\uB07B':case '\uB07D':..case '\uB097':case '\uB099':..case '\uB0B3':case '\uB0B5':..case '\uB0CF':case '\uB0D1':..case '\uB0EB':case '\uB0ED':..case '\uB107':case '\uB109':..case '\uB123':case '\uB125':..case '\uB13F':case '\uB141':..case '\uB15B':case '\uB15D':..case '\uB177':case '\uB179':..case '\uB193':case '\uB195':..case '\uB1AF':case '\uB1B1':..case '\uB1CB':case '\uB1CD':..case '\uB1E7':case '\uB1E9':..case '\uB203':case '\uB205':..case '\uB21F':case '\uB221':..case '\uB23B':case '\uB23D':..case '\uB257':case '\uB259':..case '\uB273':case '\uB275':..case '\uB28F':case '\uB291':..case '\uB2AB':case '\uB2AD':..case '\uB2C7':case '\uB2C9':..case '\uB2E3':case '\uB2E5':..case '\uB2FF':case '\uB301':..case '\uB31B':case '\uB31D':..case '\uB337':case '\uB339':..case '\uB353':case '\uB355':..case '\uB36F':case '\uB371':..case '\uB38B':case '\uB38D':..case '\uB3A7':case '\uB3A9':..case '\uB3C3':case '\uB3C5':..case '\uB3DF':case '\uB3E1':..case '\uB3FB':case '\uB3FD':..case '\uB417':case '\uB419':..case '\uB433':case '\uB435':..case '\uB44F':case '\uB451':..case '\uB46B':case '\uB46D':..case '\uB487':case '\uB489':..case '\uB4A3':case '\uB4A5':..case '\uB4BF':case '\uB4C1':..case '\uB4DB':case '\uB4DD':..case '\uB4F7':case '\uB4F9':..case '\uB513':case '\uB515':..case '\uB52F':case '\uB531':..case '\uB54B':case '\uB54D':..case '\uB567':case '\uB569':..case '\uB583':case '\uB585':..case '\uB59F':case '\uB5A1':..case '\uB5BB':case '\uB5BD':..case '\uB5D7':case '\uB5D9':..case '\uB5F3':case '\uB5F5':..case '\uB60F':case '\uB611':..case '\uB62B':case '\uB62D':..case '\uB647':case '\uB649':..case '\uB663':case '\uB665':..case '\uB67F':case '\uB681':..case '\uB69B':case '\uB69D':..case '\uB6B7':case '\uB6B9':..case '\uB6D3':case '\uB6D5':..case '\uB6EF':case '\uB6F1':..case '\uB70B':case '\uB70D':..case '\uB727':case '\uB729':..case '\uB743':case '\uB745':..case '\uB75F':case '\uB761':..case '\uB77B':case '\uB77D':..case '\uB797':case '\uB799':..case '\uB7B3':case '\uB7B5':..case '\uB7CF':case '\uB7D1':..case '\uB7EB':case '\uB7ED':..case '\uB807':case '\uB809':..case '\uB823':case '\uB825':..case '\uB83F':case '\uB841':..case '\uB85B':case '\uB85D':..case '\uB877':case '\uB879':..case '\uB893':case '\uB895':..case '\uB8AF':case '\uB8B1':..case '\uB8CB':case '\uB8CD':..case '\uB8E7':case '\uB8E9':..case '\uB903':case '\uB905':..case '\uB91F':case '\uB921':..case '\uB93B':case '\uB93D':..case '\uB957':case '\uB959':..case '\uB973':case '\uB975':..case '\uB98F':case '\uB991':..case '\uB9AB':case '\uB9AD':..case '\uB9C7':case '\uB9C9':..case '\uB9E3':case '\uB9E5':..case '\uB9FF':case '\uBA01':..case '\uBA1B':case '\uBA1D':..case '\uBA37':case '\uBA39':..case '\uBA53':case '\uBA55':..case '\uBA6F':case '\uBA71':..case '\uBA8B':case '\uBA8D':..case '\uBAA7':case '\uBAA9':..case '\uBAC3':case '\uBAC5':..case '\uBADF':case '\uBAE1':..case '\uBAFB':case '\uBAFD':..case '\uBB17':case '\uBB19':..case '\uBB33':case '\uBB35':..case '\uBB4F':case '\uBB51':..case '\uBB6B':case '\uBB6D':..case '\uBB87':case '\uBB89':..case '\uBBA3':case '\uBBA5':..case '\uBBBF':case '\uBBC1':..case '\uBBDB':case '\uBBDD':..case '\uBBF7':case '\uBBF9':..case '\uBC13':case '\uBC15':..case '\uBC2F':case '\uBC31':..case '\uBC4B':case '\uBC4D':..case '\uBC67':case '\uBC69':..case '\uBC83':case '\uBC85':..case '\uBC9F':case '\uBCA1':..case '\uBCBB':case '\uBCBD':..case '\uBCD7':case '\uBCD9':..case '\uBCF3':case '\uBCF5':..case '\uBD0F':case '\uBD11':..case '\uBD2B':case '\uBD2D':..case '\uBD47':case '\uBD49':..case '\uBD63':case '\uBD65':..case '\uBD7F':case '\uBD81':..case '\uBD9B':case '\uBD9D':..case '\uBDB7':case '\uBDB9':..case '\uBDD3':case '\uBDD5':..case '\uBDEF':case '\uBDF1':..case '\uBE0B':case '\uBE0D':..case '\uBE27':case '\uBE29':..case '\uBE43':case '\uBE45':..case '\uBE5F':case '\uBE61':..case '\uBE7B':case '\uBE7D':..case '\uBE97':case '\uBE99':..case '\uBEB3':case '\uBEB5':..case '\uBECF':case '\uBED1':..case '\uBEEB':case '\uBEED':..case '\uBF07':case '\uBF09':..case '\uBF23':case '\uBF25':..case '\uBF3F':case '\uBF41':..case '\uBF5B':case '\uBF5D':..case '\uBF77':case '\uBF79':..case '\uBF93':case '\uBF95':..case '\uBFAF':case '\uBFB1':..case '\uBFCB':case '\uBFCD':..case '\uBFE7':case '\uBFE9':..case '\uC003':case '\uC005':..case '\uC01F':case '\uC021':..case '\uC03B':case '\uC03D':..case '\uC057':case '\uC059':..case '\uC073':case '\uC075':..case '\uC08F':case '\uC091':..case '\uC0AB':case '\uC0AD':..case '\uC0C7':case '\uC0C9':..case '\uC0E3':case '\uC0E5':..case '\uC0FF':case '\uC101':..case '\uC11B':case '\uC11D':..case '\uC137':case '\uC139':..case '\uC153':case '\uC155':..case '\uC16F':case '\uC171':..case '\uC18B':case '\uC18D':..case '\uC1A7':case '\uC1A9':..case '\uC1C3':case '\uC1C5':..case '\uC1DF':case '\uC1E1':..case '\uC1FB':case '\uC1FD':..case '\uC217':case '\uC219':..case '\uC233':case '\uC235':..case '\uC24F':case '\uC251':..case '\uC26B':case '\uC26D':..case '\uC287':case '\uC289':..case '\uC2A3':case '\uC2A5':..case '\uC2BF':case '\uC2C1':..case '\uC2DB':case '\uC2DD':..case '\uC2F7':case '\uC2F9':..case '\uC313':case '\uC315':..case '\uC32F':case '\uC331':..case '\uC34B':case '\uC34D':..case '\uC367':case '\uC369':..case '\uC383':case '\uC385':..case '\uC39F':case '\uC3A1':..case '\uC3BB':case '\uC3BD':..case '\uC3D7':case '\uC3D9':..case '\uC3F3':case '\uC3F5':..case '\uC40F':case '\uC411':..case '\uC42B':case '\uC42D':..case '\uC447':case '\uC449':..case '\uC463':case '\uC465':..case '\uC47F':case '\uC481':..case '\uC49B':case '\uC49D':..case '\uC4B7':case '\uC4B9':..case '\uC4D3':case '\uC4D5':..case '\uC4EF':case '\uC4F1':..case '\uC50B':case '\uC50D':..case '\uC527':case '\uC529':..case '\uC543':case '\uC545':..case '\uC55F':case '\uC561':..case '\uC57B':case '\uC57D':..case '\uC597':case '\uC599':..case '\uC5B3':case '\uC5B5':..case '\uC5CF':case '\uC5D1':..case '\uC5EB':case '\uC5ED':..case '\uC607':case '\uC609':..case '\uC623':case '\uC625':..case '\uC63F':case '\uC641':..case '\uC65B':case '\uC65D':..case '\uC677':case '\uC679':..case '\uC693':case '\uC695':..case '\uC6AF':case '\uC6B1':..case '\uC6CB':case '\uC6CD':..case '\uC6E7':case '\uC6E9':..case '\uC703':case '\uC705':..case '\uC71F':case '\uC721':..case '\uC73B':case '\uC73D':..case '\uC757':case '\uC759':..case '\uC773':case '\uC775':..case '\uC78F':case '\uC791':..case '\uC7AB':case '\uC7AD':..case '\uC7C7':case '\uC7C9':..case '\uC7E3':case '\uC7E5':..case '\uC7FF':case '\uC801':..case '\uC81B':case '\uC81D':..case '\uC837':case '\uC839':..case '\uC853':case '\uC855':..case '\uC86F':case '\uC871':..case '\uC88B':case '\uC88D':..case '\uC8A7':case '\uC8A9':..case '\uC8C3':case '\uC8C5':..case '\uC8DF':case '\uC8E1':..case '\uC8FB':case '\uC8FD':..case '\uC917':case '\uC919':..case '\uC933':case '\uC935':..case '\uC94F':case '\uC951':..case '\uC96B':case '\uC96D':..case '\uC987':case '\uC989':..case '\uC9A3':case '\uC9A5':..case '\uC9BF':case '\uC9C1':..case '\uC9DB':case '\uC9DD':..case '\uC9F7':case '\uC9F9':..case '\uCA13':case '\uCA15':..case '\uCA2F':case '\uCA31':..case '\uCA4B':case '\uCA4D':..case '\uCA67':case '\uCA69':..case '\uCA83':case '\uCA85':..case '\uCA9F':case '\uCAA1':..case '\uCABB':case '\uCABD':..case '\uCAD7':case '\uCAD9':..case '\uCAF3':case '\uCAF5':..case '\uCB0F':case '\uCB11':..case '\uCB2B':case '\uCB2D':..case '\uCB47':case '\uCB49':..case '\uCB63':case '\uCB65':..case '\uCB7F':case '\uCB81':..case '\uCB9B':case '\uCB9D':..case '\uCBB7':case '\uCBB9':..case '\uCBD3':case '\uCBD5':..case '\uCBEF':case '\uCBF1':..case '\uCC0B':case '\uCC0D':..case '\uCC27':case '\uCC29':..case '\uCC43':case '\uCC45':..case '\uCC5F':case '\uCC61':..case '\uCC7B':case '\uCC7D':..case '\uCC97':case '\uCC99':..case '\uCCB3':case '\uCCB5':..case '\uCCCF':case '\uCCD1':..case '\uCCEB':case '\uCCED':..case '\uCD07':case '\uCD09':..case '\uCD23':case '\uCD25':..case '\uCD3F':case '\uCD41':..case '\uCD5B':case '\uCD5D':..case '\uCD77':case '\uCD79':..case '\uCD93':case '\uCD95':..case '\uCDAF':case '\uCDB1':..case '\uCDCB':case '\uCDCD':..case '\uCDE7':case '\uCDE9':..case '\uCE03':case '\uCE05':..case '\uCE1F':case '\uCE21':..case '\uCE3B':case '\uCE3D':..case '\uCE57':case '\uCE59':..case '\uCE73':case '\uCE75':..case '\uCE8F':case '\uCE91':..case '\uCEAB':case '\uCEAD':..case '\uCEC7':case '\uCEC9':..case '\uCEE3':case '\uCEE5':..case '\uCEFF':case '\uCF01':..case '\uCF1B':case '\uCF1D':..case '\uCF37':case '\uCF39':..case '\uCF53':case '\uCF55':..case '\uCF6F':case '\uCF71':..case '\uCF8B':case '\uCF8D':..case '\uCFA7':case '\uCFA9':..case '\uCFC3':case '\uCFC5':..case '\uCFDF':case '\uCFE1':..case '\uCFFB':case '\uCFFD':..case '\uD017':case '\uD019':..case '\uD033':case '\uD035':..case '\uD04F':case '\uD051':..case '\uD06B':case '\uD06D':..case '\uD087':case '\uD089':..case '\uD0A3':case '\uD0A5':..case '\uD0BF':case '\uD0C1':..case '\uD0DB':case '\uD0DD':..case '\uD0F7':case '\uD0F9':..case '\uD113':case '\uD115':..case '\uD12F':case '\uD131':..case '\uD14B':case '\uD14D':..case '\uD167':case '\uD169':..case '\uD183':case '\uD185':..case '\uD19F':case '\uD1A1':..case '\uD1BB':case '\uD1BD':..case '\uD1D7':case '\uD1D9':..case '\uD1F3':case '\uD1F5':..case '\uD20F':case '\uD211':..case '\uD22B':case '\uD22D':..case '\uD247':case '\uD249':..case '\uD263':case '\uD265':..case '\uD27F':case '\uD281':..case '\uD29B':case '\uD29D':..case '\uD2B7':case '\uD2B9':..case '\uD2D3':case '\uD2D5':..case '\uD2EF':case '\uD2F1':..case '\uD30B':case '\uD30D':..case '\uD327':case '\uD329':..case '\uD343':case '\uD345':..case '\uD35F':case '\uD361':..case '\uD37B':case '\uD37D':..case '\uD397':case '\uD399':..case '\uD3B3':case '\uD3B5':..case '\uD3CF':case '\uD3D1':..case '\uD3EB':case '\uD3ED':..case '\uD407':case '\uD409':..case '\uD423':case '\uD425':..case '\uD43F':case '\uD441':..case '\uD45B':case '\uD45D':..case '\uD477':case '\uD479':..case '\uD493':case '\uD495':..case '\uD4AF':case '\uD4B1':..case '\uD4CB':case '\uD4CD':..case '\uD4E7':case '\uD4E9':..case '\uD503':case '\uD505':..case '\uD51F':case '\uD521':..case '\uD53B':case '\uD53D':..case '\uD557':case '\uD559':..case '\uD573':case '\uD575':..case '\uD58F':case '\uD591':..case '\uD5AB':case '\uD5AD':..case '\uD5C7':case '\uD5C9':..case '\uD5E3':case '\uD5E5':..case '\uD5FF':case '\uD601':..case '\uD61B':case '\uD61D':..case '\uD637':case '\uD639':..case '\uD653':case '\uD655':..case '\uD66F':case '\uD671':..case '\uD68B':case '\uD68D':..case '\uD6A7':case '\uD6A9':..case '\uD6C3':case '\uD6C5':..case '\uD6DF':case '\uD6E1':..case '\uD6FB':case '\uD6FD':..case '\uD717':case '\uD719':..case '\uD733':case '\uD735':..case '\uD74F':case '\uD751':..case '\uD76B':case '\uD76D':..case '\uD787':case '\uD789':..case '\uD7A3':
+`;
+
+enum hangul_V = `
+    case '\u1160': .. case '\u11A7':
+    case '\uD7B0': .. case '\uD7C6':
+`;
+
+enum hangul_T = `
+    case '\u11A8':..case '\u11FF': case '\uD7CB':..case '\uD7FB':
+`;
+
+//control - '\r'
+enum controlSwitch = `
+    case '\u0000':..case '\u0008':case '\u000E':..case '\u001F':case '\u007F':..case '\u0084':case '\u0086':..case '\u009F': case '\u0009':..case '\u000C': case '\u0085':
+`;
+
+private Input decodeGrapheme(alias put, Input)(Input range)
+{
+    enum GraphemeState {
+        Start,
+        CR,
+        L,
+        V,
+        LVT,
+        E,
+        End
+    };
+    auto state = GraphemeState.Start;
+    static dchar next(Input range)
+    {
+        return range.empty ? range.popFront(), range.front() : dchar.init;
+    }
+    
+    dchar ch = range.front;
+    for(;;)
+    {
+        final switch(state) with(GraphemeState)
+        {
+        case Start:
+            switch(ch)
+            {
+            case '\r':
+                state = CR;
+                ch = next(range);
+            break;
+            //
+            mixin(hangul_L);
+                state = L;
+                ch = next(range);
+            break;
+            //
+            mixin(hangul_LV);
+            mixin(hangul_V);
+                state = V;
+                ch = next(range);
+                break;
+            //
+            mixin(hangul_LVT);
+                state = LVT;
+                ch = next(range);
+                break;
+            //
+            mixin(hangul_T);
+                state = LVT;
+                ch = next(range);
+                break;
+            
+            mixin(controlSwitch);
+                state = End;
+                ch = next(range);
+                break;
+            
+            default:
+                state = E;
+                ch = next(range);
+                break;
+            }
+        break;
+        case CR:
+            if(ch == '\n')
+                ch = next(range);
+            state = End;
+        break;
+        case L:
+            switch(ch)
+            {
+            mixin(hangul_L);
+                ch = next(range);
+            break;
+            
+            mixin(hangul_V);
+            mixin(hangul_LV);
+                state = V;
+                ch = next(range);
+            break;
+            
+            mixin(hangul_LVT);
+                state = LVT;
+                ch = next(range);
+            break;
+            
+            default:
+                state = E;
+            }
+        break;
+        case V:
+            if(unicodeV[ch])
+                ch = next(range);
+            else if(unicodeT[ch])
+            {
+                state = LVT;
+                ch = next(range);
+            }
+            else 
+                state = E;
+        break;
+        case LVT:
+            if(unicodeT[ch])
+            {
+                ch = next(range);
+            }
+            else
+                state = E;
+        break;
+        case E:
+            while(unicodeOther_Grapheme_Extend[ch])
+            {
+                ch = next(range);
+            }
+            goto case;
+        case End:
+            return range;
+        }    
+    }
+    assert(0);
+}
+
+unittest
+{
+    
+    graphemeStride("  ", 1);
+}
+
 @trusted:
 public: //Public API continues
+
+size_t graphemeStride(C)(in C[] input, size_t idx)
+{
+    static void noop(dchar ch){}
+    auto s = decodeGrapheme!(noop)(input[idx..$]);
+    return s.length - input.length;
+}
 
 /++
 
