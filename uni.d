@@ -3636,19 +3636,13 @@ private Input decodeGrapheme(alias put, Input)(Input range)
         CR,
         L,
         V,
-        LVT,
-        E,
-        End
+        LVT
     };
     auto state = GraphemeState.Start;
-    static dchar next(Input range)
+    dchar ch;
+    while(!range.empty)
     {
-        return range.empty ? range.popFront(), range.front() : dchar.init;
-    }
-    
-    dchar ch = range.front;
-    for(;;)
-    {
+        ch = range.front;
         final switch(state) with(GraphemeState)
         {
         case Start:
@@ -3656,104 +3650,101 @@ private Input decodeGrapheme(alias put, Input)(Input range)
             {
             case '\r':
                 state = CR;
-                ch = next(range);
+                range.popFront();
             break;
             //
             mixin(hangul_L);
                 state = L;
-                ch = next(range);
+                range.popFront();
             break;
             //
             mixin(hangul_LV);
             mixin(hangul_V);
                 state = V;
-                ch = next(range);
+                range.popFront();
                 break;
             //
             mixin(hangul_LVT);
                 state = LVT;
-                ch = next(range);
+                range.popFront();
                 break;
             //
             mixin(hangul_T);
                 state = LVT;
-                ch = next(range);
+                range.popFront();
                 break;
             
             mixin(controlSwitch);
-                state = End;
-                ch = next(range);
+                range.popFront();
+                goto L_End;
                 break;
             
             default:
-                state = E;
-                ch = next(range);
+                range.popFront();
+                goto L_End_Extend;
                 break;
             }
         break;
         case CR:
             if(ch == '\n')
-                ch = next(range);
-            state = End;
+                range.popFront();
+            goto L_End_Extend;
         break;
         case L:
-            switch(ch)
+            if(unicodeL[ch])
+                range.popFront();
+            else if(unicodeV[ch] || unicodeLV[ch])
             {
-            mixin(hangul_L);
-                ch = next(range);
-            break;
-            
-            mixin(hangul_V);
-            mixin(hangul_LV);
                 state = V;
-                ch = next(range);
-            break;
-            
-            mixin(hangul_LVT);
-                state = LVT;
-                ch = next(range);
-            break;
-            
-            default:
-                state = E;
+                range.popFront();
             }
+            else if(unicodeLVT[ch])
+            {
+                state = LVT;
+                range.popFront();
+            }
+            else
+                goto L_End_Extend;
         break;
         case V:
             if(unicodeV[ch])
-                ch = next(range);
+                range.popFront();
             else if(unicodeT[ch])
             {
                 state = LVT;
-                ch = next(range);
+                range.popFront();
             }
             else 
-                state = E;
+                goto L_End_Extend;
         break;
         case LVT:
             if(unicodeT[ch])
             {
-                ch = next(range);
+                range.popFront();
             }
             else
-                state = E;
+                goto L_End_Extend;
         break;
-        case E:
-            while(unicodeOther_Grapheme_Extend[ch])
-            {
-                ch = next(range);
-            }
-            goto case;
-        case End:
-            return range;
         }    
     }
-    assert(0);
+L_End_Extend:
+    
+    while(!range.empty)
+    {
+        ch = range.front;
+        //extend & spacing marks
+        if(!unicodeGrapheme_Extend[ch] && !unicodeMc[ch])
+            break;
+        range.popFront();
+    }
+L_End:
+    return range;
 }
 
 unittest
 {
-    
-    graphemeStride("  ", 1);
+    assert(graphemeStride("  ", 1) == 1);
+    //for now tested separately see test_grapheme.d
 }
 
 @trusted:
@@ -3762,8 +3753,9 @@ public: //Public API continues
 size_t graphemeStride(C)(in C[] input, size_t idx)
 {
     static void noop(dchar ch){}
-    auto s = decodeGrapheme!(noop)(input[idx..$]);
-    return s.length - input.length;
+    auto src = input[idx..$];
+    auto r = decodeGrapheme!(noop)(src);
+    return src.length - r.length;
 }
 
 /++
