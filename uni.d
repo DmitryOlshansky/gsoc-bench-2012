@@ -14,45 +14,44 @@
     unittest
     {
         import std.uni;
-          //intialize codepoint sets using regex notation
-    //$(D set) contains codepoints from both scripts.
-    auto set = unicodeSet("Cyrillic") | unicodeSet("Armenian");
-    auto ascii = unicodeSet("ASCII");
-    auto currency = unicodeSet("Currency_Symbol");
+        //$(D set) contains codepoints from both scripts.
+        auto set = unicodeSet("Cyrillic") | unicodeSet("Armenian");
+        auto ascii = unicodeSet("ASCII");
+        auto currency = unicodeSet("Currency_Symbol");
 
-    //easy set ops
-    auto a = set & ascii;
-    assert(a.empty); //as it has no intersection with ascii
-    a = set | ascii;
-    auto b = currency - a; //subtract all ASCII, cyrilic and armenian
+        //easy set ops
+        auto a = set & ascii;
+        assert(a.empty); //as it has no intersection with ascii
+        a = set | ascii;
+        auto b = currency - a; //subtract all ASCII, cyrilic and armenian
 
-    //some properties of codepoint sets
-    assert(b.length == 46); //only 46 left per unicode 6.1
-    assert(!b['$']);    //testing is not really fast but works
+        //some properties of codepoint sets
+        assert(b.length == 46); //only 46 left per unicode 6.1
+        assert(!b['$']);    //testing is not really fast but works
 
-    //building lookup tables 
-    auto oneTrie = buildTrie!1(b);//1-level Trie lookup table
-    auto twoTrie = buildTrie!2(b);
-    auto threeTrie = buildTrie!3(b);
-    assert(oneTrie['£']);
-    assert(twoTrie['£']);
-    assert(threeTrie['£']);
-    
-    //pick the best trie level, and bind it as a functor
-    auto cyrilicOrArmenian = buildLookup(set);
-    auto balance = find!(cyrilicOrArmenian)("Hello ընկեր!");
-    assert(balance == "ընկեր!");
-/*// NOT READY YET:
-    //Normalization
-    string s = "Plain ascii (and not only), is always normalized!";
-    assert(s is normalize(s));//same string
-    string nonS = "eﬃcient?"); //ffi ligature
-    auto nS = normalize(nonS);
-    assert(nS == "efficient?");
-    assert(nS != n);
-    //to NFKD, if available
-    asert(normalize!NFKD("2¹⁰") == "210");
-*/
+        //building lookup tables 
+        auto oneTrie = buildTrie!1(b);//1-level Trie lookup table
+        auto twoTrie = buildTrie!2(b);
+        auto threeTrie = buildTrie!3(b);
+        assert(oneTrie['£']);
+        assert(twoTrie['£']);
+        assert(threeTrie['£']);
+        
+        //pick the best trie level, and bind it as a functor
+        auto cyrilicOrArmenian = buildLookup(set);
+        auto balance = find!(cyrilicOrArmenian)("Hello ընկեր!");
+        assert(balance == "ընկեր!");
+    /*// NOT READY YET:
+        //Normalization
+        string s = "Plain ascii (and not only), is always normalized!";
+        assert(s is normalize(s));//same string
+        string nonS = "eﬃcient?"); //ffi ligature
+        auto nS = normalize(nonS);
+        assert(nS == "efficient?");
+        assert(nS != n);
+        //to NFKD, if available
+        asert(normalize!NFKD("2¹⁰") == "210");
+    */
     }
     ---
 
@@ -1005,7 +1004,10 @@ private:
 
 };
 
-///RleBitSet is ...
+/**
+    RleBitSet is a data structure for sparce integer sets in general.
+    It supports all of the usual set operations and works as compact codepoint set.
+*/
 @trusted public struct RleBitSet(T, SP=GcPolicy)
     if(isUnsigned!T)
 {
@@ -1212,7 +1214,7 @@ public:
     }
 
     ///Number of characters in this set
-	@property size_t length()const
+	@property size_t length() const
 	{
 		size_t sum = 0 ;
 		for(size_t i=0; i<data.length; i+=2)
@@ -1223,7 +1225,8 @@ public:
 	ref invert()
 	{
 		//TODO: implement inversion
-		return this;
+        assert(0);
+		//return this;
 	}
 
 	@property bool empty()const
@@ -1552,7 +1555,7 @@ private:
 alias RleBitSet!uint CodepointSet;
 
 /**
-    $(D CodepointSet) is a packed data structure for sets of codepoints.
+    $(D InversionList) is a packed data structure for a set of codepoints.
     Memory usage is 6 bytes per each contigous interval in a set.
 */
 @trusted public struct InversionList(SP=GcPolicy)
@@ -1642,7 +1645,7 @@ alias RleBitSet!uint CodepointSet;
     }
 
 	///Number of characters in this set
-	@property size_t length()
+	@property size_t length() const
 	{
 		size_t sum = 0;
 		foreach(iv; byInterval)
