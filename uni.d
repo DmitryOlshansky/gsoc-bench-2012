@@ -3775,9 +3775,12 @@ Grapheme decodeGrapheme(Input)(ref Input inp)
 unittest
 {
     Grapheme gr;
-    string s = "  ";
+    string s = " \u0020\u0308 ";
     gr = decodeGrapheme(s);
     assert(gr.length == 1 && gr[0] == ' ');
+    gr = decodeGrapheme(s);
+    writeln(gr.length);
+    assert(gr.length == 2 && equal(gr[0..2], " \u0308"));
 }
 
 /++
