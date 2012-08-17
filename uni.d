@@ -14,40 +14,45 @@
     unittest
     {
         import std.uni;
-        //intialize codepoint sets using regex notation
-        //$(D set) contains codepoints from both scripts.
-        auto set = CodepointSet(`[\p{Cyrilic}||\p{Armenian}]`);
-        auto ascii = CodepointSet(`[\p{ASCII}]`);
-        auto currency = CodepointSet(`[\p{Currency_Symbol}]`);
+          //intialize codepoint sets using regex notation
+    //$(D set) contains codepoints from both scripts.
+    auto set = unicodeSet("Cyrillic") | unicodeSet("Armenian");
+    auto ascii = unicodeSet("ASCII");
+    auto currency = unicodeSet("Currency_Symbol");
 
-        //easy set ops
-        auto a = set & ascii;
-        assert(a.empty); //as it has no intersection with ascii
-        a = set | ascii;
-        auto b = currency - a; //subtract all ASCII, cyrilic and armenian
+    //easy set ops
+    auto a = set & ascii;
+    assert(a.empty); //as it has no intersection with ascii
+    a = set | ascii;
+    auto b = currency - a; //subtract all ASCII, cyrilic and armenian
 
-        //some properties of codepoint sets
-        assert(b.length == 46); //only 46 left per unicode 6.1
-        assert(!b['$']);    //testing is not really fast but works
+    //some properties of codepoint sets
+    assert(b.length == 46); //only 46 left per unicode 6.1
+    assert(!b['$']);    //testing is not really fast but works
 
-        //building lookup tables 
-        auto oneTrie = b.buildTrie!1(); //1-level Trie lookup table
-        assert(oneTrie['£']);
-        //pick the best trie level, and bind it as a functor
-        auto cyrilicOrArmenian = set.buildLookup;
-        import std.algorithm;
-        auto balance = find!(cyrilicOrArmenian)("Hello ընկեր!");
-        assert(balance == "ընկեր!");
-
-        //Normalization
-        string s = "Plain ascii (and not only), is always normalized!";
-        assert(s is normalize(s));//same string
-        string nonS = "eﬃcient?"); //ffi ligature
-        auto nS = normalize(nonS);
-        assert(nS == "efficient?");
-        assert(nS != n);
-        //to NFKD, if available
-        asert(normalize!NFKD("2¹⁰") == "210");
+    //building lookup tables 
+    auto oneTrie = buildTrie!1(b);//1-level Trie lookup table
+    auto twoTrie = buildTrie!2(b);
+    auto threeTrie = buildTrie!3(b);
+    assert(oneTrie['£']);
+    assert(twoTrie['£']);
+    assert(threeTrie['£']);
+    
+    //pick the best trie level, and bind it as a functor
+    auto cyrilicOrArmenian = buildLookup(set);
+    auto balance = find!(cyrilicOrArmenian)("Hello ընկեր!");
+    assert(balance == "ընկեր!");
+/*// NOT READY YET:
+    //Normalization
+    string s = "Plain ascii (and not only), is always normalized!";
+    assert(s is normalize(s));//same string
+    string nonS = "eﬃcient?"); //ffi ligature
+    auto nS = normalize(nonS);
+    assert(nS == "efficient?");
+    assert(nS != n);
+    //to NFKD, if available
+    asert(normalize!NFKD("2¹⁰") == "210");
+*/
     }
     ---
 
@@ -2775,7 +2780,7 @@ public auto buildTrie(size_t level, Set)(in Set set)
     else static if(level == 2)
         return CodepointTrie!(10, 11)(set);
     else static if(level == 3)
-        return CodepointTrie!(8, 5, 8)(set);
+        return CodepointTrie!(7, 5, 9)(set);
     else static if(level == 4)
          return CodepointTrie!(6, 4, 4, 7)(set);
     else
