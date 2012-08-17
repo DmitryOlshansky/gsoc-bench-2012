@@ -1,8 +1,9 @@
 // Written in the D programming language.
 
 /++
-    Functions which operate on Unicode characters.
+    Implementation of fundamental data structures and algorithms for Unicode.
 
+    All functions in this module operate on Unicode characters and/or sets of characters. 
     For functions which operate on ASCII characters and ignore Unicode
     characters, see $(LINK2 std_ascii.html, std.ascii).
 
@@ -15,9 +16,9 @@
         import std.uni;
         //intialize codepoint sets using regex notation
         //$(D set) contains codepoints from both scripts.
-        auto set = CodepointSet("[\p{Cyrilic}||\p{Armenian}]");
-        auto ascii = CodepointSet("[\p{ASCII}]");
-        auto currency = CodepointSet("[\p{Currency_Symbol}]");
+        auto set = CodepointSet(`[\p{Cyrilic}||\p{Armenian}]`);
+        auto ascii = CodepointSet(`[\p{ASCII}]`);
+        auto currency = CodepointSet(`[\p{Currency_Symbol}]`);
 
         //easy set ops
         auto a = set & ascii;
@@ -29,10 +30,10 @@
         assert(b.length == 46); //only 46 left per unicode 6.1
         assert(!b['$']);    //testing is not really fast but works
 
-        //building lookup tables
-        auto oneTrie = a.buildTrie!1; //1-level Trie lookup table
+        //building lookup tables 
+        auto oneTrie = b.buildTrie!1(); //1-level Trie lookup table
         assert(oneTrie['£']);
-        //pick best trie level, and bind it as a functor
+        //pick the best trie level, and bind it as a functor
         auto cyrilicOrArmenian = set.buildLookup;
         import std.algorithm;
         auto balance = find!(cyrilicOrArmenian)("Hello ընկեր!");
@@ -63,8 +64,9 @@
 
     Copyright: Copyright 2000 -
     License:   $(WEB www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
-    Authors:   $(WEB digitalmars.com, Walter Bright), Jonathan M Davis, and Kenji Hara
+    Authors:   Dmitry Olshansky
     Source:    $(PHOBOSSRC std/_uni.d)
+    Standards: $(WEB www.unicode.org/versions/Unicode6.1.0/, Unicode v6.1)
   +/
 module uni;
 
@@ -1204,7 +1206,8 @@ public:
         return false;
     }
 
-	@property size_t size()const
+    ///Number of characters in this set
+	@property size_t length()const
 	{
 		size_t sum = 0 ;
 		for(size_t i=0; i<data.length; i+=2)
@@ -1540,6 +1543,9 @@ private:
     }
 };
 
+///Recommended default type for set of codepoints.
+alias RleBitSet!uint CodepointSet;
+
 /**
     $(D CodepointSet) is a packed data structure for sets of codepoints.
     Memory usage is 6 bytes per each contigous interval in a set.
@@ -1631,7 +1637,7 @@ private:
     }
 
 	///Number of characters in this set
-	@property size_t size()
+	@property size_t length()
 	{
 		size_t sum = 0;
 		foreach(iv; byInterval)
@@ -1849,7 +1855,7 @@ private:
     Uint24Array!SP data;
 };
 
-///Packed array of 24-bit integers.
+//Packed array of 24-bit integers.
 @trusted struct Uint24Array(SP=GcPolicy)
 {
     this(Range)(Range range)
@@ -2727,29 +2733,89 @@ template GetBitSlicing(size_t Top, Sizes...)
 }
 
 /**
-    General Trie template warapper to simplify mapping unicode dchar
+    Wrapper for generic Trie template to simplify mapping unicode codepoints
     to bool. 
+    
+    Example:
+
+    ---
+    {
+        import std.stdio;
+        auto set = unicodeSet("Number");
+        auto trie = CodepointTrie!(8, 5, 8)(set);
+        foreach(line; stdin.byLine)
+        {
+            int count=0;
+            foreach(dchar ch; line)
+                if(trie[ch])//is number
+                    count++;
+            writefln("Contains %d number characters.", count);
+        }
+    }
+    ---
 */
-template CodepointTrie(Sizes...)
+public template CodepointTrie(Sizes...)
 {
     alias Trie!(bool, dchar, GetBitSlicing!(21, Sizes)) CodepointTrie;
+}
+
+/++
+    Convinience function to construct optimal configurations for CodepointTrie 
+    of 1, 2, 3 or 4 levels. 
+
+    Level 1 indicates a plain bitset and uses the most space.
+    Level 2 & 3 add 1 or 2 levels of indices greately save on required
+    space but typically a bit slower to lookup.
++/
+public auto buildTrie(size_t level, Set)(in Set set)
+    if(isCodepointSet!Set)
+{
+    static if(level == 1)
+        return CodepointTrie!(21)(set);
+    else static if(level == 2)
+        return CodepointTrie!(10, 11)(set);
+    else static if(level == 3)
+        return CodepointTrie!(8, 5, 8)(set);
+    else static if(level == 4)
+         return CodepointTrie!(6, 4, 4, 7)(set);
+    else
+        static assert(false, "Sorry, buildTrie doesn't support level > 4, use CodepointTrie directly");
+}
+
+/++
+    Builds Trie with typically optimal space-time tradeoff and wraps into delegate of the form:
+    delegate bool (dchar ch);
+
+    Effectively this creates a 'tester' object suitable for algorithms like std.algorithm.find
+    that take unary prdicates.
++/
+public auto buildLookup(Set)(in Set set)
+    if(isCodepointSet!Set)
+{
+    auto t = buildTrie!2(set);// revise as small sets typically better packed with 2 level trie
+    return (dchar ch) => t[ch];
 }
 
 /**
     Wrapping T by SetAsSlot indicates that T should be considered
     as a set of values.
-    When SetAsSlot!T is used as $(D Value) type, Trie will internally
+    When SetAsSlot!T is used as $(D Value) type, $(D Trie) template will internally
     translate assignments/tests to insert & 'in' operator repspectively.
 */
 public struct SetAsSlot(T){}
 
-///Ditto for map of Key -> Value.
+ /**
+    Wrapping T by MapAsSlot indicates that T should be considered
+    as a map Key -> Value.
+    When MapAsSlot!T is used as $(D Value) type, $(D Trie) template will internally
+    translate assignments/tests to insert & 'in' operator repspectively.
+*/
 public struct MapAsSlot(T, Value, Key){}
 
 /**
-    Wrapper, provided to simplify definition
-    of custom Trie data structures. Use it on a lambda to indicate that
-    returned value always fits within $(D bits) of bits.
+    Wrapper, used in definition of custom data structures from $(D Trie) template.
+    Use it on a lambda function to indicate that returned value always
+     fits within $(D bits) of bits.
 */
 public template assumeSize(size_t bits, alias Fn)
 {
@@ -2757,7 +2823,7 @@ public template assumeSize(size_t bits, alias Fn)
     alias Fn entity;
 }
 
-///indicates MultiArray to apply bit packing to this field
+//indicates MultiArray to apply bit packing to this field
 struct BitPacked(size_t sz, T) if(isIntegral!T || is(T:dchar))
 {
     enum bitSize = sz;
@@ -2778,7 +2844,12 @@ template sliceBitsImpl(size_t from, size_t to)
     }
 }
 
-///todo
+/++
+    A helper for defining lambda function that yileds a slice 
+    of sertain bits from integer value.
+    The resulting lambda is wrapped in assumeSize and can be used directly 
+    with $(D Trie) template.
++/
 public template sliceBits(size_t from, size_t to)
 {
     alias assumeSize!(to-from, sliceBitsImpl!(from, to)) sliceBits;
@@ -3640,8 +3711,9 @@ template genericDecodeGrapheme(bool getValue)
                 grapheme ~= ch;
             range.popFront();
         };
-        dchar ch;
 
+        dchar ch;
+        assert(!range.empty, "Attempting to decode grapheme from an empty " ~ Input.stringof);
         while(!range.empty)
         {
             ch = range.front;
@@ -3753,19 +3825,24 @@ unittest
 @trusted:
 public: //Public API continues
 
-///
-size_t graphemeStride(C)(in C[] input, size_t idx)
+/++
+    Returns the length of grapheme cluster starting at $(D index).
+    Both resulting length and $(D index) are measured in codeunits.
++/
+size_t graphemeStride(C)(in C[] input, size_t index)
     if(is(C : dchar))
 {
-    auto src = input[idx..$];
+    auto src = input[index..$];
     auto n = src.length;
     genericDecodeGrapheme!(false)(src);
     return n - src.length;
 }
 
-
-///
-
+/++
+    Read and return one full grapheme cluster from input range of dchar $(D inp). 
+    Note: this function modifies $(D inp) and thus $(D inp) 
+    must be an L-value.
++/
 Grapheme decodeGrapheme(Input)(ref Input inp)
     if(isInputRange!Input && is(Unqual!(ElementType!Input) == dchar))
 {
@@ -3779,12 +3856,14 @@ unittest
     gr = decodeGrapheme(s);
     assert(gr.length == 1 && gr[0] == ' ');
     gr = decodeGrapheme(s);
-    writeln(gr.length);
     assert(gr.length == 2 && equal(gr[0..2], " \u0308"));
 }
 
 /++
-
+    A structure designed to effectively pack codepoints of a grapheme cluster. 
+    $(D Grapheme) has value smemantics so 2 copies of $(D Grapheme) 
+    always refer to distinct objects. In most actual scenarios (D Grapheme) 
+    fits on stack and avoids memory allocation overhead for all but very long clusters.
 +/
 struct Grapheme
 {
@@ -3819,7 +3898,7 @@ public:
     /++
         Write codepoint at given index of this cluster.
 
-        Warning use of this facility may invalidate cluster, see validate.
+        Warning: use of this facility may invalidate grapheme cluster, see also $(D validate).
      +/
     void opIndexAssign(dchar ch, size_t index)
     {
@@ -3889,7 +3968,7 @@ public:
     /++
         True if this object contains valid extended grapheme cluster.
     +/
-    @property bool valid() const
+    bool validate() const
     {
         return true; //TODO: do validation through graphemeStride
     }
@@ -4382,7 +4461,6 @@ unittest
     Returns whether $(D c) is a Unicode mark
     (general Unicode category: Mn, Me, Mc).
 
-    Standards: Unicode 6.0.0.
   +/
 
 
@@ -4405,8 +4483,7 @@ unittest
 /++
     Returns whether $(D c) is a Unicode numerical character
     (general Unicode category: Nd, Nl, No).
-
-    Standards: Unicode 6.0.0.
+    
   +/
 
 bool isNumber(dchar c) //@safe pure nothrow
@@ -4428,7 +4505,6 @@ unittest
     Returns whether $(D c) is a Unicode punctuation character
     (general Unicode category: Pd, Ps, Pe, Pc, Po, Pi, Pf).
 
-    Standards: Unicode 6.0.0.
   +/
 
 bool isPunctuation(dchar c) //@safe pure nothrow
@@ -4454,7 +4530,7 @@ unittest
     Returns whether $(D c) is a Unicode symbol character
     (general Unicode category: Sm, Sc, Sk, So)
 
-    Standards: Unicode 6.0.0.
+    
   +/
 bool isSymbol(dchar c) //@safe pure nothrow
 {
@@ -4476,7 +4552,7 @@ unittest
     Returns whether $(D c) is a Unicode whitespace character
     (general Unicode category: Zs)
 
-    Standards: Unicode 6.0.0.
+    
   +/
 bool isSpace(dchar c) //@safe pure nothrow
 {
@@ -4495,7 +4571,7 @@ unittest
     Returns whether $(D c) is a Unicode graphical character
     (general Unicode category: L, M, N, P, S, Zs).
 
-    Standards: Unicode 6.0.0.
+    
   +/
 
 bool isGraphical(dchar c) //@safe pure nothrow
@@ -4519,7 +4595,7 @@ unittest
     Returns whether $(D c) is a Unicode control character
     (general Unicode category: Cc)
 
-    Standards: Unicode 6.0.0.
+    
   +/
 
 bool isControl(dchar c) //@safe pure nothrow
@@ -4539,7 +4615,7 @@ unittest
     Returns whether $(D c) is a Unicode formatting character
     (general Unicode category: Cf)
 
-    Standards: Unicode 6.0.0.
+    
   +/
 bool isFormat(dchar c) //@safe pure nothrow
 {
@@ -4559,7 +4635,7 @@ unittest
     Returns whether $(D c) is a Unicode Private Use character
     (general Unicode category: Co)
 
-    Standards: Unicode 6.0.0.
+    
   +/
 bool isPrivateUse(dchar c) //@safe pure nothrow
 {
@@ -4578,7 +4654,7 @@ unittest
     Returns whether $(D c) is a Unicode surrogate character
     (general Unicode category: Cs)
 
-    Standards: Unicode 6.0.0.
+    
   +/
 bool isSurrogate(dchar c) //@safe pure nothrow
 {
@@ -4588,7 +4664,7 @@ bool isSurrogate(dchar c) //@safe pure nothrow
 /++
     Returns whether $(D c) is a Unicode high surrogate (lead surrogate).
 
-    Standards: Unicode 2.0.
+    
   +/
 bool isSurrogateHi(dchar c) @safe pure nothrow
 {
@@ -4598,7 +4674,7 @@ bool isSurrogateHi(dchar c) @safe pure nothrow
 /++
     Returns whether $(D c) is a Unicode low surrogate (trail surrogate).
 
-    Standards: Unicode 2.0.
+    
   +/
 bool isSurrogateLo(dchar c) @safe pure nothrow
 {
@@ -4614,7 +4690,7 @@ unittest
     Returns whether $(D c) is a Unicode non-character
     (general Unicode category: Cn)
 
-    Standards: Unicode 6.0.0.
+    
   +/
 
 bool isNonCharacter(dchar c) //@safe pure nothrow
