@@ -307,7 +307,7 @@ void loadProperties(string inp)
 
 void loadNormalization(string inp)
 {
-    auto r = regex(`^(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*(NFC_QC)\s*;\s*([NM])|#\s*[a-zA-Z_0-9]+=([a-zA-Z_0-9]+)`);
+    auto r = regex(`^(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*(NFK?[CD]_QC)\s*;\s*([NM])|#\s*[a-zA-Z_0-9]+=([a-zA-Z_0-9]+)`);
     string aliasStr;
     scanUniData!((m){
         auto name = to!string(m.captures[4]) ~ to!string(m.captures[5]);
