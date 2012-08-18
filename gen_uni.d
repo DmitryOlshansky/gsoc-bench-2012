@@ -25,6 +25,7 @@ mixin(mixedCCEntry);
 SimpleCaseEntry[] simpleTable;
 FullCaseEntry[] fullTable;   
 
+CodepointSet[256] combiningClass;
 
 string[] blacklist = [];
 
@@ -122,21 +123,27 @@ import uni;\n");
         , "DerivedNormalizationProps.txt");
     downloadIfNotExists(prefix ~ "HangulSyllableType.txt",
         "HangulSyllableType.txt");
+    downloadIfNotExists(prefix ~ "CompositionExclusions.txt",
+        "CompositionExclusions.txt");
+    downloadIfNotExists(prefix ~ "extracted/DerivedCombiningClass.txt",
+        "DerivedCombiningClass.txt");
+
     loadBlocks("Blocks.txt");
     loadProperties("PropList.txt");
     loadProperties("DerivedCoreProperties.txt");
     loadProperties("DerivedGeneralCategory.txt");
-    
     loadProperties("Scripts.txt");
     loadProperties("HangulSyllableType.txt");
+
     loadCaseFolding("CaseFolding.txt");
     loadNormalization("DerivedNormalizationProps.txt");
-
+    loadCombining("DerivedCombiningClass.txt");
     optimizeSets();
 
     writeProperties();
     writeNormalization();
     writeTries();
+    writeCombining();
 }
 
 
@@ -335,6 +342,30 @@ void loadNormalization(string inp)
     })(inp, r);
 }
 
+void loadCombining(string inp)
+{
+    auto r = regex(`^(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*([0-9]+)`);
+    scanUniData!((m){
+        auto clazz = m.captures[4];
+        auto value = parse!uint(clazz);
+        enforce(value <= 255, text("Corrupt combining class: ", clazz));
+        if(!m.captures[1].empty)
+        {
+            auto sa = m.captures[1];
+            auto sb = m.captures[2];
+            uint a = parse!uint(sa, 16);
+            uint b = parse!uint(sb, 16);
+            combiningClass[value].add(a, b+1);
+        }
+        else if(!m.captures[3].empty)
+        {
+            auto sx = m.captures[3];
+            uint x = parse!uint(sx, 16);
+            combiningClass[value] |= x;
+        }
+    })(inp, r);
+}
+
 string charsetString(T)(in RleBitSet!T set, string sep=";\n")
 {
     auto app = appender!(char[])();
@@ -504,6 +535,28 @@ void writeNormalization()
     {
         writefln("immutable %s = %s", key, charsetString(value));
     }
+}
+
+void writeCombining()
+{
+    ubyte[dchar] combiningM;
+    foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
+    {
+        foreach(ch; clazz.byChar)
+            combiningM[ch] = cast(ubyte)i;
+    }
+    auto ct = uni.Trie!(ubyte, dchar, sliceBits!(14, 21), sliceBits!(9, 14), sliceBits!(0, 9))(combiningM);
+    stderr.writeln(":", ct.bytes);
+    foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
+    {
+        foreach(ch; clazz.byChar)
+            assert(ct[ch] == i);
+    }
+    write("immutable combiningClassTrie = 
+        Trie!(ubyte, dchar, sliceBits!(14, 21), sliceBits!(9, 14), sliceBits!(0, 9)).fromRawArray(");
+    ct.store(stdout.lockingTextWriter());
+    writeln(");");
+
 }
 
 //fussy compare for unicode property names as per UTS-18
