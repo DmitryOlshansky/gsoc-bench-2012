@@ -149,6 +149,7 @@ import uni;\n");
     writeNormalization();
     writeTries();
     writeCombining();
+    writeDecomposition();
 }
 
 
@@ -364,17 +365,19 @@ void loadDecompositions(string inp)
             std.string.munch(decomp, " ");
             if(decomp.front == '<')
             {
-                decomp= findSplitAfter(decomp, ">")[1];
+                decomp = findSplitAfter(decomp, ">")[1];
                 compat = true;
             }
-            for(;;)//Quick & Dirty parser ...
-                try{
-                    dest ~= cast(dchar)parse!uint(decomp);
-                }
-                catch(ConvException e){ break; }
+            auto vals = split(decomp, " ");
+            foreach(v; vals)
+            {
+                if(!v.empty)
+                    dest ~= cast(dchar)parse!uint(v, 16);
+            }
             if(!compat)
                 canonDecomp[src] = dest;
             compatDecomp[src] = dest;
+            stderr.writefln("%04x -~-> %( %04x %)", src, cast(uint[])dest);
         }
     }
 }
@@ -390,7 +393,7 @@ auto recursivelyDecompose(dstring[dchar] decompTable)
         {
             old = decomp;
             decomp = "";
-            for(dchar ch; old)
+            foreach(dchar ch; old)
                 if(ch in decompTable)
                     decomp ~= decompTable[ch];
                 else
@@ -543,9 +546,7 @@ void writeProperties()
 
 void writeTries()
 {
-    //handpicked sizes, re-check later on (say with Unicode 7)
-    //also hardcoded in a few places below
-    alias uni.Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)) MyTrie;
+    
         
     ushort[dchar] simpleIndices;
     foreach(i, v; array(map!(x => x.ch)(simpleTable)))
@@ -558,8 +559,10 @@ void writeTries()
             fullIndices[v.ch] = cast(ushort)i;
     }
 
-    auto st = MyTrie(simpleIndices, ushort.max);
-    auto ft = MyTrie(fullIndices, ushort.max);
+    //handpicked sizes, re-check later on (say with Unicode 7)
+    //also hardcoded in a few places below
+    auto st = CodepointTrie!(ushort, 12, 9)(simpleIndices, ushort.max);
+    auto ft = CodepointTrie!(ushort, 12, 9)(fullIndices, ushort.max);
 
     foreach(k, v; simpleIndices){
         assert(st[k] == simpleIndices[k]);
@@ -569,19 +572,19 @@ void writeTries()
         assert(ft[k] == fullIndices[k]);
     }
     
-    auto lowerCase = CodepointTrie!(10, 11)(lowerCaseSet);
-    write("immutable lowerCaseTrie = CodepointTrie!(10, 11).fromRawArray(");
+    auto lowerCase = CodepointSetTrie!(10, 11)(lowerCaseSet);
+    write("immutable lowerCaseTrie = CodepointSetTrie!(10, 11).fromRawArray(");
     lowerCase.store(stdout.lockingTextWriter());
     writeln(");");
-    auto upperCase = CodepointTrie!(10, 11)(upperCaseSet);
-    write("immutable upperCaseTrie = CodepointTrie!(10, 11).fromRawArray(");
+    auto upperCase = CodepointSetTrie!(10, 11)(upperCaseSet);
+    write("immutable upperCaseTrie = CodepointSetTrie!(10, 11).fromRawArray(");
     upperCase.store(stdout.lockingTextWriter());
     writeln(");");
 
-    write("immutable simpleCaseTrie = Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)).fromRawArray(");
+    write("immutable simpleCaseTrie = CodepointTrie!(ushort, 12, 9).fromRawArray(");
     st.store(stdout.lockingTextWriter);
     writeln(");");
-    write("immutable fullCaseTrie = Trie!(ushort, dchar, sliceBits!(9, 21), sliceBits!(0, 9)).fromRawArray(");
+    write("immutable fullCaseTrie = CodepointTrie!(ushort, 12, 9).fromRawArray(");
     ft.store(stdout.lockingTextWriter);
     writeln(");");
 
@@ -598,12 +601,51 @@ void writeNormalization()
 
 void writeDecomposition()
 {
-    auto fullCannon = recursivelyDecompose(canonDecomp);
+    auto fullCanon = recursivelyDecompose(canonDecomp);
     auto fullCompat = recursivelyDecompose(compatDecomp);
-    write("immutable combiningClassTrie = 
-        Trie!(ubyte, dchar, sliceBits!(14, 21), sliceBits!(9, 14), sliceBits!(0, 9)).fromRawArray(");
-    ct.store(stdout.lockingTextWriter());
+    auto decompCanonTable = assumeSorted(uniq(array(""d ~ fullCanon.values).sort()).array());
+    auto decompCompatTable = assumeSorted(uniq(array(""d ~ fullCompat.values).sort()).array());
+    
+    ushort[dchar] mappingCanon;
+    ushort[dchar] mappingCompat;
+    //0 serves as doesn't decompose falue
+    foreach(k, v; fullCanon)
+    {
+        size_t idx = decompCanonTable.lowerBound(v).length;
+        assert(decompCanonTable[idx] == v);
+        assert(idx != 0);
+        mappingCanon[k] = cast(ushort)idx;
+    }
+    foreach(k, v; fullCompat)
+    {
+        size_t idx = decompCompatTable.lowerBound(v).length;
+        assert(decompCompatTable[idx] == v);
+        assert(idx != 0);
+        mappingCompat[k] = cast(ushort)idx;
+    }
+    assert(decompCanonTable.length < 2^^16);
+    assert(decompCompatTable.length < 2^^16);
+
+
+    auto compatTrie = CodepointTrie!(ushort, 12, 9)(mappingCompat, 0);
+    auto canonTrie =  CodepointTrie!(ushort, 12, 9)(mappingCanon, 0);
+    
+    foreach(k, v; fullCompat)
+        assert(decompCompatTable[compatTrie[k]] == v);
+    foreach(k, v; fullCanon)
+    {
+        stderr.writefln("Index %d", canonTrie[k]);
+        stderr.writefln("%04X ~~~~> %( %04X %)", k, decompCanonTable[canonTrie[k]]);
+        assert(decompCanonTable[canonTrie[k]] == v);
+    }
+    write("immutable compatMapping = CodepointTrie!(ushort, 12, 9).fromRawArray(");
+    compatTrie.store(stdout.lockingTextWriter());
     writeln(");");
+    write("immutable canonMapping = CodepointTrie!(ushort, 12, 9).fromRawArray(");
+    canonTrie.store(stdout.lockingTextWriter());
+    writeln(");");
+    writeln("immutable decompCanonTable = ", decompCanonTable, ";");
+    writeln("immutable decompCompatTable = ", decompCompatTable, ";");
 }
 
 void writeCombining()
@@ -614,14 +656,13 @@ void writeCombining()
         foreach(ch; clazz.byChar)
             combiningM[ch] = cast(ubyte)i;
     }
-    auto ct = uni.Trie!(ubyte, dchar, sliceBits!(14, 21), sliceBits!(9, 14), sliceBits!(0, 9))(combiningM);
+    auto ct = CodepointTrie!(ubyte, 7, 5, 9)(combiningM);
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
     {
         foreach(ch; clazz.byChar)
             assert(ct[ch] == i);
     }
-    write("immutable combiningClassTrie = 
-        Trie!(ubyte, dchar, sliceBits!(14, 21), sliceBits!(9, 14), sliceBits!(0, 9)).fromRawArray(");
+    write("immutable combiningClassTrie = CodepointTrie!(ubyte, 7, 5, 9).fromRawArray(");
     ct.store(stdout.lockingTextWriter());
     writeln(");");
 
