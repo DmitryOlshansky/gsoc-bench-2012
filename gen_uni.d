@@ -27,6 +27,9 @@ FullCaseEntry[] fullTable;
 
 CodepointSet[256] combiningClass;
 
+dstring[dchar] canonDecomp;
+dstring[dchar] compatDecomp;
+
 string[] blacklist = [];
 
 enum mixedCCEntry = `
@@ -127,7 +130,8 @@ import uni;\n");
         "CompositionExclusions.txt");
     downloadIfNotExists(prefix ~ "extracted/DerivedCombiningClass.txt",
         "DerivedCombiningClass.txt");
-
+    downloadIfNotExists(prefix ~ "UnicodeData.txt",
+        "UnicodeData.txt");
     loadBlocks("Blocks.txt");
     loadProperties("PropList.txt");
     loadProperties("DerivedCoreProperties.txt");
@@ -135,6 +139,7 @@ import uni;\n");
     loadProperties("Scripts.txt");
     loadProperties("HangulSyllableType.txt");
 
+    loadDecompositions("UnicodeData.txt");
     loadCaseFolding("CaseFolding.txt");
     loadNormalization("DerivedNormalizationProps.txt");
     loadCombining("DerivedCombiningClass.txt");
@@ -149,7 +154,6 @@ import uni;\n");
 
 void scanUniData(alias Fn)(string name, Regex!char r)
 {
-    stderr.writeln(name);
     foreach(line; File(name).byLine)
     {
         auto m = match(line, r);
@@ -286,7 +290,6 @@ void loadProperties(string inp)
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
             if(name !in props){
-                stderr.writeln(name);
                 props[name] = CodepointSet.init;
             }
             props[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
@@ -340,6 +343,62 @@ void loadNormalization(string inp)
         }
         //stderr.writeln(m.hit);
     })(inp, r);
+}
+
+void loadDecompositions(string inp)
+{
+    auto f = File(inp);
+    foreach(line; f.byLine)
+    {
+        auto fields = split(line, ";");
+        //codepoint, name, General_Category, Canonical_Combining_Class, Bidi_Class,
+        //Decomp_Type&Mapping, 
+        auto codepoint = fields[0];
+        auto decomp = fields[5];
+        if(!decomp.empty)
+        {
+            stderr.writeln(codepoint, " ---> ", decomp);
+            dchar src = parse!uint(codepoint, 16);
+            dstring dest;
+            bool compat = false;
+            std.string.munch(decomp, " ");
+            if(decomp.front == '<')
+            {
+                decomp= findSplitAfter(decomp, ">")[1];
+                compat = true;
+            }
+            for(;;)//Quick & Dirty parser ...
+                try{
+                    dest ~= cast(dchar)parse!uint(decomp);
+                }
+                catch(ConvException e){ break; }
+            if(!compat)
+                canonDecomp[src] = dest;
+            compatDecomp[src] = dest;
+        }
+    }
+}
+
+auto recursivelyDecompose(dstring[dchar] decompTable)
+{
+    //apply recursively:
+    dstring[dchar] full;
+    foreach(k, v; decompTable)
+    {
+        dstring old, decomp=v;
+        do
+        {
+            old = decomp;
+            decomp = "";
+            for(dchar ch; old)
+                if(ch in decompTable)
+                    decomp ~= decompTable[ch];
+                else
+                    decomp ~= ch;
+        }while(old != decomp);
+        full[k] = decomp;
+    }
+    return full;
 }
 
 void loadCombining(string inp)
@@ -537,6 +596,16 @@ void writeNormalization()
     }
 }
 
+void writeDecomposition()
+{
+    auto fullCannon = recursivelyDecompose(canonDecomp);
+    auto fullCompat = recursivelyDecompose(compatDecomp);
+    write("immutable combiningClassTrie = 
+        Trie!(ubyte, dchar, sliceBits!(14, 21), sliceBits!(9, 14), sliceBits!(0, 9)).fromRawArray(");
+    ct.store(stdout.lockingTextWriter());
+    writeln(");");
+}
+
 void writeCombining()
 {
     ubyte[dchar] combiningM;
@@ -546,7 +615,6 @@ void writeCombining()
             combiningM[ch] = cast(ubyte)i;
     }
     auto ct = uni.Trie!(ubyte, dchar, sliceBits!(14, 21), sliceBits!(9, 14), sliceBits!(0, 9))(combiningM);
-    stderr.writeln(":", ct.bytes);
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
     {
         foreach(ch; clazz.byChar)
