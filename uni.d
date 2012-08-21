@@ -11,9 +11,10 @@
 
     Synopsis:
     ---
-    unittest
+    void main()
     {
-        import std.uni;
+        import uni, std.algorithm, std.stdio;
+        //intialize codepoint sets using regex notation
         //$(D set) contains codepoints from both scripts.
         auto set = unicodeSet("Cyrillic") | unicodeSet("Armenian");
         auto ascii = unicodeSet("ASCII");
@@ -41,17 +42,21 @@
         auto cyrilicOrArmenian = buildLookup(set);
         auto balance = find!(cyrilicOrArmenian)("Hello ընկեր!");
         assert(balance == "ընկեր!");
-    /*// NOT READY YET:
+
         //Normalization
         string s = "Plain ascii (and not only), is always normalized!";
-        assert(s is normalize(s));//same string
-        string nonS = "eﬃcient?"); //ffi ligature
+        assert(s is normalize(s));//is the same string
+    /* NFC not ready yet, sorry ..
+        string nonS = "A\u0308ffin"; //A ligature
         auto nS = normalize(nonS);
-        assert(nS == "efficient?");
-        assert(nS != n);
-        //to NFKD, if available
-        asert(normalize!NFKD("2¹⁰") == "210");
+        assert(nS == "Äffin");
+        assert(nS != nonS);
     */
+        string composed == "Äffin";
+        assert(normalize!NFD(composed) == "A\u0308ffin");
+        //to NFKD, compatibility decomposition useful for fuzzy matching/searching
+        assert(normalize!NFKD("2¹⁰") == "210");
+
     }
     ---
 
@@ -4269,9 +4274,9 @@ private enum QC{ No = -1, Maybe = 0, Yes = 1};
 
 
 /++
-    Return string normalized to a particular form. Form C is used by default. 
+    Returns input string normalized to the chosen form. Form C is used by default. 
     In case where the string in question is already normalized, 
-    it is returned unmodified and no allocation happens.
+    it is returned unmodified and no memory allocation happens.
 +/
 inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
 { 
@@ -4280,8 +4285,8 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
         return input;
     static if(norm == NFD || norm == NFKD)
     {
-        dchar[] unnorm;
-        unnorm.reserve(31);
+        dchar[] decomposed;
+        decomposed.reserve(31);
         ubyte[] ccc;
         ccc.reserve(31);
         auto app = appender!(C[])();
@@ -4289,45 +4294,47 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
         {
             app.put(input[0..anchors[0]]);
             foreach(dchar ch; input[anchors[0]..anchors[1]])
-                unnorm ~= ch;
-            ccc.length = unnorm.length;
-            foreach(idx, dchar ch; unnorm)
-                ccc[idx] = combiningClassTrie[ch];
-
-            sort!("a[0] < b[0]", SwapStrategy.stable)(zip(ccc, unnorm));
-            foreach(dchar ch; unnorm)
-            {
                 static if(norm == NFD)
                 {
-                    app.put(decompose(ch)[]);
-                    //writefln("%( %x %)",decompose(ch)[] );
+                    foreach(dchar c; decompose!Canonical(ch)[])
+                        decomposed ~= c;
+                    //writefln("decomp: %( %x %)", decompose(ch)[] );
                 }
                 else
-                    app.put(decompose!Compatibility(ch)[]);
-            }
+                {
+                    foreach(dchar c; decompose!Compatibility(ch)[])
+                        decomposed ~= c;
+                    //writefln("decomp: %( %x %)", decompose!Compatibility(ch)[] );
+                }
+            ccc.length = decomposed.length;
+            foreach(idx, dchar ch; decomposed)
+                ccc[idx] = combiningClassTrie[ch];
+
+            sort!("a[0] < b[0]", SwapStrategy.stable)(zip(ccc, decomposed));   
+            app.put(decomposed);
             //reset variables
-            unnorm.length = 0;
-            unnorm.assumeSafeAppend();
+            decomposed.length = 0;
+            decomposed.assumeSafeAppend();
             ccc.length = 0;
             ccc.assumeSafeAppend();
             input = input[anchors[1]..$];
             //and move on
-            //writeln(input);
-            anchors = splitNormalized!norm(input);            
+            anchors = splitNormalized!norm(input);       
         }while(anchors[0] != input.length);
         app.put(input[0..anchors[0]]);
-        writeln(app.data);
         return cast(inout(C)[])app.data;
     }
     else
     {
-        assert(false, "Not implemented");
+        assert(false, "Not implemented yet");
     }
 }
 
 unittest
 {
     assert(normalize!NFD("abc\uF904def") == "abc\u6ED1def", text(normalize!NFD("abc\uF904def")));
+    assert(normalize!NFKD("2¹⁰") == "210", normalize!NFKD("2¹⁰"));
+    assert(normalize!NFD("Äffin") == "A\u0308ffin");
 }
 
 //returns tuple of 2 indexes that delimit:
@@ -4337,6 +4344,7 @@ private auto splitNormalized(string norm, C)(inout(C)[] input)
 {
     auto result = input;
     ubyte lastCC = 0;
+
     foreach(idx, dchar ch; input)
     {
         static if(norm == NFC)
@@ -4348,27 +4356,48 @@ private auto splitNormalized(string norm, C)(inout(C)[] input)
         ubyte CC = combiningClassTrie[ch];
         if(lastCC > CC && CC != 0)
         {
-            return seekStable(idx, input);
+            return seekStable!norm(idx, input);
         }
         int check =  isAllowedIn!norm(ch);
         if(check < QC.Yes)
         {
-            writeln("Seek stable idx:", idx);
-           return seekStable(idx, input);
+           //writeln("Seek stable idx:", idx);
+           return seekStable!norm(idx, input);
         }
         lastCC = CC;
     }
     return tuple(input.length, input.length);
 }
 
-private auto seekStable(C)(size_t idx, in C[] input)
+private auto seekStable(string norm, C)(size_t idx, in C[] input)
 {
-    size_t ofs = std.utf.stride(input, idx);
-    auto r = find!(x=>combiningClassTrie[x] == 0)(retro(input[0..idx]));
-    auto r2 = find!(x=>combiningClassTrie[x] == 0)(input[idx+ofs..$]);
-    size_t unnorm_start = idx - r.source.length;
-    size_t unnorm_end = input.length - r2.length;
-    return tuple(unnorm_start+std.utf.stride(input, unnorm_start), unnorm_end);
+    auto br = input[0..idx];
+    size_t region_start = 0;//default
+    for(;;)
+    {
+        if(br.empty)//start is 0
+            break;
+        dchar ch = br.back;
+        ubyte ccc = combiningClassTrie[ch];
+        if(ccc == 0)
+        {
+            region_start = br.length - std.utf.codeLength!C(ch);
+            break;
+        }
+        br.popFront();
+    }
+    ///@@@BUG@@@ can't use find: " find is a nested function and can't be used..."
+    size_t region_end=input.length;//end is $ by default
+    foreach(i, dchar ch; input[idx..$])
+    {
+        if(isAllowedIn!norm(ch) == QC.Yes)
+        {
+            region_end = i+idx;
+            break;
+        }
+    }
+    //writeln("Region to normalize: ", input[region_start..region_end]);
+    return tuple(region_start, region_end);
 }
 
 private QC isAllowedIn(string norm)(dchar ch)
