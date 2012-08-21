@@ -4038,7 +4038,7 @@ private:
 
     void convertToBig()
     {
-        int k = smallLength;
+        size_t k = smallLength;
         ubyte* p = cast(ubyte*)enforce(malloc(3*(grow+1)));
         for(int i=0; i<k; i++)
             write24(p, read24(small_.ptr, i), i);
