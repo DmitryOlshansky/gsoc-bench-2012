@@ -445,7 +445,19 @@ struct PackedArrayView(T, size_t bits)
         original = arr;
     }
 
-    static if(bits % 8)
+    static if(T.sizeof*8 == bits)
+    {//by properly granular type itself        
+        T opIndex(size_t idx)inout
+        {
+            return (cast(inout(T)*)original.ptr)[idx];
+        }
+
+        void opIndexAssign(T val, size_t idx)
+        {
+            (cast(T*)original.ptr)[idx] = val;
+        }
+    }
+    else
     {
         T opIndex(size_t idx)inout
         in
@@ -472,13 +484,7 @@ struct PackedArrayView(T, size_t bits)
             original[idx/factor] |= cast(size_t)val << tgt_shift;
         }
     }
-    else
-    {//by byte granular type itself
-        ref inout(T) opIndex(size_t idx)inout
-        {
-            return (cast(inout(T)*)original.ptr)[idx];
-        }
-    }
+
 
     void opSliceAssign(T val, size_t start, size_t end)
     {
@@ -2601,13 +2607,13 @@ private:
         {
             //need to take pointer again, memory block  may move on resize
             auto ptr = table.slice!(level);
-            static if(is(T : bool))
+/*            static if(is(T : bool))
             {
                 if(val)
                     emptyFull[level].empty = false;
                 else
                     emptyFull[level].full = false;
-            }
+            }*/
             if(numVals == 1)
             {
                 static if(level == Prefix.length-1 && type != TrieType.Value)
@@ -2655,7 +2661,7 @@ private:
                 NextIdx next_lvl_index;
                 if(indices[level] % pageSize == 0)
                 {
-                    static if(is(T : bool))
+                    /*static if(is(T : bool))
                     {
                         if(emptyFull[level].empty)
                         {
@@ -2671,7 +2677,7 @@ private:
                                 goto L_know_index;
                             }
                         }                        
-                    }
+                    }*/
                     auto last = indices[level]-pageSize;
                     auto slice = ptr[indices[level] - pageSize..indices[level]];
                     size_t j;
@@ -2799,7 +2805,7 @@ public auto buildTrie(size_t level, Set)(in Set set)
     else static if(level == 2)
         return CodepointSetTrie!(10, 11)(set);
     else static if(level == 3)
-        return CodepointSetTrie!(7, 5, 9)(set);
+        return CodepointSetTrie!(8, 5, 8)(set);
     else static if(level == 4)
          return CodepointSetTrie!(6, 4, 4, 7)(set);
     else
