@@ -447,15 +447,11 @@ struct PackedArrayView(T, size_t bits)
 
     static if(T.sizeof*8 == bits)
     {//by properly granular type itself        
-        T opIndex(size_t idx)inout
+        ref opIndex(size_t idx)inout
         {
             return (cast(inout(T)*)original.ptr)[idx];
         }
 
-        void opIndexAssign(T val, size_t idx)
-        {
-            (cast(T*)original.ptr)[idx] = val;
-        }
     }
     else
     {
@@ -2350,9 +2346,13 @@ unittest//iteration
         size_t j = 0;
         for(size_t i=0;i<r.length; i++)
         {
+
             size_t keyIdx = getIndex(r[i][1]);
+            //writeln(keyIdx);
             addValue!last(idxs, defvalue, emptyFull[], keyIdx - j);
-            addValue!last(idxs, r[i][0], emptyFull[]);                
+            //writeln("~~~~~~~~~~~~~~");
+            addValue!last(idxs, r[i][0], emptyFull[]);
+            //writeln("~~~~~~~~~~~~~~");
             j = keyIdx+1;
         }
         addValue!last(idxs, defvalue, emptyFull[], maxIdx-j);
@@ -2580,9 +2580,11 @@ private:
         size_t idx;
         foreach(i, v; p[0..$-1])
         {
+            //writeln(i, ": ", cast(size_t) p[i].entity(key));
             idx |= p[i].entity(key);
             idx <<= p[i+1].bitSize;
         }
+        //writeln(p.length-1, ": ", cast(size_t) p[$-1].entity(key));
         idx |= p[$-1].entity(key);
         return idx;
     }
@@ -2607,13 +2609,13 @@ private:
         {
             //need to take pointer again, memory block  may move on resize
             auto ptr = table.slice!(level);
-/*            static if(is(T : bool))
+            static if(is(T : bool))
             {
                 if(val)
                     emptyFull[level].empty = false;
                 else
                     emptyFull[level].full = false;
-            }*/
+            }
             if(numVals == 1)
             {
                 static if(level == Prefix.length-1 && type != TrieType.Value)
@@ -2661,7 +2663,7 @@ private:
                 NextIdx next_lvl_index;
                 if(indices[level] % pageSize == 0)
                 {
-                    /*static if(is(T : bool))
+                    static if(is(T : bool))
                     {
                         if(emptyFull[level].empty)
                         {
@@ -2677,7 +2679,7 @@ private:
                                 goto L_know_index;
                             }
                         }                        
-                    }*/
+                    }
                     auto last = indices[level]-pageSize;
                     auto slice = ptr[indices[level] - pageSize..indices[level]];
                     size_t j;
