@@ -147,11 +147,12 @@ import uni;\n");
 
     writeProperties();
     writeNormalization();
+    writeBeginPlatformDependent();
     writeTries();
     writeCombining();
     writeDecomposition();
+    writeEndPlatformDependent();
 }
-
 
 void scanUniData(alias Fn)(string name, Regex!char r)
 {
@@ -358,7 +359,7 @@ void loadDecompositions(string inp)
         auto decomp = fields[5];
         if(!decomp.empty)
         {
-            stderr.writeln(codepoint, " ---> ", decomp);
+            //stderr.writeln(codepoint, " ---> ", decomp);
             dchar src = parse!uint(codepoint, 16);
             dstring dest;
             bool compat = false;
@@ -377,7 +378,7 @@ void loadDecompositions(string inp)
             if(!compat)
                 canonDecomp[src] = dest;
             compatDecomp[src] = dest;
-            stderr.writefln("%04x -~-> %( %04x %)", src, cast(uint[])dest);
+            //stderr.writefln("%04x -~-> %( %04x %)", src, cast(uint[])dest);
         }
     }
 }
@@ -426,6 +427,8 @@ void loadCombining(string inp)
             combiningClass[value] |= x;
         }
     })(inp, r);
+    //foreach(clazz; 0..256)
+    //    stderr.writeln(clazz,": ", combiningClass[clazz]);
 }
 
 string charsetString(T)(in RleBitSet!T set, string sep=";\n")
@@ -526,6 +529,30 @@ void printPropertyTable(T)(RleBitSet!T[string] hash, string tabname)
     }
 
     writeln("];");
+}
+
+void writeBeginPlatformDependent()
+{
+    version(LittleEndian)
+        string endian = "LittleEndian";
+    else
+        string endian = "BigEndian";
+    writefln("version (%s)
+{
+    static if(size_t.sizeof == %d)
+    {
+", endian, size_t.sizeof);
+}
+
+void writeEndPlatformDependent()
+{
+    version(LittleEndian)
+        string endian = "LittleEndian";
+    else
+        string endian = "BigEndian";
+    writeln("
+    }
+}");
 }
 
 void writeProperties()
@@ -634,8 +661,8 @@ void writeDecomposition()
         assert(decompCompatTable[compatTrie[k]] == v);
     foreach(k, v; fullCanon)
     {
-        stderr.writefln("Index %d", canonTrie[k]);
-        stderr.writefln("%04X ~~~~> %( %04X %)", k, decompCanonTable[canonTrie[k]]);
+        //stderr.writefln("Index %d", canonTrie[k]);
+        //stderr.writefln("%04X ~~~~> %( %04X %)", k, decompCanonTable[canonTrie[k]]);
         assert(decompCanonTable[canonTrie[k]] == v);
     }
     write("immutable compatMapping = CodepointTrie!(ushort, 12, 9).fromRawArray(");
@@ -654,13 +681,13 @@ void writeCombining()
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
     {
         foreach(ch; clazz.byChar)
-            combiningM[ch] = cast(ubyte)i;
+            combiningM[ch] = cast(ubyte)(i+1);
     }
     auto ct = CodepointTrie!(ubyte, 7, 5, 9)(combiningM);
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
     {
         foreach(ch; clazz.byChar)
-            assert(ct[ch] == i);
+            assert(ct[ch] == i+1);
     }
     write("immutable combiningClassTrie = CodepointTrie!(ubyte, 7, 5, 9).fromRawArray(");
     ct.store(stdout.lockingTextWriter());

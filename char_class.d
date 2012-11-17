@@ -34,6 +34,8 @@ void clasifyIndex(alias mtd)(in char[] str)
 	lastCount = count;
 }
 
+bool noop(dchar ch){ return true; }
+
 void myTest(Result[] data)
 {
     foreach(x; data)
@@ -41,11 +43,12 @@ void myTest(Result[] data)
         version(std_uni){
 	        foreach(i, m; stdTests)
 	        	bench!(clasifyCall!m)("std-"~to!string(i), x.name, x.data);
-	}
+	    }
         else
         {
-	    foreach(i, m; stdTests)
-	       	bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
+            bench!(clasifyCall!noop)("noop", x.name, x.data);
+    	    foreach(i, m; stdTests)
+    	       	bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
             /*bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
             bench!(clasifyIndex!invMark)("inv-uint-mark", x.name, x.data);
             bench!(clasifyIndex!invNumber)("inv-uint-num", x.name, x.data);
@@ -53,11 +56,9 @@ void myTest(Result[] data)
             bench!(clasifyIndex!triAlpha)("tri-uint-alpha", x.name, x.data);
             bench!(clasifyIndex!triMark)("tri-uint-mark", x.name, x.data);
             bench!(clasifyIndex!triNumber)("tri-uint-num", x.name, x.data);
-            bench!(clasifyIndex!triSymbol)("tri-uint-sym", x.name, x.data); */                    
-            //BUG with foreach over TypeTuple, uses only the first one i.e. rleAlpha or invAlpha
+            bench!(clasifyIndex!triSymbol)("tri-uint-sym", x.name, x.data); */
             //foreach(i, m; invTests)
             //	bench!(clasifyIndex!m)("invlist-"~to!string(i), x.name, x.data);
-
         }
     }	
 }
