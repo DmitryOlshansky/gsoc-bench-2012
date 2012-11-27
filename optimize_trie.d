@@ -12,127 +12,125 @@ shared static this()
     rleSymbol = unicodeSet("Symbol");
     rleNumber = unicodeSet("Number");
     rlePunct = unicodeSet("Punctuation");
-   // rleSpace = unicodeZs;  
-    rleGraphical =  rleAlpha | rleMark  | rleNumber | rlePunct | rleSpace | rleSymbol;
-    //rleControl = unicodeCc;
-    //rleFormat = unicodeCf;
-    //rleNonCharacter = unicodeCn;
-    //rleWhite = unicodeWhite_Space;
+    rleGraphical =  unicodeSet("Graphical");
+    //rleAlpha | rleMark  | rleNumber | rlePunct | rleSpace | rleSymbol;
 }
 
 void outputCode(size_t N)(uint[N] value, string name)
 {
-	auto args = join(map!(x => to!string(x))(value[]), ",");
-	formattedWrite(stderr.lockingTextWriter,
-		`auto t%s = CodepointTrie!(%s)(unicodeSet("%s"));
-		 formattedWrite(stderr.lockingTextWriter, 
-			"auto best%s%s = CodepointTrie!(%s).fromRawArray(");`
-		,  name, args, name, name, N, args);
+	auto args = join(map!(x => to!string(x))(value[1..$]), ",");
+	formattedWrite(stdout.lockingTextWriter,
+		`auto t%s%s = CodepointSetTrie!(%s)(unicodeSet("%s"));
+		 formattedWrite(stdout.lockingTextWriter, 
+			"//%d bytes
+auto best%s%s = CodepointSetTrie!(%s).fromRawArray(");`
+		,  name, N-1, args, name, value[0], name, N-1, args);
 	
-	formattedWrite(stderr.lockingTextWriter, `
-		 t%s.store(stderr.lockingTextWriter); 
-		 formattedWrite(stderr.lockingTextWriter, ");\n");
-		 `, name);
+	formattedWrite(stdout.lockingTextWriter, `
+		 t%s%s.store(stdout.lockingTextWriter); 
+		 formattedWrite(stdout.lockingTextWriter, ");\n");
+		 `, name, N-1);
+}
+
+void process(alias fn, T)(in T set, string name)
+{
+    auto results = fn(set, name);
+    sort!"a[0] < b[0]"(results);
+    outputCode(results[0], name);
+}
+
+void preambula()
+{
+    writeln("import std.stdio, std.conv, std.format, uni;\n void main(){");
+}
+
+void coda()
+{
+    writeln("\n}");
 }
 
 void test_all(alias fn)()
 {   
-	stderr.writeln("import std.stdio, std.conv, std.format, uni;\n void main(){");
-	outputCode(fn(unicodeWhite_Space, "White"), "White_Space");
-    outputCode(fn(rleAlpha, "Alpha"), "Alphabetic");
-    outputCode(fn(rleMark, "Mark"), "Mark");
-    outputCode(fn(rleNumber, "Number"), "Number");
-    outputCode(fn(rlePunct, "Punctuation"), "Punctuation");
-    outputCode(fn(rleSymbol, "Symbol"), "Symbol");
-    outputCode(fn(unicodeZs, "Space"), "Space_Separator");
-    outputCode(fn(rleGraphical, "Graphical"), "Graphical");
-    outputCode(fn(unicodeCc, "Control"), "Control");
-    outputCode(fn(unicodeCf, "Format"), "Format");
-    outputCode(fn(unicodeCn, "Noncharacter"), "Cn");
-    stderr.writeln("\n}");
+	process!fn(unicodeWhite_Space, "White_Space");
+    process!fn(rleAlpha, "Alphabetic");
+    process!fn(rleMark, "Mark");
+    process!fn(rleNumber, "Number");
+    process!fn(rlePunct, "Punctuation");
+    process!fn(rleSymbol, "Symbol");
+    process!fn(unicodeZs, "Space_Separator");
+    process!fn(rleGraphical, "Graphical");
+    process!fn(unicodeCc,  "Control");
+    process!fn(unicodeCf, "Format");
+    process!fn(unicodeCn, "Cn");
+    
 }
 
 void main(string[] argv)
 {
+    preambula();
     version(level4)
         test_all!test_4_level();
     else version(level3)
         test_all!test_3_level();
     else version(level2)
         test_all!test_2_level();
-    else
-	{
-		//test_all!test_4_level();
-		//test_all!test_3_level();
-		test_all!test_2_level();
-	}
+    else{
+        test_all!test_2_level();
+        test_all!test_3_level();
+        test_all!test_4_level();
+    }
+    coda();
 }
 
-uint[2] test_2_level(Set)(in Set set, string name)
+uint[3][] test_2_level(Set)(in Set set, string name)
 {
-    writefln("%s\n\n", name);
-    size_t best = size_t.max;
-    uint[2] blvl;
-    foreach(lvl_1; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))
+    alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+    uint[3][] data;
+    foreach(lvl_1; List)
     {
         enum lvl_2 = 21-lvl_1;
-        alias CodepointTrie!(lvl_1, lvl_2) CurTrie;
+        alias CodepointSetTrie!(lvl_1, lvl_2) CurTrie;
         CurTrie t = CurTrie(set);
-        writefln("%d_%d, %d", lvl_1, lvl_2, t.bytes);
-        if(t.bytes < best)
-        {
-            best = t.bytes;
-            blvl[] = [lvl_1, lvl_2];
-        } 
+        data ~= [t.bytes, lvl_1, lvl_2];        
     }
-	return blvl;
+	return data;
 }
 
-uint[3] test_3_level(Set)(in Set set, string name)
+uint[4][] test_3_level(Set)(in Set set, string name)
 {
-    writefln("%s\n\n", name);
-    size_t best = size_t.max;
-    uint[3] blvl;
-    foreach(lvl_1; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))
-        foreach(lvl_2; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16))
+    alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+    uint[4][] data;
+
+    foreach(lvl_1; List)
+        foreach(lvl_2; List)
         {
             static if(lvl_1 + lvl_2  <= 16)
             {
                 enum lvl_3 = 21-lvl_2-lvl_1;
-                alias CodepointTrie!(lvl_1, lvl_2, lvl_3) CurTrie;
+                alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3) CurTrie;
                 CurTrie t = CurTrie(set);
-                writefln("%d_%d_%d, %d", lvl_1, lvl_2, lvl_3, t.bytes);
-                if(t.bytes < best)
-                {
-                    best = t.bytes;
-                    blvl[] = [lvl_1, lvl_2, lvl_3];
-                }
+                data ~= [t.bytes, lvl_1, lvl_2, lvl_3];                
             }
         }
-	return blvl;
+	return data;
 }
 
-uint[4] test_4_level(Set)(in Set set, string name)
+uint[5][] test_4_level(Set)(in Set set, string name)
 {
-    size_t best = size_t.max;
-    uint[4] blvl;
-    writefln("%s\n\n", name);
-    foreach(lvl_1; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12))
-        foreach(lvl_2; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12))
-            foreach(lvl_3; TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12))
+    alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12);
+    uint[5][] data;
+    
+    foreach(lvl_1; List)
+        foreach(lvl_2; List)
+            foreach(lvl_3; List)
         {
             static if(lvl_1 + lvl_2 + lvl_3  <= 16)
             {
                 enum lvl_4 = 21-lvl_3-lvl_2-lvl_1;
-                alias CodepointTrie!(lvl_1, lvl_2, lvl_3, lvl_4) CurTrie;
-                CurTrie t = CurTrie(set);                
-                writefln("%d_%d_%d_%d, %d", lvl_1, lvl_2, lvl_3, lvl_4, t.bytes);
-                if(t.bytes < best)
-                {
-                    best = t.bytes;
-                    blvl[] = [lvl_1, lvl_2, lvl_3, lvl_4];
-                }
+                alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3, lvl_4) CurTrie;
+                CurTrie t = CurTrie(set);
+                data ~= [t.bytes, lvl_1, lvl_2, lvl_3, lvl_4];
             }
         }
-	return blvl;
+	return data;
 }

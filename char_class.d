@@ -1,4 +1,4 @@
-import bench_suite, std.stdio, std.typetuple, std.conv;
+import bench_suite, std.stdio, std.typetuple, std.conv, std.utf;
 
 version(std_uni)
 	import std.uni;
@@ -15,8 +15,10 @@ uint lastCount;
 void clasifyCall(alias mtd)(in char[] str)
 {
 	uint count=0;
-	foreach(dchar ch; str)
-	{
+    size_t idx;
+	while(idx < str.length)
+    {
+        dchar ch = decode(str, idx);
 		if(mtd(ch))
 			count++;
 	}
@@ -26,8 +28,10 @@ void clasifyCall(alias mtd)(in char[] str)
 void clasifyIndex(alias mtd)(in char[] str)
 {
 	uint count=0;
-	foreach(dchar ch; str)
+    size_t idx;
+	while(idx < str.length)
 	{
+        dchar ch = decode(str, idx);
 		if(mtd[ch])
 			count++;
 	}

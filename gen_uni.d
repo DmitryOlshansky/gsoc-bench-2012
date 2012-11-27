@@ -7,7 +7,7 @@
 
 */
 import uni, std.stdio, std.traits, std.typetuple,
-     std.exception, std.format, std.algorithm,
+     std.exception, std.format, std.algorithm, std.typecons,
      std.regex, std.range, std.conv, std.net.curl;
 
 import std.file:exists;
@@ -15,21 +15,36 @@ static import std.ascii;
 
 alias RleBitSet!uint CodepointSet;
 
+//common binary propertiy sets and their aliases
 CodepointSet[string] props;
 string[string] aliases;
+
+//quick NO/MAYBE charater sets
 CodepointSet[string] normalization;
+
+//axuilary sets for case mapping
 CodepointSet lowerCaseSet, upperCaseSet;
 
 mixin(mixedCCEntry);
+
 //case folding mapping
 SimpleCaseEntry[] simpleTable;
 FullCaseEntry[] fullTable;   
 
+///canonical combining class
 CodepointSet[256] combiningClass;
+//same but packaged per dchar
+ubyte[dchar] combiningMapping;
 
+//unrolled decompositions
 dstring[dchar] canonDecomp;
 dstring[dchar] compatDecomp;
 
+//canonical composition tables
+dchar[] canonicalyComposableLeft;
+dchar[] canonicalyComposableRight;
+
+//property names to discard
 string[] blacklist = [];
 
 enum mixedCCEntry = `
@@ -90,8 +105,12 @@ struct FullCaseEntry
         size = batch_size;
     }
 }
-`;
 
+struct CompEntry
+{
+    dchar rhs, composed;
+}
+`;
 
 //size optimal sets
 RleBitSet!ubyte[string] tinyProps;
@@ -151,6 +170,7 @@ import uni;\n");
     writeTries();
     writeCombining();
     writeDecomposition();
+    writeCompositionTable();
     writeEndPlatformDependent();
 }
 
@@ -375,10 +395,11 @@ void loadDecompositions(string inp)
                 if(!v.empty)
                     dest ~= cast(dchar)parse!uint(v, 16);
             }
-            if(!compat)
+            if(!compat){
+                assert(dest.length <= 2, "cannonical decomposition has more then 2 codepoints?!");
                 canonDecomp[src] = dest;
+            }
             compatDecomp[src] = dest;
-            //stderr.writefln("%04x -~-> %( %04x %)", src, cast(uint[])dest);
         }
     }
 }
@@ -427,8 +448,12 @@ void loadCombining(string inp)
             combiningClass[value] |= x;
         }
     })(inp, r);
-    //foreach(clazz; 0..256)
-    //    stderr.writeln(clazz,": ", combiningClass[clazz]);
+    
+    foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
+    {
+        foreach(ch; clazz.byChar)
+            combiningMapping[ch] = cast(ubyte)(i+1);
+    }
 }
 
 string charsetString(T)(in RleBitSet!T set, string sep=";\n")
@@ -675,15 +700,72 @@ void writeDecomposition()
     writeln("immutable decompCompatTable = ", decompCompatTable, ";");
 }
 
+void writeCompositionTable()
+{
+    dchar[dstring] composeTab;
+    //construct compositions table
+    foreach(dchar k, dstring v; canonDecomp)
+    {
+        if(v.length != 2)//singleton
+            continue;
+        if(v[0] in combiningMapping) //non-starter
+            continue; 
+        if(k in combiningMapping) //combines to non-starter
+            continue; 
+        composeTab[v] = k;
+    }
+
+    Tuple!(dchar, dchar, dchar)[] triples;
+    foreach(dstring key, dchar val; composeTab)
+        triples ~= Tuple!(dchar, dchar, dchar)(key[0], key[1], val);    
+    multiSort!("a[0] < b[0]", "a[1] < b[1]")(triples);
+    foreach(t; triples)
+        stderr.writefln("[0x%05x, 0x%05x, 0x%05x],", t[0], t[1], t[2]);
+    //map to the triplets array
+    ushort[dchar] trimap;
+    dchar old = triples[0][0]; 
+    size_t idx = 0;
+    auto r = triples[];
+    for(;;){
+        int cnt = countUntil!(x => x[0] != old)(r);
+        if(cnt == -1)//end of input
+            cnt = r.length;
+        assert(idx < 2048);
+        assert(cnt < 32);
+        trimap[old] = to!ushort(idx | (cnt<<11));
+        idx += cnt;
+        if(idx == triples.length)
+            break;
+        old = r[cnt][0];
+        r = r[cnt..$];
+    }
+    auto triT = CodepointTrie!(ushort, 12, 9)(trimap, ushort.max);
+    auto dupletes = triples.map!(x => tuple(x[1], x[2])).array;
+    foreach(dstring key, dchar val; composeTab)
+    {
+        size_t pack = triT[key[0]];
+        assert(pack != ushort.max);        
+        size_t idx = pack & ((1<<11)-1), cnt = pack>>11;
+        auto f = dupletes[idx..idx+cnt].find!(x => x[0] == key[1]);
+        assert(!f.empty);
+        // & starts with the right value
+        assert(f.front[1] == val);
+    }
+    //stderr.writeln("triT bytes: ", triT.bytes);
+    //stderr.writeln("duplets bytes: ", dupletes.length*dupletes[0].sizeof);
+    writeln("enum composeIdxMask = (1<<11)-1, composeCntShift = 11;");
+    write("immutable compositionJumpTrie = CodepointTrie!(ushort, 12, 9).fromRawArray(");
+    triT.store(stdout.lockingTextWriter());
+    writeln(");");
+    write("immutable compositionTable = [");
+    foreach(pair; dupletes)
+        writef("CompEntry(0x%05x, 0x%05x),", pair[0], pair[1]);
+    writeln("];");
+}
+
 void writeCombining()
 {
-    ubyte[dchar] combiningM;
-    foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
-    {
-        foreach(ch; clazz.byChar)
-            combiningM[ch] = cast(ubyte)(i+1);
-    }
-    auto ct = CodepointTrie!(ubyte, 7, 5, 9)(combiningM);
+    auto ct = CodepointTrie!(ubyte, 7, 5, 9)(combiningMapping);
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
     {
         foreach(ch; clazz.byChar)
