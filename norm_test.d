@@ -11,6 +11,8 @@ void analyze(C)(in C[] str)
 
 void main(){
     size_t number = 0;
+    analyze(normalize!NFC("\u0CCA\u0334\u0CD5"));
+
     foreach(char[] line; stdin.byLine){
         number ++ ;
         if(!isNumber(line.front))
@@ -29,9 +31,14 @@ void main(){
             line.munch( ";");
         }
         auto normD = normalize!NFD(samples[0]);
+        auto normC = normalize!NFC(samples[0]);
         if(normD !=  samples[2]){
             writeln("Normalization form NFD failed on line: ", number);
             analyze(normD);
+        }
+        if(normC != samples[1]){
+            writeln("Normalization form NFC failed on line: ", number);
+            analyze(normC);
         }
         auto normKD = normalize!NFKD(samples[0]);
         if(normKD !=  samples[4]){

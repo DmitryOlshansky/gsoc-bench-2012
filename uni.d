@@ -534,6 +534,9 @@ private:
 
 private struct SliceOverIndexed(T)
 {
+    enum assignableIndex = is(typeof((){ T.init[0] = T.init[0]; }));
+    //enum assignableSlice = is(typeof((){ T.init[0..0] = T.init[0]; }));
+
     auto opIndex(size_t idx)const
     in
     {
@@ -544,6 +547,7 @@ private struct SliceOverIndexed(T)
         return arr.opIndex(from+idx);
     }
 
+    static if(assignableIndex)
     void opIndexAssign(Item val, size_t idx)
     in
     {
@@ -559,10 +563,11 @@ private struct SliceOverIndexed(T)
         return SliceOverIndexed(from+a, from+b, arr);
     }
 
+    /*static if(assignableSlice)
     void opSliceAssign(T)(T val, size_t start, size_t end)
     {
-        return arr.opSliceAssign(val, start+from, end+from);
-    }
+        return (*arr)[start+from, end+from] = val;
+    }*/
 
     auto opSlice()
     {
@@ -575,17 +580,19 @@ private struct SliceOverIndexed(T)
 
     @property auto front()const { return (*arr)[from]; }
 
+    static if(assignableIndex)
     @property void front(Item val) { (*arr)[from] = val; }
 
     @property auto back()const { return (*arr)[to-1]; }
 
+    static if(assignableIndex)
     @property void back(Item val) { (*arr)[to-1] = val; }
 
-    @property auto save() { return this; }
+    @property auto save() inout { return this; }
 
     void popFront() {   from++; }
 
-    void popBack() {   to--; }
+    void popBack() {    to--; }
 
     bool opEquals(T)(const ref T arr) const
     {
@@ -598,8 +605,8 @@ private struct SliceOverIndexed(T)
     }
 private:
     alias typeof(T.init[0]) Item;
-     size_t from, to;
-     T* arr;
+    size_t from, to;
+    T* arr;
 }
 
 auto sliceOverIndexed(T)(size_t a, size_t b, T* x)
@@ -3908,7 +3915,7 @@ size_t graphemeStride(C)(in C[] input, size_t index)
 }
 
 /++
-    Read and return one full grapheme cluster from input range of dchar $(D inp). 
+    Read and return one full grapheme cluster from an input range of dchar $(D inp). 
     Note: this function modifies $(D inp) and thus $(D inp) 
     must be an L-value.
 +/
@@ -3952,7 +3959,7 @@ public:
     /++
         Write codepoint at given index of this cluster.
 
-        Warning: use of this facility may invalidate grapheme cluster, see also $(D validate).
+        Warning: use of this facility may invalidate grapheme cluster, see also $(D valid).
      +/
     void opIndexAssign(dchar ch, size_t index)
     {
@@ -3962,7 +3969,7 @@ public:
     /++
         Random-access range over Grapheme's codepoints.
 
-        Warning: Invalidates when this Grapheme leaves scope.
+        Warning: Invalidates when this Grapheme leaves the scope.
     +/
     auto opSlice(size_t a, size_t b)
     {
@@ -4027,10 +4034,18 @@ public:
 
     /++
         True if this object contains valid extended grapheme cluster.
+        Decoding primitives of this module always return valid $(D Grapheme).
+
+        Appending to and direct manipulation of grapheme's codepoints may 
+        render it no longer valid. Certain applications may chose to use 
+        Grapheme as a "small string" of codepoints and ignore this property
+        entierly.
     +/
-    bool validate() const
+    @property bool valid() /*const*/
     {
-        return true; //TODO: do validation through graphemeStride
+        auto r = this[];
+        genericDecodeGrapheme!false(r);
+        return r.length == 0;
     }
 
     this(this)
@@ -4058,7 +4073,7 @@ private:
     enum grow = 20;
     enum small_cap = small_bytes/3;
     enum small_flag = 0x80, small_mask = 0x7F;
-    //16 bytes in 32bits, should be enough for majority of cases
+    //16 bytes in 32bits, should be enough for the majority of cases
     union
     {
         struct
@@ -4119,6 +4134,7 @@ unittest
     assert(g[2] == 'c');
     assert(g[3] == 'Й', text(g[3], " vs ", 'Й'));
     assert(g[4] == 'e');
+    assert(!g.valid);
 
     g ~= 'ц';
     g ~= '~';
@@ -4129,7 +4145,8 @@ unittest
     assert(g[4] == 'e');
     assert(g[5] == 'ц');
     assert(g[6] == '~');
-    
+    assert(!g.valid);
+
     Grapheme copy = g;
     copy[0] = 'X';
     copy[1] = '-';
@@ -4140,6 +4157,7 @@ unittest
     assert(equal(copy[0..8], "АБВГДЕЁЖ"), text(copy[0..8]));
     copy ~= "xyz";
     assert(equal(copy[13..15], "xy"), text(copy[13..15]));
+    assert(!copy.valid);
 }
 
 /++
@@ -4354,75 +4372,86 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
     auto anchors = splitNormalized!norm(input);
     if(anchors[0] == input.length && anchors[1] == input.length)
         return input;
-    static if(norm == NFD || norm == NFKD)
+    dchar[] decomposed;
+    decomposed.reserve(31);
+    ubyte[] ccc;
+    ccc.reserve(31);
+    auto app = appender!(C[])();
+    do
     {
-        dchar[] decomposed;
-        decomposed.reserve(31);
-        ubyte[] ccc;
-        ccc.reserve(31);
-        auto app = appender!(C[])();
-        do
-        {
-            app.put(input[0..anchors[0]]);
-            foreach(dchar ch; input[anchors[0]..anchors[1]])
-                static if(norm == NFD)
-                {
-                    foreach(dchar c; decompose!Canonical(ch)[])
-                        decomposed ~= c;
-                    //writefln("decomp: %( %x %)", decompose(ch)[] );
-                }
-                else
-                {
-                    foreach(dchar c; decompose!Compatibility(ch)[])
-                        decomposed ~= c;
-                    //writefln("decomp: %( %x %)", decompose!Compatibility(ch)[] );
-                }
-            ccc.length = decomposed.length;
-            size_t firstNonStable = 0;
-            ubyte lastClazz = 0;
-            //writeln("Before sorting:");
-            foreach(idx, dchar ch; decomposed)
-            {
-                auto clazz = combiningClassTrie[ch];
-                ccc[idx] = clazz;
-                if(clazz == 0 && lastClazz != 0)
-                {
-                    // found a stable codepoint after unstable ones 
-                    sort!("a[0] < b[0]", SwapStrategy.stable)
-                        (zip(ccc[firstNonStable..idx], decomposed[firstNonStable..idx]));
-                    firstNonStable = decomposed.length;
-                }
-                else if(clazz != 0 && lastClazz == 0)
-                {
-                    // found first unstable codepoint after stable ones 
-                    firstNonStable = idx;
-                }
-                lastClazz = clazz;
-                //writefln("dchar: 0x%04x  cc: %02d ", ch, ccc[idx]);
-            }
-            sort!("a[0] < b[0]", SwapStrategy.stable)
-                (zip(ccc[firstNonStable..$], decomposed[firstNonStable..$]));   
-            /*writeln("After sorting:"); 
-            foreach(idx, dchar ch; decomposed){
-                writefln("dchar: 0x%04x  cc: %02d ", ch, ccc[idx]);
-            }*/
-            app.put(decomposed);
-            //reset variables
-            decomposed.length = 0;
-            decomposed.assumeSafeAppend();
-            ccc.length = 0;
-            ccc.assumeSafeAppend();
-            input = input[anchors[1]..$];
-            //and move on
-            anchors = splitNormalized!norm(input);       
-        }while(anchors[0] != input.length);
         app.put(input[0..anchors[0]]);
-        return cast(inout(C)[])app.data;
-    }
-    else
-    {
-        assert(false, "Not implemented yet");
-    }
+        foreach(dchar ch; input[anchors[0]..anchors[1]])
+            static if(norm == NFD || norm == NFC)
+            {
+                foreach(dchar c; decompose!Canonical(ch)[])
+                    decomposed ~= c;
+                //writefln("decomp: %( %x %)", decompose(ch)[] );
+            }
+            else //NFKD & NFKC
+            {
+                foreach(dchar c; decompose!Compatibility(ch)[])
+                    decomposed ~= c;
+                //writefln("decomp: %( %x %)", decompose!Compatibility(ch)[] );
+            }
+        ccc.length = decomposed.length;
+        size_t firstNonStable = 0;
+        ubyte lastClazz = 0;
+
+        //writeln("Before sorting:");
+        foreach(idx, dchar ch; decomposed)
+        {
+            auto clazz = combiningClassTrie[ch];
+            ccc[idx] = clazz;
+            if(clazz == 0 && lastClazz != 0)
+            {
+                // found a stable codepoint after unstable ones 
+                sort!("a[0] < b[0]", SwapStrategy.stable)
+                    (zip(ccc[firstNonStable..idx], decomposed[firstNonStable..idx]));
+                static if(norm == NFC ||norm == NFKC)
+                    if(firstNonStable != 0)
+                    {
+                        recompose(decomposed[firstNonStable-1..idx], 
+                            ccc[firstNonStable-1..idx]);
+                    }
+                firstNonStable = decomposed.length;
+            }
+            else if(clazz != 0 && lastClazz == 0)
+            {
+                // found first unstable codepoint after stable ones 
+                firstNonStable = idx;
+            }
+            lastClazz = clazz;
+            //writefln("dchar: 0x%04x  cc: %02d ", ch, ccc[idx]);
+        }
+        sort!("a[0] < b[0]", SwapStrategy.stable)
+            (zip(ccc[firstNonStable..$], decomposed[firstNonStable..$]));
+        static if(norm == NFC || norm == NFKC)
+            if(firstNonStable != 0)
+                recompose(decomposed[firstNonStable-1..$],
+                    ccc[firstNonStable-1..$]);
+        /*writeln("After sorting:"); 
+        foreach(idx, dchar ch; decomposed){
+            writefln("dchar: 0x%04x  cc: %02d ", ch, ccc[idx]);
+        }*/
+
+        static if(norm == NFD || norm == NFKD)
+            app.put(decomposed);
+        else
+        {
+            auto clean = remove!("a == dchar.init", SwapStrategy.stable)(decomposed);
+            app.put(decomposed[0 .. clean.length]);
+        }
+        //reset variables
+        decomposed.length = 0;
+        decomposed.assumeSafeAppend();
+        ccc.length = 0;
+        ccc.assumeSafeAppend();
+        input = input[anchors[1]..$];
+        //and move on
+        anchors = splitNormalized!norm(input);       
+    }while(anchors[0] != input.length);
+    app.put(input[0..anchors[0]]);
+    return cast(inout(C)[])app.data;
 }
 
 unittest
@@ -4432,10 +4461,39 @@ unittest
     assert(normalize!NFD("Äffin") == "A\u0308ffin");
 }
 
+//canonically recompose given slice of codepoints, works in-place and mutates data
+private void recompose(dchar[] input, ubyte[] ccc)
+{
+    //first is always a starter
+    size_t i = 1;
+    ubyte lastCC = 0;
+    for(;;)
+    {        
+        if(i >= input.length)
+            break;
+        ubyte curCC = ccc[i];
+        if(curCC != lastCC) //can't compose in the same CCC group 
+        {
+            dchar comp = compose(input[0], input[i]);
+            if(comp != dchar.init)
+            {
+                writefln("composed: 0x%05x + 0x%05x --> 0x%05x", input[i], input[i], comp);
+                input[0] = comp;
+                input[i] = dchar.init;//put uncomposable sentinel
+                //current was merged so its CCC 
+                //shouldn't affect composing with the next one
+                ccc[i] = 0; 
+            }
+        }
+        lastCC = ccc[i];
+        i++;
+    }
+}
+
 //returns tuple of 2 indexes that delimit:
 //normalized text, piece that needs normalization and 
 //the rest of input starting with stable codepoint
-private auto splitNormalized(string norm, C)(inout(C)[] input)
+private auto splitNormalized(string norm, C)(const(C)[] input)
 {
     auto result = input;
     ubyte lastCC = 0;

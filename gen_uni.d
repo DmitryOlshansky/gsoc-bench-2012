@@ -719,8 +719,6 @@ void writeCompositionTable()
     foreach(dstring key, dchar val; composeTab)
         triples ~= Tuple!(dchar, dchar, dchar)(key[0], key[1], val);    
     multiSort!("a[0] < b[0]", "a[1] < b[1]")(triples);
-    foreach(t; triples)
-        stderr.writefln("[0x%05x, 0x%05x, 0x%05x],", t[0], t[1], t[2]);
     //map to the triplets array
     ushort[dchar] trimap;
     dchar old = triples[0][0]; 
