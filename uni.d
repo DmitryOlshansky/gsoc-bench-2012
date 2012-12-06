@@ -4153,7 +4153,7 @@ unittest
     assert(g[0] == 'a' && copy[0] == 'X');
     assert(g[1] == 'b' && copy[1] == '-');
     assert(equal(g[2..g.length], copy[2..copy.length]));
-    copy = Grapheme("АБВГДЕЁЖХИКЛМ");
+    copy = Grapheme("АБВГДЕЁЖЗИКЛМ");
     assert(equal(copy[0..8], "АБВГДЕЁЖ"), text(copy[0..8]));
     copy ~= "xyz";
     assert(equal(copy[13..15], "xy"), text(copy[13..15]));
@@ -4161,7 +4161,11 @@ unittest
 }
 
 /++
+    Does basic case-insensitive comparison of strings $(D str1) and $(D str2).
 
+    Warning: this function only handles 1:1 codepoint mapping
+    and thus is not sufficent for certain alphabets 
+    like German, Greek and few others.
 +/
 int sicmp(C1, C2)(in C1[] str1, in C2[] str2)
 {
@@ -4236,7 +4240,10 @@ private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
 }
 
 /++
-	
+	Does case insensitive comparison of $(D str1) and $(D str2).
+    Follows rules of full casefolding mapping. 
+    This includes matching as equal german ß with "ss" and 
+    other 1:M codepoints relations unlike $(D sicmp).
 +/
 int icmp(C1, C2)(inout(C1)[] str1, inout(C2)[] str2)
 {
@@ -4265,7 +4272,7 @@ int icmp(C1, C2)(inout(C1)[] str1, inout(C2)[] str2)
 }
 
 unittest
-{   
+{
     foreach(cfunc; TypeTuple!(icmp, sicmp)) 
     {
         foreach(S1; TypeTuple!(string, wstring, dstring))
@@ -4303,11 +4310,13 @@ enum { Canonical="Canonical", Compatibility="Compatibility"};
     Try to canonically compose 2 codepoints.
     Returns the composed codepoint if they do compose and D.init otherwise.
 
-    The assumtion is that $(D first) comes before $(D second) in the original text, 
-    meaning that the first is a starter.
+    The assumption is that $(D first) comes before $(D second) in the original text, 
+    usually meaning that the first is a starter.
 
+    Note: Hangul syllables are not covered by this function. 
+    See $(D composeJamo) below.
 +/
-dchar compose(dchar first, dchar second)
+public dchar compose(dchar first, dchar second)
 {
     size_t packed = compositionJumpTrie[first];
     if(packed == ushort.max)
@@ -4326,10 +4335,32 @@ dchar compose(dchar first, dchar second)
 }
 
 /++
-    Returns Canonical (by default) or Compatibility decomposition of codepoint $(D ch).
-    If no decomposition is available returns Grapheme with the $(D ch) itself.
+    Try to compose hangul syllable out of a leading consonant ($(D lead)), 
+    a $(D vowel) and optional $(D trailing) consonant jamos.
+
+    On success returns the composed LV or LVT hangul syllable.
+
+    If any of $(D lead) and $(D vowel) are not a valid hangul jamo 
+    of the respective character class returns dchar.init.
 +/
-Grapheme decompose(string decompType=Canonical)(dchar ch)
+public dchar composeJamo(dchar lead, dchar vowel, dchar trailing=dchar.init)
+{
+    if(!isJamoL(lead))
+        return dchar.init;
+    int indexL = lead - jamoLBase;    
+    if(!isJamoV(vowel)) 
+        return dchar.init;
+    int indexV = vowel - jamoVBase;    
+    int indexLV = indexL * jamoNCount + indexV * jamoTCount;
+    dchar syllable = jamoSBase + indexLV;
+    return isJamoT(trailing) ? syllable + (trailing - jamoTBase) : syllable;
+}
+
+/++
+    Returns a full Canonical (by default) or Compatibility decomposition of codepoint 
+    $(D ch). If no decomposition is available returns Grapheme with the $(D ch) itself.
++/
+public Grapheme decompose(string decompType=Canonical)(dchar ch)
 {
     static if(decompType == Canonical)
     {
@@ -4342,10 +4373,102 @@ Grapheme decompose(string decompType=Canonical)(dchar ch)
         alias compatMapping mapping;
     }
     ushort idx = mapping[ch];
-    if(!idx)
-        return Grapheme(ch);
+    if(!idx) //not found, check hangul arithmetic decomposition
+        return hangulDecompose(ch); 
     return Grapheme(table[idx]);
 }
+
+//----------------------------------------------------------------------------
+//Hangul specific composition/decomposition
+enum jamoSBase = 0xAC00;
+enum jamoLBase = 0x1100;
+enum jamoVBase = 0x1161;
+enum jamoTBase = 0x11A7;
+enum jamoLCount = 19, jamoVCount = 21, jamoTCount = 28;
+enum jamoNCount = jamoVCount * jamoTCount;
+enum jamoSCount = jamoLCount * jamoNCount;
+
+public:
+
+///Tests if $(D ch) is a Hangul leading consonant jamo.
+bool isJamoL(dchar ch)
+{
+    //first cmp rejects ~ 1M codepoints above leading jamo range
+    return ch < jamoLBase+jamoLCount && ch >= jamoLBase;
+}
+
+///Tests if $(D ch) is a Hangul vowel jamo.
+bool isJamoT(dchar ch)
+{
+    //first cmp rejects ~ 1M codepoints above trailing jamo range
+    return ch < jamoTBase+jamoTCount && ch >= jamoTBase;
+}
+
+///Tests if $(D ch) is a Hangul trailnig consonant jamo.
+bool isJamoV(dchar ch)
+{
+    //first cmp rejects ~ 1M codepoints above vowel range
+    return  ch < jamoVBase+jamoVCount && ch >= jamoVBase;
+}
+
+private:
+
+int hangulSyllableIndex(dchar ch)
+{
+    int idxS = cast(int)ch - jamoSBase;
+    return idxS >= 0 && idxS < jamoSCount ? idxS : -1;
+}
+
+//
+Grapheme hangulDecompose(dchar ch)
+{
+    int idxS = cast(int)ch - jamoSBase;
+    if(idxS < 0 || idxS > jamoSCount) return Grapheme(ch);
+
+    int idxL = idxS / jamoNCount;   
+    int idxV = (idxS % jamoNCount) / jamoTCount;
+    int idxT = idxS % jamoTCount;
+
+    int partL = jamoLBase + idxL;
+    int partV = jamoVBase + idxV;
+    if(idxT > 0) //there is a trailling consonant (T); <L,V,T> decomposition
+        return Grapheme(partL, partV, jamoTBase + idxT);
+    else // <L, V> decomposition
+        return Grapheme(partL, partV);
+}
+
+//internal helper: compose hangul syllables leaving dchar.init in holes
+void hangulRecompose(dchar[] seq)
+{
+    for(size_t idx = 0; idx + 1 < seq.length; )
+    {
+        if(isJamoL(seq[idx]) && isJamoV(seq[idx+1]))
+        {
+            int indexL = seq[idx] - jamoLBase;
+            int indexV = seq[idx+1] - jamoVBase;
+            int indexLV = indexL * jamoNCount + indexV * jamoTCount;
+            if(idx + 2 < seq.length && isJamoT(seq[idx+2]))
+            {
+                seq[idx] = jamoSBase + indexLV + seq[idx+2] - jamoTBase;
+                seq[idx+1] = dchar.init;
+                seq[idx+2] = dchar.init;
+                idx += 3;
+            }
+            else
+            {
+                seq[idx] = jamoSBase + indexLV;
+                seq[idx+1] = dchar.init;
+                idx += 2;
+            }
+        } 
+        else
+            idx++;
+    }
+}
+
+//----------------------------------------------------------------------------
+
+public:
 
 unittest{
     void testDecomp(string T)(dchar ch, string r)
@@ -4385,19 +4508,16 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
             {
                 foreach(dchar c; decompose!Canonical(ch)[])
                     decomposed ~= c;
-                //writefln("decomp: %( %x %)", decompose(ch)[] );
             }
             else //NFKD & NFKC
             {
                 foreach(dchar c; decompose!Compatibility(ch)[])
                     decomposed ~= c;
-                //writefln("decomp: %( %x %)", decompose!Compatibility(ch)[] );
             }
         ccc.length = decomposed.length;
         size_t firstNonStable = 0;
         ubyte lastClazz = 0;
-
-        //writeln("Before sorting:");
+        
         foreach(idx, dchar ch; decomposed)
         {
             auto clazz = combiningClassTrie[ch];
@@ -4407,12 +4527,6 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
                 // found a stable codepoint after unstable ones 
                 sort!("a[0] < b[0]", SwapStrategy.stable)
                     (zip(ccc[firstNonStable..idx], decomposed[firstNonStable..idx]));
-                static if(norm == NFC ||norm == NFKC)
-                    if(firstNonStable != 0)
-                    {
-                        recompose(decomposed[firstNonStable-1..idx], 
-                            ccc[firstNonStable-1..idx]);
-                    }
                 firstNonStable = decomposed.length;
             }
             else if(clazz != 0 && lastClazz == 0)
@@ -4420,20 +4534,27 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
                 // found first unstable codepoint after stable ones 
                 firstNonStable = idx;
             }
-            lastClazz = clazz;
-            //writefln("dchar: 0x%04x  cc: %02d ", ch, ccc[idx]);
-        }
+            lastClazz = clazz;            
+        }           
         sort!("a[0] < b[0]", SwapStrategy.stable)
             (zip(ccc[firstNonStable..$], decomposed[firstNonStable..$]));
         static if(norm == NFC || norm == NFKC)
-            if(firstNonStable != 0)
-                recompose(decomposed[firstNonStable-1..$],
-                    ccc[firstNonStable-1..$]);
-        /*writeln("After sorting:"); 
-        foreach(idx, dchar ch; decomposed){
-            writefln("dchar: 0x%04x  cc: %02d ", ch, ccc[idx]);
-        }*/
-
+        {
+            size_t idx = 0;
+            auto first = countUntil(ccc, 0);
+            if(first >= 0) // no starters?? no recomposition
+            {                
+                for(;;)
+                {                    
+                    auto second = recompose(first, decomposed, ccc);
+                    if(second == decomposed.length)
+                        break;
+                    first = second;
+                }
+                //2nd pass for hangul syllables
+                hangulRecompose(decomposed);
+            }
+        }
         static if(norm == NFD || norm == NFKD)
             app.put(decomposed);
         else
@@ -4462,32 +4583,56 @@ unittest
 }
 
 //canonically recompose given slice of codepoints, works in-place and mutates data
-private void recompose(dchar[] input, ubyte[] ccc)
+private size_t recompose(size_t start, dchar[] input, ubyte[] ccc)
 {
-    //first is always a starter
-    size_t i = 1;
-    ubyte lastCC = 0;
-    for(;;)
-    {        
-        if(i >= input.length)
+    assert(input.length == ccc.length);
+    int accumCC = -1;//so that it's out of 0..255 range
+    bool foundSolidStarter = false;
+    //writefln("recomposing %( %04x %)", input);
+    //first one is always a starter thus we start at i == 1
+    size_t i = start+1;
+    for(; ; )
+    {
+        if(i == input.length)
             break;
-        ubyte curCC = ccc[i];
-        if(curCC != lastCC) //can't compose in the same CCC group 
+        int curCC = ccc[i];
+        // In any character sequence beginning with a starter S
+        // a character C is blocked from S if and only if there 
+        // is some character B between S and C, and either B 
+        // is a starter or it has the same or higher combining class as C.
+        //------------------------
+        // Applying to our case:
+        // S is input[0]
+        // accumCC is the maximum CCC of characters between C and S,
+        //     as ccc are sorted
+        // C is input[i]
+
+        if(curCC > accumCC)
         {
-            dchar comp = compose(input[0], input[i]);
+            dchar comp = compose(input[start], input[i]);
             if(comp != dchar.init)
-            {
-                writefln("composed: 0x%05x + 0x%05x --> 0x%05x", input[i], input[i], comp);
-                input[0] = comp;
-                input[i] = dchar.init;//put uncomposable sentinel
-                //current was merged so its CCC 
-                //shouldn't affect composing with the next one
-                ccc[i] = 0; 
+            {                
+                input[start] = comp;
+                input[i] = dchar.init;//put a sentinel
+                //current was merged so its CCC shouldn't affect 
+                //composing with the next one 
+            }
+            else {
+                //if it was a starter then accumCC is now 0, end of loop
+                accumCC = curCC;
+                if(accumCC == 0)
+                    break;
             }
         }
-        lastCC = ccc[i];
-        i++;
+        else{
+            //ditto here
+            accumCC = curCC;
+            if(accumCC == 0)
+                break;
+        }
+        i++;        
     }
+    return i;
 }
 
 //returns tuple of 2 indexes that delimit:
@@ -4845,7 +4990,7 @@ unittest
 
 bool isNumber(dchar c) //@safe pure nothrow
 {
-   return bestNumber3[c];
+    return bestNumber3[c];
 }
 
 unittest
@@ -4894,7 +5039,7 @@ bool isSymbol(dchar c) //@safe pure nothrow
    return bestSymbol3[c];
 }
 
-unittest
+unittest 
 {
     assert(isSymbol('\u0024'));
     assert(isSymbol('\u002B'));

@@ -19,7 +19,7 @@ alias RleBitSet!uint CodepointSet;
 CodepointSet[string] props;
 string[string] aliases;
 
-//quick NO/MAYBE charater sets
+//quick NO/MAYBE charaсter sets
 CodepointSet[string] normalization;
 
 //axuilary sets for case mapping
@@ -43,6 +43,9 @@ dstring[dchar] compatDecomp;
 //canonical composition tables
 dchar[] canonicalyComposableLeft;
 dchar[] canonicalyComposableRight;
+
+//canonical composition exclusions
+CodepointSet compExclusions;
 
 //property names to discard
 string[] blacklist = [];
@@ -117,6 +120,20 @@ RleBitSet!ubyte[string] tinyProps;
 RleBitSet!ushort[string] smallProps;
 RleBitSet!uint[string] fullProps;
 
+enum { 
+    caseFoldingSrc = "CaseFolding.txt",
+    blocksSrc = "Blocks.txt",
+    propListSrc = "PropList.txt",
+    generalPropSrc = "DerivedGeneralCategory.txt",
+    corePropSrc = "DerivedCoreProperties.txt",
+    normalizationPropSrc = "DerivedNormalizationProps.txt",
+    scriptsSrc = "Scripts.txt",
+    hangulSyllableSrc = "HangulSyllableType.txt",
+    combiningClassSrc = "DerivedCombiningClass.txt",
+    unicodeDataSrc = "UnicodeData.txt",
+    compositionExclusionsSrc = "CompositionExclusions.txt"
+};
+
 void main(string[] argv)
 {
     writeln("//Written in the D programming language
@@ -129,40 +146,32 @@ void main(string[] argv)
 //Automatically generated from Unicode Character Database files
 import uni;\n");
     auto prefix = "http://www.unicode.org/Public/UNIDATA/";
-    downloadIfNotExists(prefix~"CaseFolding.txt"
-        , "CaseFolding.txt");
-    downloadIfNotExists(prefix~"Blocks.txt"
-        , "Blocks.txt");
-    downloadIfNotExists(prefix~"PropList.txt"
-        , "PropList.txt");
-    downloadIfNotExists(prefix~"extracted/DerivedGeneralCategory.txt"
-        , "DerivedGeneralCategory.txt");
-    downloadIfNotExists(prefix~"DerivedCoreProperties.txt"
-        , "DerivedCoreProperties.txt");
-    downloadIfNotExists(prefix ~ "Scripts.txt"
-        , "Scripts.txt");
-    downloadIfNotExists(prefix ~ "DerivedNormalizationProps.txt"
-        , "DerivedNormalizationProps.txt");
-    downloadIfNotExists(prefix ~ "HangulSyllableType.txt",
-        "HangulSyllableType.txt");
-    downloadIfNotExists(prefix ~ "CompositionExclusions.txt",
-        "CompositionExclusions.txt");
-    downloadIfNotExists(prefix ~ "extracted/DerivedCombiningClass.txt",
-        "DerivedCombiningClass.txt");
-    downloadIfNotExists(prefix ~ "UnicodeData.txt",
-        "UnicodeData.txt");
-    loadBlocks("Blocks.txt");
-    loadProperties("PropList.txt");
-    loadProperties("DerivedCoreProperties.txt");
-    loadProperties("DerivedGeneralCategory.txt");
-    loadProperties("Scripts.txt");
-    loadProperties("HangulSyllableType.txt");
+    downloadIfNotExists(prefix~caseFoldingSrc, caseFoldingSrc);
+    downloadIfNotExists(prefix~blocksSrc, blocksSrc);
+    downloadIfNotExists(prefix~propListSrc, propListSrc);
+    downloadIfNotExists(prefix~"extracted/"~generalPropSrc, generalPropSrc);
+    downloadIfNotExists(prefix~corePropSrc, corePropSrc);
+    downloadIfNotExists(prefix~scriptsSrc, scriptsSrc);
+    downloadIfNotExists(prefix~normalizationPropSrc, normalizationPropSrc);
+    downloadIfNotExists(prefix~hangulSyllableSrc, hangulSyllableSrc);
+    downloadIfNotExists(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
+    downloadIfNotExists(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
+    downloadIfNotExists(prefix~unicodeDataSrc, unicodeDataSrc);
 
-    loadDecompositions("UnicodeData.txt");
-    loadCaseFolding("CaseFolding.txt");
-    loadNormalization("DerivedNormalizationProps.txt");
-    loadCombining("DerivedCombiningClass.txt");
+    loadBlocks(blocksSrc);
+    loadProperties(propListSrc);
+    loadProperties(corePropSrc);
+    loadProperties(generalPropSrc);
+    loadProperties(scriptsSrc);
+    loadProperties(hangulSyllableSrc);
+    
+    loadDecompositions(unicodeDataSrc);
+    loadExclusions(compositionExclusionsSrc);
+    loadCaseFolding(caseFoldingSrc);
+    loadNormalization(normalizationPropSrc);
+    loadCombining(combiningClassSrc);
     optimizeSets();
+
 
     writeProperties();
     writeNormalization();
@@ -456,6 +465,16 @@ void loadCombining(string inp)
     }
 }
 
+void loadExclusions(string inp)
+{
+    auto r = regex(`^([0-9A-F]+)`);
+    scanUniData!((m){
+        auto piece = m.captures[1];
+        uint a = parse!uint(piece, 16);
+        compExclusions |= cast(dchar)a;   
+    })(inp, r);
+}
+
 string charsetString(T)(in RleBitSet!T set, string sep=";\n")
 {
     auto app = appender!(char[])();
@@ -712,6 +731,8 @@ void writeCompositionTable()
             continue; 
         if(k in combiningMapping) //combines to non-starter
             continue; 
+        if(compExclusions[k]) // non-derivable exclusions
+            continue;
         composeTab[v] = k;
     }
 
