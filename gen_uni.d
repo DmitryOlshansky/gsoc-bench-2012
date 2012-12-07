@@ -113,6 +113,25 @@ struct CompEntry
 {
     dchar rhs, composed;
 }
+
+struct SetEntry(T)
+{
+    T[] data;
+}
+
+struct UnicodeProperty(T)
+{
+    string name;
+    SetEntry!T set;
+}
+
+struct TrieEntry(T...)
+{
+    size_t[] offsets;
+    size_t[] sizes;
+    size_t[] data;
+}
+
 `;
 
 //size optimal sets
@@ -143,20 +162,19 @@ void main(string[] argv)
  * Authors: Dmitry Olshansky
  *
  */
-//Automatically generated from Unicode Character Database files
-import uni;\n");
+//Automatically generated from Unicode Character Database files\n");
     auto prefix = "http://www.unicode.org/Public/UNIDATA/";
-    downloadIfNotExists(prefix~caseFoldingSrc, caseFoldingSrc);
-    downloadIfNotExists(prefix~blocksSrc, blocksSrc);
-    downloadIfNotExists(prefix~propListSrc, propListSrc);
-    downloadIfNotExists(prefix~"extracted/"~generalPropSrc, generalPropSrc);
-    downloadIfNotExists(prefix~corePropSrc, corePropSrc);
-    downloadIfNotExists(prefix~scriptsSrc, scriptsSrc);
-    downloadIfNotExists(prefix~normalizationPropSrc, normalizationPropSrc);
-    downloadIfNotExists(prefix~hangulSyllableSrc, hangulSyllableSrc);
-    downloadIfNotExists(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
-    downloadIfNotExists(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
-    downloadIfNotExists(prefix~unicodeDataSrc, unicodeDataSrc);
+    downloadIfNotCached(prefix~caseFoldingSrc, caseFoldingSrc);
+    downloadIfNotCached(prefix~blocksSrc, blocksSrc);
+    downloadIfNotCached(prefix~propListSrc, propListSrc);
+    downloadIfNotCached(prefix~"extracted/"~generalPropSrc, generalPropSrc);
+    downloadIfNotCached(prefix~corePropSrc, corePropSrc);
+    downloadIfNotCached(prefix~scriptsSrc, scriptsSrc);
+    downloadIfNotCached(prefix~normalizationPropSrc, normalizationPropSrc);
+    downloadIfNotCached(prefix~hangulSyllableSrc, hangulSyllableSrc);
+    downloadIfNotCached(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
+    downloadIfNotCached(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
+    downloadIfNotCached(prefix~unicodeDataSrc, unicodeDataSrc);
 
     loadBlocks(blocksSrc);
     loadProperties(propListSrc);
@@ -171,7 +189,6 @@ import uni;\n");
     loadNormalization(normalizationPropSrc);
     loadCombining(combiningClassSrc);
     optimizeSets();
-
 
     writeProperties();
     writeNormalization();
@@ -194,8 +211,9 @@ void scanUniData(alias Fn)(string name, Regex!char r)
 }
 
 
-void downloadIfNotExists(string url, string path)
+void downloadIfNotCached(string url, string path)
 {
+    //TODO: check current date vs file data before using cache
     if(!exists(path))
         download(url, path);
 }
@@ -302,7 +320,7 @@ void loadBlocks(string f)
             auto s2 = m.captures[2];
             auto a1 = parse!uint(s1, 16);
             auto a2 = parse!uint(s2, 16);
-            props["In"~to!string(m.captures[3])] = CodepointSet([a1, a2+1]);
+            props["In"~to!string(m.captures[3])] = CodepointSet.fromIntervals([a1, a2+1]);
     })(f, r);
 }
 
@@ -480,8 +498,8 @@ string charsetString(T)(in RleBitSet!T set, string sep=";\n")
     auto app = appender!(char[])();
     auto raw = appender!(T[]);
     set.store(raw);
-    formattedWrite(app, "RleBitSet!"~T.stringof
-        ~".fromRawArray([%(0x%x, %)]);", raw.data);
+    formattedWrite(app, "SetEntry!"~T.stringof
+        ~"([%(0x%x, %)]);", raw.data);
     return cast(string)app.data;
 }
 
@@ -601,12 +619,6 @@ void writeEndPlatformDependent()
 
 void writeProperties()
 {
-    writeln("struct UnicodeProperty(T)
-{
-    string name;
-    RleBitSet!T set;
-}");
-   
     printSetTable(tinyProps);
     printSetTable(smallProps);
     printSetTable(fullProps);
@@ -644,18 +656,18 @@ void writeTries()
     }
     
     auto lowerCase = CodepointSetTrie!(10, 11)(lowerCaseSet);
-    write("immutable lowerCaseTrie = CodepointSetTrie!(10, 11).fromRawArray(");
+    write("immutable lowerCaseTrieEntries = TrieEntry!(bool, 10, 11)(");
     lowerCase.store(stdout.lockingTextWriter());
     writeln(");");
     auto upperCase = CodepointSetTrie!(10, 11)(upperCaseSet);
-    write("immutable upperCaseTrie = CodepointSetTrie!(10, 11).fromRawArray(");
+    write("immutable upperCaseTrieEntries = TrieEntry!(bool, 10, 11)(");
     upperCase.store(stdout.lockingTextWriter());
     writeln(");");
 
-    write("immutable simpleCaseTrie = CodepointTrie!(ushort, 12, 9).fromRawArray(");
+    write("immutable simpleCaseTrieEntries = TrieEntry!(ushort, 12, 9)(");
     st.store(stdout.lockingTextWriter);
     writeln(");");
-    write("immutable fullCaseTrie = CodepointTrie!(ushort, 12, 9).fromRawArray(");
+    write("immutable fullCaseTrieEntries = TrieEntry!(ushort, 12, 9)(");
     ft.store(stdout.lockingTextWriter);
     writeln(");");
 
@@ -709,10 +721,10 @@ void writeDecomposition()
         //stderr.writefln("%04X ~~~~> %( %04X %)", k, decompCanonTable[canonTrie[k]]);
         assert(decompCanonTable[canonTrie[k]] == v);
     }
-    write("immutable compatMapping = CodepointTrie!(ushort, 12, 9).fromRawArray(");
+    write("immutable compatMappingTrieEntries = TrieEntry!(ushort, 12, 9)(");
     compatTrie.store(stdout.lockingTextWriter());
     writeln(");");
-    write("immutable canonMapping = CodepointTrie!(ushort, 12, 9).fromRawArray(");
+    write("immutable canonMappingTrieEntries = TrieEntry!(ushort, 12, 9)(");
     canonTrie.store(stdout.lockingTextWriter());
     writeln(");");
     writeln("immutable decompCanonTable = ", decompCanonTable, ";");
@@ -773,7 +785,7 @@ void writeCompositionTable()
     //stderr.writeln("triT bytes: ", triT.bytes);
     //stderr.writeln("duplets bytes: ", dupletes.length*dupletes[0].sizeof);
     writeln("enum composeIdxMask = (1<<11)-1, composeCntShift = 11;");
-    write("immutable compositionJumpTrie = CodepointTrie!(ushort, 12, 9).fromRawArray(");
+    write("immutable compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
     triT.store(stdout.lockingTextWriter());
     writeln(");");
     write("immutable compositionTable = [");
@@ -790,7 +802,7 @@ void writeCombining()
         foreach(ch; clazz.byChar)
             assert(ct[ch] == i+1);
     }
-    write("immutable combiningClassTrie = CodepointTrie!(ubyte, 7, 5, 9).fromRawArray(");
+    write("immutable combiningClassTrieEntries = TrieEntry!(ubyte, 7, 5, 9)(");
     ct.store(stdout.lockingTextWriter());
     writeln(");");
 
