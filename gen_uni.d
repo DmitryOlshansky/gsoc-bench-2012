@@ -155,7 +155,9 @@ enum {
 
 void main(string[] argv)
 {
-    writeln("//Written in the D programming language
+    try
+    {
+        writeln("//Written in the D programming language
 /**
  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
  *
@@ -163,41 +165,45 @@ void main(string[] argv)
  *
  */
 //Automatically generated from Unicode Character Database files\n");
-    auto prefix = "http://www.unicode.org/Public/UNIDATA/";
-    downloadIfNotCached(prefix~caseFoldingSrc, caseFoldingSrc);
-    downloadIfNotCached(prefix~blocksSrc, blocksSrc);
-    downloadIfNotCached(prefix~propListSrc, propListSrc);
-    downloadIfNotCached(prefix~"extracted/"~generalPropSrc, generalPropSrc);
-    downloadIfNotCached(prefix~corePropSrc, corePropSrc);
-    downloadIfNotCached(prefix~scriptsSrc, scriptsSrc);
-    downloadIfNotCached(prefix~normalizationPropSrc, normalizationPropSrc);
-    downloadIfNotCached(prefix~hangulSyllableSrc, hangulSyllableSrc);
-    downloadIfNotCached(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
-    downloadIfNotCached(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
-    downloadIfNotCached(prefix~unicodeDataSrc, unicodeDataSrc);
+        auto prefix = "http://www.unicode.org/Public/UNIDATA/";
+        downloadIfNotCached(prefix~caseFoldingSrc, caseFoldingSrc);
+        downloadIfNotCached(prefix~blocksSrc, blocksSrc);
+        downloadIfNotCached(prefix~propListSrc, propListSrc);
+        downloadIfNotCached(prefix~"extracted/"~generalPropSrc, generalPropSrc);
+        downloadIfNotCached(prefix~corePropSrc, corePropSrc);
+        downloadIfNotCached(prefix~scriptsSrc, scriptsSrc);
+        downloadIfNotCached(prefix~normalizationPropSrc, normalizationPropSrc);
+        downloadIfNotCached(prefix~hangulSyllableSrc, hangulSyllableSrc);
+        downloadIfNotCached(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
+        downloadIfNotCached(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
+        downloadIfNotCached(prefix~unicodeDataSrc, unicodeDataSrc);
 
-    loadBlocks(blocksSrc);
-    loadProperties(propListSrc);
-    loadProperties(corePropSrc);
-    loadProperties(generalPropSrc);
-    loadProperties(scriptsSrc);
-    loadProperties(hangulSyllableSrc);
-    
-    loadDecompositions(unicodeDataSrc);
-    loadExclusions(compositionExclusionsSrc);
-    loadCaseFolding(caseFoldingSrc);
-    loadNormalization(normalizationPropSrc);
-    loadCombining(combiningClassSrc);
-    optimizeSets();
+        loadBlocks(blocksSrc);
+        loadProperties(propListSrc);
+        loadProperties(corePropSrc);
+        loadProperties(generalPropSrc);
+        loadProperties(scriptsSrc);
+        loadProperties(hangulSyllableSrc);
+        
+        loadDecompositions(unicodeDataSrc);
+        loadExclusions(compositionExclusionsSrc);
+        loadCaseFolding(caseFoldingSrc);
+        loadNormalization(normalizationPropSrc);
+        loadCombining(combiningClassSrc);
+        optimizeSets();
 
-    writeProperties();
-    writeNormalization();
-    writeBeginPlatformDependent();
-    writeTries();
-    writeCombining();
-    writeDecomposition();
-    writeCompositionTable();
-    writeEndPlatformDependent();
+        writeProperties();
+        writeBeginPlatformDependent();
+        writeTries();
+        writeCombining();
+        writeDecomposition();
+        writeCompositionTable();
+        writeEndPlatformDependent();
+    }
+    catch(Exception e)
+    {
+        stderr.writeln(e.msg);
+    }
 }
 
 void scanUniData(alias Fn)(string name, Regex!char r)
@@ -628,9 +634,7 @@ void writeProperties()
 }
 
 void writeTries()
-{
-    
-        
+{        
     ushort[dchar] simpleIndices;
     foreach(i, v; array(map!(x => x.ch)(simpleTable)))
         simpleIndices[v] = cast(ushort)i;
@@ -642,8 +646,6 @@ void writeTries()
             fullIndices[v.ch] = cast(ushort)i;
     }
 
-    //handpicked sizes, re-check later on (say with Unicode 7)
-    //also hardcoded in a few places below
     auto st = CodepointTrie!(ushort, 12, 9)(simpleIndices, ushort.max);
     auto ft = CodepointTrie!(ushort, 12, 9)(fullIndices, ushort.max);
 
@@ -655,31 +657,57 @@ void writeTries()
         assert(ft[k] == fullIndices[k]);
     }
     
-    auto lowerCase = CodepointSetTrie!(10, 11)(lowerCaseSet);
-    write("immutable lowerCaseTrieEntries = TrieEntry!(bool, 10, 11)(");
-    lowerCase.store(stdout.lockingTextWriter());
-    writeln(");");
-    auto upperCase = CodepointSetTrie!(10, 11)(upperCaseSet);
-    write("immutable upperCaseTrieEntries = TrieEntry!(bool, 10, 11)(");
-    upperCase.store(stdout.lockingTextWriter());
-    writeln(");");
+    printBest2Level("lowerCase", lowerCaseSet);
+    printBest2Level("upperCase", upperCaseSet);
+    printBest2Level("simpleCase", simpleIndices, ushort.max);
+    printBest2Level("fullCase", fullIndices, ushort.max);
 
-    write("immutable simpleCaseTrieEntries = TrieEntry!(ushort, 12, 9)(");
-    st.store(stdout.lockingTextWriter);
-    writeln(");");
-    write("immutable fullCaseTrieEntries = TrieEntry!(ushort, 12, 9)(");
-    ft.store(stdout.lockingTextWriter);
-    writeln(");");
-
-
-}
-
-void writeNormalization()
-{
-    foreach(key, value; normalization)
+    static auto getSet(string name)
     {
-        writefln("immutable %s = %s", key, charsetString(value));
+        CodepointSet set;
+        if(name in tinyProps)
+            set = CodepointSet(tinyProps[name]);
+        else if(name in smallProps)
+            set = CodepointSet(smallProps[name]);
+        else if(name in fullProps)
+            set = CodepointSet(fullProps[name]);
+        else
+            enforce(false, text("property '", name, "' not found"));
+        return set;
     }
+    //common isXXX properties
+    CodepointSet alpha = getSet("Alphabetic"); //it includes some numbers, symbols & marks
+    CodepointSet mark = getSet("Mn") | getSet("Me") | getSet("Mc");
+    CodepointSet number = getSet("Nd") | getSet("Nl") | getSet("No");
+    CodepointSet punctuation = getSet("Pd") | getSet("Ps") | getSet("Pe")
+         | getSet("Pc") | getSet("Po") | getSet("Pi") | getSet("Pf");
+    CodepointSet symbol = getSet("Sm") | getSet("Sc") | getSet("Sk") | getSet("So");
+    CodepointSet graphical = alpha | mark | number | punctuation | symbol | getSet("Zs");
+    CodepointSet format = getSet("Cf");
+    CodepointSet nonCharacter = getSet("Cn");
+
+    CodepointSet nfcQC = normalization["NFC_QCN"] | normalization["NFC_QCM"];
+    CodepointSet nfdQC = normalization["NFD_QCN"];
+    CodepointSet nfkcQC = normalization["NFKC_QCN"] | normalization["NFKC_QCM"];
+    CodepointSet nfkdQC = normalization["NFKD_QCN"];
+
+    printBest3Level("alpha", alpha);
+    printBest3Level("mark", mark);
+    printBest3Level("number", number);
+    printBest3Level("punctuation", punctuation);
+    printBest3Level("symbol", symbol);
+    printBest3Level("graphical", graphical);
+    printBest3Level("format", format);
+    printBest4Level("nonCharacter", nonCharacter);
+
+    printBest3Level("nfcQC", nfcQC);
+    printBest3Level("nfdQC", nfdQC);
+    printBest3Level("nfkcQC", nfkcQC);
+    printBest3Level("nfkdQC", nfkdQC);
+
+    //few specifics for grapheme cluster breaking algorithm
+    printBest3Level("mc", getSet("Mc"));
+    printBest3Level("graphemeExtend", getSet("Grapheme_Extend"));
 }
 
 void writeDecomposition()
@@ -691,7 +719,7 @@ void writeDecomposition()
     
     ushort[dchar] mappingCanon;
     ushort[dchar] mappingCompat;
-    //0 serves as doesn't decompose falue
+    //0 serves as doesn't decompose value
     foreach(k, v; fullCanon)
     {
         size_t idx = decompCanonTable.lowerBound(v).length;
@@ -709,24 +737,16 @@ void writeDecomposition()
     assert(decompCanonTable.length < 2^^16);
     assert(decompCompatTable.length < 2^^16);
 
-
     auto compatTrie = CodepointTrie!(ushort, 12, 9)(mappingCompat, 0);
     auto canonTrie =  CodepointTrie!(ushort, 12, 9)(mappingCanon, 0);
     
     foreach(k, v; fullCompat)
         assert(decompCompatTable[compatTrie[k]] == v);
     foreach(k, v; fullCanon)
-    {
-        //stderr.writefln("Index %d", canonTrie[k]);
-        //stderr.writefln("%04X ~~~~> %( %04X %)", k, decompCanonTable[canonTrie[k]]);
         assert(decompCanonTable[canonTrie[k]] == v);
-    }
-    write("immutable compatMappingTrieEntries = TrieEntry!(ushort, 12, 9)(");
-    compatTrie.store(stdout.lockingTextWriter());
-    writeln(");");
-    write("immutable canonMappingTrieEntries = TrieEntry!(ushort, 12, 9)(");
-    canonTrie.store(stdout.lockingTextWriter());
-    writeln(");");
+
+    printBest2Level("compatMapping", mappingCompat, cast(ushort)0);
+    printBest2Level("canonMapping", mappingCanon, cast(ushort)0);    
     writeln("immutable decompCanonTable = ", decompCanonTable, ";");
     writeln("immutable decompCompatTable = ", decompCompatTable, ";");
 }
@@ -802,10 +822,7 @@ void writeCombining()
         foreach(ch; clazz.byChar)
             assert(ct[ch] == i+1);
     }
-    write("immutable combiningClassTrieEntries = TrieEntry!(ubyte, 7, 5, 9)(");
-    ct.store(stdout.lockingTextWriter());
-    writeln(");");
-
+    printBest3Level("combiningClass", combiningMapping);
 }
 
 //fussy compare for unicode property names as per UTS-18
@@ -838,4 +855,131 @@ int comparePropertyName(Char)(const(Char)[] a, const(Char)[] b)
 bool propertyNameLess(Char)(const(Char)[] a, const(Char)[] b)
 {
     return comparePropertyName(a, b) < 0;
+}
+
+//meta helpers to generate and pick the best trie by size & levels
+
+void printBest2Level(Set)( string name, in Set set)
+    if(isCodepointSet!Set)
+{
+    alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+    size_t min = size_t.max;
+    void delegate() print;    
+    foreach(lvl_1; List)
+    {
+        enum lvl_2 = 21-lvl_1;       
+        alias CodepointSetTrie!(lvl_1, lvl_2) CurTrie;
+        CurTrie t = CurTrie(set);
+        if(t.bytes < min)
+        {
+            min = t.bytes;
+            print = createPrinter!(lvl_1, lvl_2)(name, t);
+        }
+    }
+    print();
+}
+
+void printBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
+{
+    alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+    size_t min = size_t.max;
+    void delegate() print;    
+    foreach(lvl_1; List)
+    {
+        enum lvl_2 = 21-lvl_1;       
+        alias CodepointTrie!(V, lvl_1, lvl_2) CurTrie;
+        CurTrie t = CurTrie(map, defValue);
+        if(t.bytes < min)
+        {
+            min = t.bytes;
+            print = createPrinter!(lvl_1, lvl_2)(name, t);
+        }
+    }
+    print();
+}
+
+auto printBest3Level(Set)(string name, in Set set)
+{
+    alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+    size_t min = size_t.max;
+    void delegate() print;
+    foreach(lvl_1; List)
+    foreach(lvl_2; List)
+    {
+        static if(lvl_1 + lvl_2  <= 16)
+        {
+            enum lvl_3 = 21-lvl_2-lvl_1;
+            alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3) CurTrie;
+            CurTrie t = CurTrie(set);
+            if(t.bytes < min)
+            {
+                min = t.bytes;
+                print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
+            }
+        }
+    }
+    print();
+}
+
+void printBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
+{
+    alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+    size_t min = size_t.max;
+    void delegate() print;
+    foreach(lvl_1; List)
+    foreach(lvl_2; List)
+    {
+        static if(lvl_1 + lvl_2  <= 16)
+        {
+            enum lvl_3 = 21-lvl_2-lvl_1;
+            alias CodepointTrie!(V, lvl_1, lvl_2, lvl_3) CurTrie;
+            CurTrie t = CurTrie(map, defValue);
+            if(t.bytes < min)
+            {
+                min = t.bytes;
+                print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
+            }
+        }
+    }
+    print();
+}
+
+void printBest4Level(Set)(string name, in Set set)
+{
+    alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
+    size_t min = size_t.max;
+    void delegate() print;
+    foreach(lvl_1; List)
+    foreach(lvl_2; List)
+    foreach(lvl_3; List)
+    {
+        static if(lvl_1 + lvl_2 + lvl_3  <= 16)
+        {
+            enum lvl_4 = 21-lvl_3-lvl_2-lvl_1;
+            alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3, lvl_4) CurTrie;
+            CurTrie t = CurTrie(set);
+            if(t.bytes < min)
+            {
+                min = t.bytes;
+                print = createPrinter!(lvl_1, lvl_2, lvl_3, lvl_4)(name, t);
+            }
+        }
+    }
+    print();
+}
+
+template createPrinter(Params...)
+{
+    void delegate() createPrinter(T)(string name, T trie)
+    {
+        return { 
+            writef("//%d bytes\nimmutable %sTrieEntries = TrieEntry!(%s", 
+                trie.bytes, name, typeof(T.init[0]).stringof);
+            foreach(lvl; Params[0..$])
+                writef(", %d", lvl);
+            write(")(");
+            trie.store(stdout.lockingTextWriter());
+            writeln(");");
+        };
+    }
 }

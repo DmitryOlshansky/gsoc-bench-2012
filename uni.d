@@ -882,7 +882,11 @@ unittest
     }
 }
 
-template isCodepointSet(T)
+/**
+    Check if T is some kind a set of codepoints.
+    TODO: decribe operations provided by any codepoint set.
+*/
+public template isCodepointSet(T)
 {
     enum isCodepointSet = is(typeof(T.init.isSet));
 }
@@ -1111,6 +1115,7 @@ public:
 				top = iv.b;
 		}
 	}
+
 
     //
     static RleBitSet fromIntervals(in uint[] intervals...) //@@@BUG text is not safe yet?!
@@ -3598,7 +3603,7 @@ bool loadUnicodeSet(alias table, Set, C)(in C[] name, ref Set dest)
     White_Space, white-SpAce and whitespace are all considered equals 
     and yield the same set of white space characters.
 */
-struct unicode
+public struct unicode
 {
     /**
         Performs the lookup with compile-time correctness checking.
@@ -4810,10 +4815,9 @@ private auto splitNormalized(string norm, C)(const(C)[] input)
         {
             return seekStable!norm(idx, input);
         }
-        int check =  isAllowedIn!norm(ch);
-        if(check < QC.Yes)
+        
+        if(notAllowedIn!norm(ch))
         {
-           //writeln("Seek stable idx:", idx);
            return seekStable!norm(idx, input);
         }
         lastCC = CC;
@@ -4830,7 +4834,7 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
         if(br.empty)//start is 0
             break;
         dchar ch = br.back;
-        if(combiningClassTrie[ch] == 0 && isAllowedIn!norm(ch) == QC.Yes)
+        if(combiningClassTrie[ch] == 0 && !notAllowedIn!norm(ch))
         {
             region_start = br.length - std.utf.codeLength!C(ch);
             break;
@@ -4841,7 +4845,7 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
     size_t region_end=input.length;//end is $ by default
     foreach(i, dchar ch; input[idx..$])
     {
-        if(combiningClassTrie[ch] == 0 && isAllowedIn!norm(ch) == QC.Yes)
+        if(combiningClassTrie[ch] == 0 && !notAllowedIn!norm(ch))
         {
             region_end = i+idx;
             break;
@@ -4851,16 +4855,16 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
     return tuple(region_start, region_end);
 }
 
-private QC isAllowedIn(string norm)(dchar ch)
+private bool notAllowedIn(string norm)(dchar ch)
 {
     static if(norm == NFC)
-        return NFCQCN[ch] ? QC.No : (NFCQCM[ch] ? QC.Maybe : QC.Yes);
+        return nfcQC[ch];
     else static if(norm == NFD)
-        return NFDQCN[ch] ? QC.No : QC.Yes;
+        return nfdQC[ch];
     else static if(norm == NFKC)
-        return NFKCQCN[ch] ? QC.No : (NFKCQCM[ch]  ? QC.Maybe : QC.Yes);
+        return nfkcQC[ch];
     else static if(norm == NFKD)
-        return NFKDQCN[ch] ? QC.No : QC.Yes;
+        return nfkdQC[ch];
     else
         static assert("Unknown normalization form "~norm);
 }
@@ -5383,26 +5387,28 @@ auto asTrie(T...)(in TrieEntry!T e)
     return CodepointTrie!T(e.offsets, e.sizes, e.data);
 }
 
+immutable alphaTrie = asTrie(alphaTrieEntries);
+immutable markTrie = asTrie(markTrieEntries);
+immutable numberTrie = asTrie(numberTrieEntries);
+immutable punctuationTrie = asTrie(punctuationTrieEntries);
+immutable symbolTrie = asTrie(symbolTrieEntries);
+immutable graphicalTrie = asTrie(graphicalTrieEntries);
+immutable formatTrie = asTrie(formatTrieEntries);
 
-//@@@BUG: doesn't work before mixed in source
-immutable NFCQCN = asSet(NFC_QCN);
-immutable NFCQCM = asSet(NFC_QCM);
+immutable nfcQC = asTrie(nfcQCTrieEntries);
+immutable nfdQC = asTrie(nfdQCTrieEntries);
+immutable nfkcQC = asTrie(nfkcQCTrieEntries);
+immutable nfkdQC = asTrie(nfkdQCTrieEntries);
 
-immutable NFDQCN = asSet(NFD_QCN);
+immutable graphemeExtend = asTrie(graphemeExtendTrieEntries); 
+immutable markSymbol = asTrie(mcTrieEntries);
 
-immutable NFKCQCN = asSet(NFKC_QCN);
-immutable NFKCQCM = asSet(NFKC_QCM);
-
-immutable NFKDQCN = asSet(NFKD_QCN);
-
+//TODO: move sets below to Tries
+immutable hangLV = asSet(unicodeLV);
+immutable hangLVT = asSet(unicodeLVT);
 immutable hangL = asSet(unicodeL);
 immutable hangV = asSet(unicodeV);
 immutable hangT = asSet(unicodeT);
-immutable hangLV = asSet(unicodeLV);
-immutable hangLVT = asSet(unicodeLVT);
-//TODO: move sets below to Tries
-immutable graphemeExtend = asSet(unicodeGrapheme_Extend); 
-immutable markSymbol = asSet(unicodeMc);
 
 immutable combiningClassTrie = asTrie(combiningClassTrieEntries);
 immutable canonMapping = asTrie(canonMappingTrieEntries);
