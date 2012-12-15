@@ -3774,7 +3774,7 @@ public struct unicode
         return result;
     }
     /// Disabled to prevent the mistake of creating instances of this pseudo-struct.
-    @disable ~this();
+    //@disable ~this();
 }
 
 unittest
