@@ -549,7 +549,7 @@ string uniformName(string s)
     auto app = appender!(char[])();
     foreach(c; s)
         if(c != '-' && c != ' ' && c != '_')
-            app.put(toLower(c));
+            app.put(std.ascii.toLower(c));
     return cast(string)app.data;
 }
 
@@ -778,7 +778,7 @@ void writeCompositionTable()
     size_t idx = 0;
     auto r = triples[];
     for(;;){
-        int cnt = countUntil!(x => x[0] != old)(r);
+        ptrdiff_t cnt = countUntil!(x => x[0] != old)(r);
         if(cnt == -1)//end of input
             cnt = r.length;
         assert(idx < 2048);
@@ -842,7 +842,8 @@ int comparePropertyName(Char)(const(Char)[] a, const(Char)[] b)
             return b.empty ? 0 : -1;
         if(b.empty)
             return 1;
-        auto ca = toLower(a.front), cb = toLower(b.front);
+		// names are all in ASCII either way though whitespace might be unicode
+        auto ca = std.ascii.toLower(a.front), cb = std.ascii.toLower(b.front);
         if(ca > cb)
             return 1;
         else if( ca < cb)

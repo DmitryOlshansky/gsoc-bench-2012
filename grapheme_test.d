@@ -6,7 +6,7 @@ void main()
 	dchar[] chars;
 	bool[] splits;
 	size_t count;
-    foreach(line; File("GraphemeBreakTest.txt").byLine)
+    foreach(line; stdin.byLine)
     {
     	count++;
     	line = findSplitBefore(line, "#")[0];
