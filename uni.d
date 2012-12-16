@@ -3851,6 +3851,11 @@ enum controlSwitch = `
 `;
 //TODO: redo hangul stuff algorithmically in case of Graphemes too, kill unrolled switches
 
+private static bool isRegionalIndicator(dchar ch)
+{
+    return ch >= '\U0001F1E6' && ch <= '\U0001F1FF';
+}
+
 template genericDecodeGrapheme(bool getValue)
 {
     static if(getValue)
@@ -3863,6 +3868,7 @@ template genericDecodeGrapheme(bool getValue)
         enum GraphemeState {
             Start,
             CR,
+            RI, 
             L,
             V,
             LVT
@@ -3884,47 +3890,40 @@ template genericDecodeGrapheme(bool getValue)
             final switch(state) with(GraphemeState)
             {
             case Start:
-                switch(ch)
-                {
-                case '\r':
+                mixin(eat);
+                if(ch == '\r')
                     state = CR;
-                    mixin(eat);
-                break;
-                //
-                mixin(hangul_L);
+                else if(isRegionalIndicator(ch))
+                    state = RI;             
+                else if(hangL[ch])
                     state = L;
-                    mixin(eat);
-                break;
-                //
-                mixin(hangul_LV);
-                mixin(hangul_V);
+                else if(hangLV[ch] || hangV[ch])
                     state = V;
-                    mixin(eat);
-                    break;
-                //
-                mixin(hangul_LVT);
+                else if(hangLVT[ch])
                     state = LVT;
-                    mixin(eat);
-                    break;
-                //
-                mixin(hangul_T);
+                else if(hangT[ch])
                     state = LVT;
-                    mixin(eat);
-                    break;
-                
-                mixin(controlSwitch);
-                    mixin(eat);
-                    goto L_End;
-                
-                default:
-                    mixin(eat);
-                    goto L_End_Extend;
+                else
+                {
+                    switch(ch)
+                    {
+                    mixin(controlSwitch);
+                        goto L_End;
+                    default:
+                        goto L_End_Extend;
+                    }
                 }
             break;
             case CR:
                 if(ch == '\n')
                     mixin(eat);
                 goto L_End_Extend;
+            break;
+            case RI:
+                if(isRegionalIndicator(ch))
+                    mixin(eat);
+                else 
+                    goto L_End_Extend;                
             break;
             case L:
                 if(hangL[ch])
@@ -3969,7 +3968,7 @@ template genericDecodeGrapheme(bool getValue)
         {
             ch = range.front;
             //extend & spacing marks
-            if(!graphemeExtend[ch] && !markSymbol[ch])
+            if(!graphemeExtend[ch] && !spacingMark[ch])
                 break;
             mixin(eat);
         }
@@ -5313,7 +5312,7 @@ immutable nfkcQC = asTrie(nfkcQCTrieEntries);
 immutable nfkdQC = asTrie(nfkdQCTrieEntries);
 
 immutable graphemeExtend = asTrie(graphemeExtendTrieEntries); 
-immutable markSymbol = asTrie(mcTrieEntries);
+immutable spacingMark = asTrie(mcTrieEntries);
 
 //TODO: move sets below to Tries
 immutable hangLV = asSet(unicodeLV);
