@@ -5,13 +5,13 @@ int main(string args[]){
     auto normalizer(string kind){
         switch(kind){
             case "nfc":
-                return (const(char[]) inp){ normalize!NFC(inp); };
+                return (const(char[]) inp){ return normalize!NFC(inp); };
             case "nfd":
-                return (const(char[]) inp){ normalize!NFD(inp); };
+                return (const(char[]) inp){ return normalize!NFD(inp); };
             case "nfkd":
-                return (const(char[]) inp){ normalize!NFKD(inp); };
+                return (const(char[]) inp){ return normalize!NFKD(inp); };
             case "nfkc":
-                return (const(char[]) inp){ normalize!NFKC(inp); };
+                return (const(char[]) inp){ return normalize!NFKC(inp); };
             default:
                 enforce(false, "no normalization form: " ~ kind);
                 assert(false);
@@ -25,7 +25,7 @@ int main(string args[]){
     auto fn = normalizer(args[1]);
     foreach(name; args[2..$]){
         char[] data = cast(char[])read(name);  
-        write(name~"_d_"~args[1], normalize!NFD(data));
+        write(name~"_d_"~args[1], fn(data));
     }
     return 0;
 }

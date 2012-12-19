@@ -4486,7 +4486,8 @@ bool isJamoL(dchar ch)
 bool isJamoT(dchar ch)
 {
     //first cmp rejects ~ 1M codepoints above trailing jamo range
-    return ch < jamoTBase+jamoTCount && ch >= jamoTBase;
+    //Note: ch == jamoTBase doesn't indicate trailing jamo (TIndex must be > 0)
+    return ch < jamoTBase+jamoTCount && ch > jamoTBase;
 }
 
 //Tests if $(D ch) is a Hangul trailnig consonant jamo.
@@ -4506,8 +4507,7 @@ int hangulSyllableIndex(dchar ch)
 Grapheme hangulDecompose(dchar ch)
 {
     int idxS = cast(int)ch - jamoSBase;
-    if(idxS < 0 || idxS > jamoSCount) return Grapheme(ch);
-
+    if(idxS < 0 || idxS >= jamoSCount) return Grapheme(ch);
     int idxL = idxS / jamoNCount;   
     int idxV = (idxS % jamoNCount) / jamoTCount;
     int idxT = idxS % jamoTCount;
@@ -4779,7 +4779,7 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
     return tuple(region_start, region_end);
 }
 
-private bool notAllowedIn(string norm)(dchar ch)
+public bool notAllowedIn(string norm)(dchar ch)
 {
     static if(norm == NFC)
         return nfcQC[ch];

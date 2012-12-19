@@ -3,10 +3,13 @@ import uni, std.file, std.algorithm, std.range, std.stdio, std.utf;
 //dump the vicinity of idx
 void dump(char[] buf, size_t idx)
 {
-    auto bwd = find!(x => combiningClass(x) == 0)(buf[0..idx].retro).source.length;
-    auto fwd = buf.length - find!(x => combiningClass(x) == 0)(buf[idx..$]).length;
-    writefln("back: %d; fwd %d", bwd, fwd);
-    writeln("[%( 0x%05x, %)]", buf[bwd..fwd]);
+    size_t back = idx, fwd = idx;
+    for(size_t i=0; i<10 && back > 0; i++)
+        back -= strideBack(buf, back);
+    for(size_t i=0; i<20 && fwd < buf.length; i++)
+        fwd += std.utf.stride(buf, fwd);
+    writefln("back: %d; fwd %d", back, fwd);
+    writefln("[%( 0x%05x, %)]", buf[back..fwd]);
 }
 
 
@@ -26,21 +29,19 @@ int main(string[] args)
         if(idx2 == second.length)
         {
             writeln("2nd is shorter!");
-            write(first[idx1..$]);
             break;
         }
         dchar rhs = decode(second, idx2);
         if(lhs != rhs)
         {
-            dump(first, idx1);
-            dump(second, idx2);            
-            break;
+            dump(first, idx1-codeLength!char(lhs));
+            dump(second, idx2-codeLength!char(rhs));            
+            return 1;
         }
     }
     if(idx2 != second.length)
     {
         writeln("1st is shorter!");
-        write(second[idx2..$]);
     }
     return 0;
 }
