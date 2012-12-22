@@ -13,8 +13,6 @@ import uni, std.stdio, std.traits, std.typetuple,
 import std.file:exists;
 static import std.ascii;
 
-alias RleBitSet!uint CodepointSet;
-
 //common binary propertiy sets and their aliases
 CodepointSet[string] props;
 string[string] aliases;
@@ -114,15 +112,10 @@ struct CompEntry
     dchar rhs, composed;
 }
 
-struct SetEntry(T)
-{
-    T[] data;
-}
-
-struct UnicodeProperty(T)
+struct UnicodeProperty
 {
     string name;
-    SetEntry!T set;
+    ubyte[] compressed;
 }
 
 struct TrieEntry(T...)
@@ -133,11 +126,6 @@ struct TrieEntry(T...)
 }
 
 `;
-
-//size optimal sets
-RleBitSet!ubyte[string] tinyProps;
-RleBitSet!ushort[string] smallProps;
-RleBitSet!uint[string] fullProps;
 
 enum { 
     caseFoldingSrc = "CaseFolding.txt",
@@ -186,19 +174,20 @@ void main(string[] argv)
         loadProperties(hangulSyllableSrc);
         
         loadDecompositions(unicodeDataSrc);
-        loadExclusions(compositionExclusionsSrc);
+        loadExclusions(compositionExclusionsSrc);        
         loadCaseFolding(caseFoldingSrc);
+        
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
-        optimizeSets();
 
+        
         writeProperties();
         writeBeginPlatformDependent();
         writeTries();
         writeCombining();
         writeDecomposition();
         writeCompositionTable();
-        writeEndPlatformDependent();
+        writeEndPlatformDependent();        
     }
     catch(Exception e)
     {
@@ -332,10 +321,13 @@ void loadBlocks(string f)
 
 void loadProperties(string inp)
 {
+    auto acceptProp = (string name) => countUntil(blacklist, name) < 0  && !name.startsWith("Changes");
     auto r = regex(`^(?:(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*([a-zA-Z_0-9]*)\s*#|# [a-zA-Z_0-9]+=([a-zA-Z_0-9]+))`);
     string aliasStr;
     scanUniData!((m){
         auto name = to!string(m.captures[4]);
+        if(!acceptProp(name)) 
+            return;
         if(!m.captures[5].empty)
             aliasStr = to!string(m.captures[5]);
         else if(!m.captures[1].empty)
@@ -344,9 +336,8 @@ void loadProperties(string inp)
             auto sb = m.captures[2];
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
-            if(name !in props){
+            if(name !in props)                
                 props[name] = CodepointSet.init;
-            }
             props[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
             if(!aliasStr.empty)
             {
@@ -396,7 +387,6 @@ void loadNormalization(string inp)
                 normalization[name] = CodepointSet.init;
             normalization[name] |= x;
         }
-        //stderr.writeln(m.hit);
     })(inp, r);
 }
 
@@ -481,10 +471,11 @@ void loadCombining(string inp)
             combiningClass[value] |= x;
         }
     })(inp, r);
-    
-    foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
+    auto arr = combiningClass[1..255];
+    foreach(i, clazz; arr)//0 is a default for all of 1M+ codepoints
     {
-        foreach(ch; clazz.byChar)
+        auto y = clazz.byChar;
+        foreach(ch; y)
             combiningMapping[ch] = cast(ubyte)(i+1);
     }
 }
@@ -499,38 +490,13 @@ void loadExclusions(string inp)
     })(inp, r);
 }
 
-string charsetString(T)(in RleBitSet!T set, string sep=";\n")
+string charsetString(CodepointSet set, string sep=";\n")
 {
     auto app = appender!(char[])();
-    auto raw = appender!(T[]);
-    set.store(raw);
-    formattedWrite(app, "SetEntry!"~T.stringof
-        ~"([%(0x%x, %)]);", raw.data);
+    ubyte[] data = compressIntervals(set.byInterval);
+    assert(CodepointSet.fromIntervals(decompressIntervals(data)) == set);
+    formattedWrite(app, "[%(0x%x, %)];", data);
     return cast(string)app.data;
-}
-
-void optimizeSets()
-{
-    foreach(k, v; props)
-    {
-        if(countUntil(blacklist, k) < 0  && !k.startsWith("Changes"))
-        {
-            RleBitSet!ubyte tiny = v;
-            RleBitSet!ushort small = v;
-            if(tiny.bytes < small.bytes){
-                if(tiny.bytes < v.bytes)
-                    tinyProps[k] = tiny;
-                else
-                    fullProps[k] = v;
-            }
-            else if(small.bytes < v.bytes)
-            {
-                smallProps[k] = small;
-            }
-            else 
-                fullProps[k] = v;
-        }
-    }
 }
 
 string identName(string s)
@@ -557,16 +523,15 @@ void printSetTable(SetHash)(SetHash hash)
  {  
     foreach(k, v; hash)
     {
-        writef("immutable unicode%s = ", identName(k));
+        writef("immutable ubyte[] unicode%s = ", identName(k));
         writeln(charsetString(v));
     }
 }
 
 
-
-void printPropertyTable(T)(RleBitSet!T[string] hash, string tabname)
+void printPropertyTable(CodepointSet[string] hash, string tabname)
 {
-    string tname = "immutable(UnicodeProperty!"~T.stringof~")";
+    string tname = "immutable(UnicodeProperty)";
     writef("\nimmutable %s[] %s = [\n", tname, tabname);
     string[] lines;
     string[] namesOnly;
@@ -625,12 +590,8 @@ void writeEndPlatformDependent()
 
 void writeProperties()
 {
-    printSetTable(tinyProps);
-    printSetTable(smallProps);
-    printSetTable(fullProps);
-    printPropertyTable(tinyProps, "tinyUnicodeProps");
-    printPropertyTable(smallProps, "smallUnicodeProps");
-    printPropertyTable(fullProps, "fullUnicodeProps");
+    printSetTable(props);    
+    printPropertyTable(props, "unicodeProps");
 }
 
 void writeTries()
@@ -656,35 +617,23 @@ void writeTries()
     foreach(k, v; fullIndices){
         assert(ft[k] == fullIndices[k]);
     }
-    
+
     printBest2Level("lowerCase", lowerCaseSet);
     printBest2Level("upperCase", upperCaseSet);
     printBest2Level("simpleCase", simpleIndices, ushort.max);
     printBest2Level("fullCase", fullIndices, ushort.max);
 
-    static auto getSet(string name)
-    {
-        CodepointSet set;
-        if(name in tinyProps)
-            set = CodepointSet(tinyProps[name]);
-        else if(name in smallProps)
-            set = CodepointSet(smallProps[name]);
-        else if(name in fullProps)
-            set = CodepointSet(fullProps[name]);
-        else
-            enforce(false, text("property '", name, "' not found"));
-        return set;
-    }
     //common isXXX properties
-    CodepointSet alpha = getSet("Alphabetic"); //it includes some numbers, symbols & marks
-    CodepointSet mark = getSet("Mn") | getSet("Me") | getSet("Mc");
-    CodepointSet number = getSet("Nd") | getSet("Nl") | getSet("No");
-    CodepointSet punctuation = getSet("Pd") | getSet("Ps") | getSet("Pe")
-         | getSet("Pc") | getSet("Po") | getSet("Pi") | getSet("Pf");
-    CodepointSet symbol = getSet("Sm") | getSet("Sc") | getSet("Sk") | getSet("So");
-    CodepointSet graphical = alpha | mark | number | punctuation | symbol | getSet("Zs");
-    CodepointSet format = getSet("Cf");
-    CodepointSet nonCharacter = getSet("Cn");
+    CodepointSet alpha = props["Alphabetic"]; //it includes some numbers, symbols & marks
+    CodepointSet mark = props["Mn"] | props["Me"] | props["Mc"];
+    CodepointSet number = props["Nd"] | props["Nl"] | props["No"];
+    CodepointSet punctuation = props["Pd"] | props["Ps"] | props["Pe"]
+         | props["Pc"] | props["Po"] | props["Pi"] | props["Pf"];
+    CodepointSet symbol = props["Sm"] | props["Sc"] | props["Sk"] | props["So"];
+    CodepointSet graphical = alpha | mark | number | punctuation | symbol | props["Zs"];
+    CodepointSet format = props["Cf"];
+    CodepointSet nonCharacter = props["Cn"];
+
 
     CodepointSet nfcQC = normalization["NFC_QCN"] | normalization["NFC_QCM"];
     CodepointSet nfdQC = normalization["NFD_QCN"];
@@ -706,8 +655,8 @@ void writeTries()
     printBest3Level("nfkdQC", nfkdQC);
 
     //few specifics for grapheme cluster breaking algorithm
-    printBest3Level("mc", getSet("Mc"));
-    printBest3Level("graphemeExtend", getSet("Grapheme_Extend"));
+    printBest3Level("mc", props["Mc"]);
+    printBest3Level("graphemeExtend", props["Grapheme_Extend"]);
 }
 
 void writeDecomposition()

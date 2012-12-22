@@ -164,10 +164,10 @@ private:
 enum lastDchar = 0x10FFFF;
 
 auto force(T, F)(F from)
-	if(isIntegral!T && !is(T == F))
+    if(isIntegral!T && !is(T == F))
 {
-	assert(from <= T.max && from >= T.min);
-	return cast(T)from;
+    assert(from <= T.max && from >= T.min);
+    return cast(T)from;
 }
 
 auto force(T, F)(F from)
@@ -179,30 +179,30 @@ auto force(T, F)(F from)
 //cheap algorithm grease ;)
 auto adaptIntRange(T, F)(F[] src)
 {
-	static struct ConvertIntegers//@@@BUG when in the 9 hells will map be copyable again?!
-	{
-		private F[] data;
+    static struct ConvertIntegers//@@@BUG when in the 9 hells will map be copyable again?!
+    {
+        private F[] data;
 
-		@property T front()
-		{
-			return force!T(data.front);
-		}
+        @property T front()
+        {
+            return force!T(data.front);
+        }
 
-		void popFront(){ data.popFront(); }
+        void popFront(){ data.popFront(); }
 
-		@property bool empty()const { return data.empty; }
+        @property bool empty()const { return data.empty; }
 
-		@property size_t length()const { return data.length; }
+        @property size_t length()const { return data.length; }
 
-		auto opSlice(size_t s, size_t e)
-		{
-		    return ConvertIntegers(data[s..e]);
+        auto opSlice(size_t s, size_t e)
+        {
+            return ConvertIntegers(data[s..e]);
         }
 
         //doesn't work with slices @@@BUG 7097
         @property size_t opDollar(){   return data.length; }
-	}
-	return ConvertIntegers(src);
+    }
+    return ConvertIntegers(src);
 }
 
 //repeat bit X times pattern in val assuming it's length is 'bits'
@@ -271,14 +271,14 @@ struct MultiArray(Types...)
             {//extend
                 size_t delta = (new_size - sz[n]);
                 sz[n] += delta;
-    			delta = spaceFor!(bitSizeOf!(Types[n]))(delta);
+                delta = spaceFor!(bitSizeOf!(Types[n]))(delta);
                 storage.length +=  delta;//extend space at end
                 //raw_slice!x must follow resize as it could be moved!
                 //next stmts move all data past this array, last-one-goes-first
                 static if(n != dim-1)
                 {
                     auto start = raw_ptr!(n+1);
-    				//len includes delta
+                    //len includes delta
                     size_t len = (storage.ptr+storage.length-start);
 
                     copy(retro(start[0..len-delta])
@@ -293,7 +293,7 @@ struct MultiArray(Types...)
             else if(new_size < sz[n])
             {//shrink
                 size_t delta = (sz[n] - new_size);
-    			sz[n] -= delta;
+                sz[n] -= delta;
                 delta = spaceFor!(bitSizeOf!(Types[n]))(delta);            
                 //move all data past this array, forward direction
                 static if(n != dim-1)
@@ -307,21 +307,21 @@ struct MultiArray(Types...)
                     foreach(i; n+1..dim)
                         offsets[i] -= delta;
                 }
-    			storage.length -= delta;
+                storage.length -= delta;
             }
             //else - NOP
         }
     }
 
-	@property size_t bytes(size_t n=size_t.max)() const
-	{
-		static if(n == size_t.max)
-			return storage.length*size_t.sizeof;
-		else static if(n != Types.length-1)
-			return (raw_ptr!(n+1)-raw_ptr!n)*size_t.sizeof;
-		else
-			return (storage.ptr+storage.length - raw_ptr!n)*size_t.sizeof;
-	}
+    @property size_t bytes(size_t n=size_t.max)() const
+    {
+        static if(n == size_t.max)
+            return storage.length*size_t.sizeof;
+        else static if(n != Types.length-1)
+            return (raw_ptr!(n+1)-raw_ptr!n)*size_t.sizeof;
+        else
+            return (storage.ptr+storage.length - raw_ptr!n)*size_t.sizeof;
+    }
 
     void store(OutputRange)(OutputRange sink)
         if(isOutputRange!(OutputRange, ubyte))         
@@ -683,7 +683,16 @@ private:
     T* arr;
 }
 
+auto sliceOverIndexed(T)(size_t a, size_t b, const(T)* x)
+    if(is(Unqual!T == T))
+{
+    return SliceOverIndexed!(const(T))(a, b, x);
+}
+
+//@@@BUG inout is out of Mojo: 
+//...SliceOverIndexed.arr only parameters or stack based variables can be inout
 auto sliceOverIndexed(T)(size_t a, size_t b, T* x)
+    if(is(Unqual!T == T))
 {
     return SliceOverIndexed!T(a, b, x);
 }
@@ -883,12 +892,29 @@ unittest
 }
 
 /**
-    Check if T is some kind a set of codepoints.
+    Checks if T is some kind a set of codepoints. Intended for template constraints.
     TODO: decribe operations provided by any codepoint set.
 */
 public template isCodepointSet(T)
 {
     enum isCodepointSet = is(typeof(T.init.isSet));
+}
+
+/**
+    Checks if $(D T) is a pair of integers that implicitly convert to $(D V).
+    The following code must compile for any pair $(D T):
+    ---
+    (T x){ V a = x[0]; V b = x[1];}    
+    ---
+    The following must not compile:
+     ---
+    (T x){ V c = x[2];}    
+    ---
+*/
+public template isIntegralPair(T, V=uint)
+{
+    enum isIntegralPair = is(typeof((T x){ V a = x[0]; V b = x[1];}))
+        && !is(typeof((T x){ V c = x[2]; }));
 }
 
 //bootstrap full set operations from 3 primitives:
@@ -957,10 +983,10 @@ mixin template BasicSetOps()
         static if(op == "|")    //union
         {
             static if(is(U:dchar))
-			{
+            {
                 this.addInterval(rhs, rhs+1);
-				return this;
-			}
+                return this;
+            }
             else
                 return this.add(rhs);
         }
@@ -986,8 +1012,9 @@ mixin template BasicSetOps()
         {
             this(in This set)
             {
-                this.r = set.byInterval;
-                cur = r.front.a;
+                r = set.byInterval;
+                if(!r.empty)                    
+                    cur = r.front.a;
             }
 
             @property dchar front() const
@@ -1032,20 +1059,22 @@ mixin template BasicSetOps()
         foreach(i; byInterval)
                 formattedWrite(sink, "[%d..%d) ", i.a, i.b);
     }
-
-	ref add()(uint a, uint b)
+    /**
+        Add an interval [a, b) to this set.
+    */
+    ref add()(uint a, uint b)
     {
         addInterval(a, b);
         return this;
     }
-	enum isSet = true;
+    enum isSet = true;
 private:
 
     ref intersect(U)(in U rhs)
         if(isCodepointSet!U)
     {
         Marker mark;
-        foreach( i; rhs.byInterval())
+        foreach( i; rhs.byInterval)
         {
             mark = this.dropUpTo(i.a, mark);
             mark = this.skipUpTo(i.b, mark);
@@ -1087,14 +1116,14 @@ private:
         if(isCodepointSet!U)
     {
         Marker start;
-        foreach(i; rhs.byInterval())
+        foreach(i; rhs.byInterval)
         {
             start = addInterval(i.a, i.b, start);
         }
         return this;
     }
 
-};
+}
 
 /**
     RleBitSet is a data structure for sparce integer sets in general.
@@ -1104,21 +1133,21 @@ private:
     if(isUnsigned!T)
 {
 public:
-	this(Set)(in Set set)
-		if(isCodepointSet!Set)
-	{
-		size_t top=0;
-		foreach(iv; set.byInterval)
-		{
-				appendPad(data, iv.a - top);
-				appendPad(data, iv.b - iv.a);
-				top = iv.b;
-		}
-	}
+    this(Set)(in Set set)
+        if(isCodepointSet!Set)
+    {
+        size_t top=0;
+        foreach(iv; set.byInterval)
+        {
+                appendPad(data, iv.a - top);
+                appendPad(data, iv.b - iv.a);
+                top = iv.b;
+        }
+    }
 
 
     //
-    static RleBitSet fromIntervals(in uint[] intervals...) //@@@BUG text is not safe yet?!
+    static RleBitSet(in uint[] intervals...) //@@@BUG text is not safe yet?!
     in
     {
         assert(intervals.length % 2 == 0, "Odd number of interval bounds [a, b)!");
@@ -1160,7 +1189,6 @@ public:
 
     @property auto byInterval() const
     {
-        import std.typecons;
         static struct IntervalRange
         {
             this(in RleBitSet set_)
@@ -1192,7 +1220,7 @@ public:
 
             @property auto front() const
             {
-                return Tuple!(uint,"a", uint,"b")(a, b);
+                return CodepointInterval(a, b);
             }
 
             @property bool empty() const
@@ -1310,25 +1338,25 @@ public:
     }
 
     ///Number of characters in this set
-	@property size_t length() const
-	{
-		size_t sum = 0 ;
-		for(size_t i=0; i<data.length; i+=2)
-			sum += data[i+1];//sum up positive intervals
-		return sum;
-	}
+    @property size_t length() const
+    {
+        size_t sum = 0 ;
+        for(size_t i=0; i<data.length; i+=2)
+            sum += data[i+1];//sum up positive intervals
+        return sum;
+    }
 
-	ref invert()
-	{
-		//TODO: implement inversion
+    ref invert()
+    {
+        //TODO: implement inversion
         assert(0);
-		//return this;
-	}
+        //return this;
+    }
 
-	@property bool empty()const
-	{
-		return data.length == 0;
-	}
+    @property bool empty()const
+    {
+        return data.length == 0;
+    }
 
     void store(OutputRange)(scope OutputRange sink) const
         if(isOutputRange!(OutputRange, T))
@@ -1646,7 +1674,10 @@ private:
 };
 
 ///Recommended default type for set of codepoints.
-alias RleBitSet!uint CodepointSet;
+public alias InversionList!GcPolicy CodepointSet;
+
+///Recommended variant of $(D Tuple) to represent intervals of codepoints.
+public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
 
 /**
     $(D InversionList) is a packed data structure for a set of codepoints.
@@ -1654,19 +1685,26 @@ alias RleBitSet!uint CodepointSet;
 */
 @trusted public struct InversionList(SP=GcPolicy)
 {
-	this(Set)(in Set set)
-		if(is(typeof(Set.init.isSet)))
-	{
-		uint[] arr;
-		foreach(v; set.byInterval)
-		{
-			arr ~= v.a;
-			arr ~= v.b;
-		}
-		data = Uint24Array!(SP)(arr);
-	}
+    this(Set)(in Set set)
+        if(is(typeof(Set.init.isSet)))
+    {
+        uint[] arr;
+        foreach(v; set.byInterval)
+        {
+            arr ~= v.a;
+            arr ~= v.b;
+        }
+        data = Uint24Array!(SP)(arr);
+    }
 
-    static InversionList fromIntervals(uint[] intervals...)
+    this(Range)(Range intervals)
+        if(isIntegralPair!(ElementType!Range))
+    {       
+        auto flattened = roundRobin(intervals.map!"a[0]", intervals.map!"a[1]");
+        data = Uint24Array!(SP)(flattened);
+    }
+
+    this()(uint[] intervals...)
     in
     {
         assert(intervals.length % 2 == 0, "Odd number of interval bounds [a, b)!");
@@ -1675,9 +1713,7 @@ alias RleBitSet!uint CodepointSet;
     }
     body
     {
-        InversionList list;
-        list.data = Uint24Array!(SP)(intervals);
-        return list;
+        data = Uint24Array!(SP)(intervals);
     }
 
     this(this)
@@ -1700,23 +1736,23 @@ alias RleBitSet!uint CodepointSet;
             @property auto front()const
             {
                 uint a = *cast(uint*)slice.ptr;
-                uint b= *cast(uint*)(slice.ptr+1);
+                uint b = *cast(uint*)(slice.ptr+3);
                 //optimize a bit, since we go by even steps
-                return Tuple!(uint, "a", uint, "b")(a & 0xFF_FFFF, b >> 8);
+                return CodepointInterval(a & 0xFF_FFFF, b >> 8);
             }
 
             @property auto back()const
             {
-                uint a = *cast(uint*)slice.ptr[len-2];
-                uint b = *cast(uint*)slice.ptr[len-1];
+                uint a = *cast(uint*)&slice.ptr[slice.length-3];
+                uint b = *cast(uint*)&slice.ptr[slice.length-2];
                 //optimize a bit, since we go by even steps
-                return Tuple!(uint, "a", uint, "b")(a & 0xFF_FFFF, b >> 8);
+                return CodepointInterval(a & 0xFF_FFFF, b >> 8);
             }
 
             void popFront()
             {
-               len -= 2;
-               slice = slice[3..$];//3*2 16bit == 2*24 bits
+                len -= 2;
+                slice = slice[3..$];//3*2 16bit == 2*24 bits
             }
 
             void popBack()
@@ -1729,48 +1765,49 @@ alias RleBitSet!uint CodepointSet;
 
             @property auto save(){ return this; }
         private:
-            const(ushort)[] slice;
+            const(ubyte)[] slice;
             size_t len;
         }
         return Intervals(data.data, data.length);
     }
 
-    bool opIndex(uint val)
+    bool opIndex(uint val) const
     {
-        return assumeSorted(data[]).lowerBound!(SearchPolicy.gallop)(val).length & 1;
+        // the <= ensures that searching in  interval of [a, b) for 'a' you get .length == 1
+        return assumeSorted!((a,b) => a<=b)(data[]).lowerBound(val).length & 1;
     }
 
-	///Number of characters in this set
-	@property size_t length() const
-	{
-		size_t sum = 0;
-		foreach(iv; byInterval)
-		{
-			sum += iv.b - iv.a;
-		}
-		return sum;
-	}
+    ///Number of characters in this set
+    @property size_t length() const
+    {
+        size_t sum = 0;
+        foreach(iv; byInterval)
+        {
+            sum += iv.b - iv.a;
+        }
+        return sum;
+    }
 
-	///Do an in-place inversion of set.  See also '!' unary operator.
-	ref invert()
-	{
-		if(data.length == 0)
-		{
-			addInterval(0, lastDchar+1);
-			return this;
-		}
-		if(data[0] != 0)
-			genericReplace(data, 0, 0, [0]);
-		if(data[data.length-1] != lastDchar+1)
-			genericReplace(data, data.length, data.length, [lastDchar+1]);
+    ///Do an in-place inversion of set.  See also '!' unary operator.
+    ref invert()
+    {
+        if(data.length == 0)
+        {
+            addInterval(0, lastDchar+1);
+            return this;
+        }
+        if(data[0] != 0)
+            genericReplace(data, 0, 0, [0]);
+        if(data[data.length-1] != lastDchar+1)
+            genericReplace(data, data.length, data.length, [lastDchar+1]);
 
-		return this;
-	}
+        return this;
+    }
 
-	@property bool empty() const
-	{
-		return data.length == 0;
-	}
+    @property bool empty() const
+    {
+        return data.length == 0;
+    }
 
     mixin BasicSetOps;
 private:
@@ -1959,6 +1996,56 @@ private:
     Uint24Array!SP data;
 };
 
+//pedantic version for ctfe, and aligned-access only architectures
+@trusted uint safeRead24(const ubyte* ptr, size_t idx)
+{
+    idx *= 3;
+    version(LittleEndian)
+        return ptr[idx] + (cast(uint)ptr[idx+1]<<8)
+             + (cast(uint)ptr[idx+2]<<16);
+    else
+        return (cast(uint)ptr[idx]<<16) + (cast(uint)ptr[idx+1]<<8)
+             + ptr[idx+2];
+}
+
+//ditto
+@trusted void safeWrite24(ubyte* ptr, uint val, size_t idx)
+{
+    idx *= 3;
+    version(LittleEndian)
+    {
+        ptr[idx] = val & 0xFF;
+        ptr[idx+1] = (val>>8) & 0xFF;
+        ptr[idx+2] = (val>>16) & 0xFF;
+    }
+    else
+    {
+        ptr[idx] = (val>>16) & 0xFF;
+        ptr[idx+1] = (val>>8) & 0xFF;
+        ptr[idx+2] = val & 0xFF;
+    }
+}
+
+//unaligned x86-like read/write functions
+@trusted uint unalignedRead24(const ubyte* ptr, size_t idx)
+{
+    uint* src = cast(uint*)(ptr+3*idx);
+    version(LittleEndian)
+        return *src & 0xFF_FFFF;
+    else
+        return *src >> 8;
+}
+
+//ditto
+@trusted void unalignedWrite24(ubyte* ptr, uint val, size_t idx)
+{
+    uint* dest = cast(uint*)(cast(ubyte*)ptr + 3*idx);
+    version(LittleEndian)
+        *dest = val | (*dest & 0xFF00_0000);
+    else
+        *dest = (val<<8) | (*dest & 0xFF);
+}
+
 //Packed array of 24-bit integers.
 @trusted struct Uint24Array(SP=GcPolicy)
 {
@@ -1969,38 +2056,40 @@ private:
         copy(range, this[]);
     }
 
-	this(Range)(Range range)
-        if(isInputRange!Range &&  !hasLength!Range)
-	{
-		auto a = array(range); //TODO: use better things like appending to Uint24Array
-		this(a);
-	}
+    this(Range)(Range range)
+        if(isInputRange!Range && !hasLength!Range)
+    {
+        auto a = array(range); //TODO: use better things like appending to Uint24Array
+        this(a);
+    }
 
     this(this)
     {
         data = SP.dup(data);
     }
 
+    static if(!is(SP :GcPolicy))
     ~this()
     {
         SP.destroy(data);
     }
 
-    @property size_t length()const { return roundDiv(data.length*2, 3); }
+    @property size_t length()const { return data.length/3; }
 
     @property void length(size_t len)
     {
-        data = SP.realloc(data, roundDiv(len*3,2));
+        data = SP.realloc(data, len*3);
     }
 
     ///Read 24-bit packed integer
     uint opIndex(size_t idx)const
     {
-        uint* ptr = cast(uint*)(data.ptr+3*idx/2);
-        version(LittleEndian)
-            return idx & 1 ? *ptr >>8 : *ptr & 0xFF_FFFF;
-        else version(BigEndian)
-            return idx & 1 ? *ptr & 0xFF_FFFF : *ptr >>8;
+        if(__ctfe)
+            return safeRead24(data.ptr, idx);
+        version(std_uni_aligned_reads)
+            return safeRead24(data.ptr, idx);
+        else
+            return unalignedRead24(data.ptr, idx);
     }
 
     ///Write 24-bit packed integer
@@ -2011,26 +2100,32 @@ private:
     }
     body
     {
-        uint* ptr = cast(uint*)(data.ptr+3*idx/2);
-        version(LittleEndian)
-        {
-            *ptr = idx & 1 ? (val<<8) | (*ptr&0xFF)
-                : val | (*ptr & 0xFF00_0000);
-        }
-        else version(BigEndian)
-        {
-            *ptr = idx & 1 ? val | (*ptr & 0xFF00_0000)
-                : (val<<8) | (*ptr&0xFF);
-        }
+        if(__ctfe)
+            return safeWrite24(data.ptr, val, idx);
+        version(std_uni_aligned_reads)
+            return safeRead24(data.ptr, idx);
+        else
+            return unalignedWrite24(data.ptr, val, idx);
     }
 
     //
     auto opSlice(size_t from, size_t to)
     {
-        return SliceOverIndexed!Uint24Array(from, to, &this);
+        return sliceOverIndexed(from, to, &this);
     }
+
+    auto opSlice(size_t from, size_t to)const
+    {
+        return sliceOverIndexed(from, to, &this);
+    }
+
     //
     auto opSlice()
+    {
+        return opSlice(0, length);
+    }
+
+    auto opSlice() const
     {
         return opSlice(0, length);
     }
@@ -2043,7 +2138,7 @@ private:
     }
 
     void append(Range)(Range range)
-        if(isInputRange!Range && hasLength!Range)
+        if(isInputRange!Range && hasLength!Range && is(ElementType!Range : uint))
     {
         size_t nl = length + range.length;
         length = nl;
@@ -2052,15 +2147,12 @@ private:
 
     bool opEquals(const ref Uint24Array rhs)const
     {
-        return data[0..roundDiv(data.length*2,3)]
-            == rhs.data[0..roundDiv(rhs.data.length*2,3)];
+        return data[0..data.length*3]
+            == rhs.data[0..rhs.data.length*3];
     }
 private:
-    static uint roundDiv(size_t src, uint div)
-    {
-        return cast(uint)(src + div/2)/div;
-    }
-    ushort[] data;
+
+    ubyte[] data;
 }
 
 @trusted unittest//Uint24 tests //@@@BUG@@ iota is system ?!
@@ -2096,9 +2188,7 @@ private:
 version(unittest)
 {
 
-private alias TypeTuple!(InversionList!GcPolicy, InversionList!ReallocPolicy) AbsTypes;
-private alias staticMap!(RleBitSet, TypeTuple!(ubyte, ushort,uint)) RleTypes;
-private alias TypeTuple!(AbsTypes, RleTypes) AllSets;
+private alias TypeTuple!(InversionList!GcPolicy, InversionList!ReallocPolicy) AllSets;
 
 }
 
@@ -2109,18 +2199,18 @@ private alias TypeTuple!(AbsTypes, RleTypes) AllSets;
         CodeList a;
         //"plug a hole" test
         a.add(10, 20).add(25, 30).add(15, 27);
-        assert(a == CodeList.fromIntervals(10, 30), text(a));
+        assert(a == CodeList(10, 30), text(a));
 
         auto x = CodeList.init;
         x.add(10, 20).add(30, 40).add(50, 60);
 
         a = x;
         a.add(20, 49);//[10, 49) [50, 60)
-        assert(a == CodeList.fromIntervals(10, 49, 50 ,60));
+        assert(a == CodeList(10, 49, 50 ,60));
 
         a = x;
         a.add(20, 50);
-        assert(a == CodeList.fromIntervals(10, 60), text(a.byInterval));
+        assert(a == CodeList(10, 60), text(a));
 
         //simple unions, mostly edge effects
         x = CodeList.init;
@@ -2128,31 +2218,31 @@ private alias TypeTuple!(AbsTypes, RleTypes) AllSets;
 
         a = x;
         a.add(10, 25); //[10, 25) [40, 60)
-        assert(a == CodeList.fromIntervals(10, 25, 40, 60));
+        assert(a == CodeList(10, 25, 40, 60));
 
         a = x;
         a.add(5, 15); //[5, 20) [40, 60)
-        assert(a == CodeList.fromIntervals(5, 20, 40, 60));
+        assert(a == CodeList(5, 20, 40, 60));
 
         a = x;
         a.add(0, 10); // [0, 20) [40, 60)
-        assert(a == CodeList.fromIntervals(0, 20, 40, 60));
+        assert(a == CodeList(0, 20, 40, 60));
 
         a = x;
         a.add(0, 5); //prepand
-        assert(a == CodeList.fromIntervals(0, 5, 10, 20, 40, 60));
+        assert(a == CodeList(0, 5, 10, 20, 40, 60));
 
         a = x;
         a.add(5, 20);
-        assert(a == CodeList.fromIntervals(5, 20, 40, 60));
+        assert(a == CodeList(5, 20, 40, 60));
 
         a = x;
         a.add(3, 37);
-        assert(a == CodeList.fromIntervals(3, 37, 40, 60));
+        assert(a == CodeList(3, 37, 40, 60));
 
         a = x;
         a.add(37, 65);
-        assert(a == CodeList.fromIntervals(10, 20, 37, 65), text(a.byInterval));
+        assert(a == CodeList(10, 20, 37, 65), text(a.byInterval));
 
         //some tests on helpers for set intersection
         x = CodeList.init.add(10, 20).add(40, 60).add(100, 120);
@@ -2160,27 +2250,20 @@ private alias TypeTuple!(AbsTypes, RleTypes) AllSets;
 
         auto m = a.skipUpTo(60);
         a.dropUpTo(110, m);
-        assert(a == CodeList.fromIntervals(10, 20, 40, 60, 110, 120), text(a.data[]));
+        assert(a == CodeList(10, 20, 40, 60, 110, 120), text(a.data[]));
 
         a = x;
         a.dropUpTo(100);
-        assert(a == CodeList.fromIntervals(100, 120), text(a.data[]));
+        assert(a == CodeList(100, 120), text(a.data[]));
 
         a = x;
         m = a.skipUpTo(50);
         a.dropUpTo(140, m);
-        assert(a == CodeList.fromIntervals(10, 20, 40, 50), text(a.data[]));
+        assert(a == CodeList(10, 20, 40, 50), text(a.data[]));
         a = x;
         a.dropUpTo(60);
-        assert(a == CodeList.fromIntervals(100, 120), text(a.data[]));
+        assert(a == CodeList(100, 120), text(a.data[]));
     }
-}
-
-unittest//constructors
-{
-    alias RleBitSet!ushort CodeList;
-    auto a = CodeList.fromIntervals(10, 25, 30, 45);
-    assert(a.repr == [10, 15, 5, 15]);
 }
 
 @trusted unittest
@@ -2194,25 +2277,25 @@ unittest//constructors
         b.add(40, 60).add(80, 100).add(140, 150);
         c = a | b;
         d = b | a;
-        assert(c == CodeList.fromIntervals(20, 200), text(c));
+        assert(c == CodeList(20, 200), text(CodeList.stringof," ", c));
         assert(c == d, text(c," vs ", d));
 
         b = CodeList.init.add(25, 45).add(65, 85).add(95,110).add(150, 210);
         c = a | b; //[20,45) [60, 85) [95, 140) [150, 210)
         d = b | a;
-        assert(c == CodeList.fromIntervals(20, 45, 60, 85, 95, 140, 150, 210), text(c));
+        assert(c == CodeList(20, 45, 60, 85, 95, 140, 150, 210), text(c));
         assert(c == d, text(c," vs ", d));
 
         b = CodeList.init.add(10, 20).add(30,100).add(145,200);
         c = a | b;//[10, 140) [145, 200)
         d = b | a;
-        assert(c == CodeList.fromIntervals(10, 140, 145, 200));
+        assert(c == CodeList(10, 140, 145, 200));
         assert(c == d, text(c," vs ", d));
 
         b = CodeList.init.add(0, 10).add(15, 100).add(10, 20).add(200, 220);
         c = a | b;//[0, 140) [150, 220)
         d = b | a;
-        assert(c == CodeList.fromIntervals(0, 140, 150, 220));
+        assert(c == CodeList(0, 140, 150, 220));
         assert(c == d, text(c," vs ", d));
 
 
@@ -2220,14 +2303,14 @@ unittest//constructors
         b = CodeList.init.add(25, 35).add(65, 75);
         c = a & b;
         d = b & a;
-        assert(c == CodeList.fromIntervals(25, 35, 65, 75), text(c));
+        assert(c == CodeList(25, 35, 65, 75), text(c));
         assert(c == d, text(c," vs ", d));
 
         a = CodeList.init.add(20, 40).add(60, 80).add(100, 140).add(150, 200);
         b = CodeList.init.add(25, 35).add(65, 75).add(110, 130).add(160, 180);
         c = a & b;
         d = b & a;
-        assert(c == CodeList.fromIntervals(25, 35, 65, 75, 110, 130, 160, 180), text(c));
+        assert(c == CodeList(25, 35, 65, 75, 110, 130, 160, 180), text(c));
         assert(c == d, text(c," vs ", d));
 
         a = CodeList.init.add(20, 40).add(60, 80).add(100, 140).add(150, 200);
@@ -2235,7 +2318,7 @@ unittest//constructors
         c = a & b;//[20, 30)[60, 80) [100, 120) [135, 140) [150, 160)
         d = b & a;
 
-        assert(c == CodeList.fromIntervals(20, 30, 60, 80, 100, 120, 135, 140, 150, 160),text(c));
+        assert(c == CodeList(20, 30, 60, 80, 100, 120, 135, 140, 150, 160),text(c));
         assert(c == d, text(c, " vs ",d));
         assert((c & a) == c);
         assert((d & b) == d);
@@ -2244,7 +2327,7 @@ unittest//constructors
         b = CodeList.init.add(40, 60).add(80, 100).add(140, 200);
         c = a & b;
         d = b & a;
-        assert(c == CodeList.fromIntervals(150, 200), text(c));
+        assert(c == CodeList(150, 200), text(c));
         assert(c == d, text(c, " vs ",d));
         assert((c & a) == c);
         assert((d & b) == d);
@@ -2257,8 +2340,8 @@ unittest//constructors
         b = CodeList.init.add(30, 60).add(75, 120).add(190, 300);
         c = a - b;// [30, 40) [60, 75) [120, 140) [150, 190)
         d = b - a;// [40, 60) [80, 100) [200, 300)
-        assert(c == CodeList.fromIntervals(20, 30, 60, 75, 120, 140, 150, 190), text(c));
-        assert(d == CodeList.fromIntervals(40, 60, 80, 100, 200, 300), text(d));
+        assert(c == CodeList(20, 30, 60, 75, 120, 140, 150, 190), text(c));
+        assert(d == CodeList(40, 60, 80, 100, 200, 300), text(d));
         assert(c - d == c, text(c-d, " vs ", c));
         assert(d - c == d, text(d-c, " vs ", d));
         assert(c - c == CodeList.init);
@@ -2268,8 +2351,8 @@ unittest//constructors
         b = CodeList.init.add(10,  50).add(60,                           160).add(190, 300);
         c = a - b;// [160, 190)
         d = b - a;// [10, 20) [40, 50) [80, 100) [140, 150) [200, 300)
-        assert(c == CodeList.fromIntervals(160, 190), text(c));
-        assert(d == CodeList.fromIntervals(10, 20, 40, 50, 80, 100, 140, 150, 200, 300), text(d));
+        assert(c == CodeList(160, 190), text(c));
+        assert(d == CodeList(10, 20, 40, 50, 80, 100, 140, 150, 200, 300), text(d));
         assert(c - d == c, text(c-d, " vs ", c));
         assert(d - c == d, text(d-c, " vs ", d));
         assert(c - c == CodeList.init);
@@ -2279,97 +2362,49 @@ unittest//constructors
         b = CodeList.init.add(10, 30).add(45,         100).add(130,             190);
         c = a ~ b; // [10, 20) [30, 40) [45, 60) [80, 130) [140, 150) [190, 200)
         d = b ~ a;
-        assert(c == CodeList.fromIntervals(10, 20, 30, 40, 45, 60, 80, 130, 140, 150, 190, 200),
+        assert(c == CodeList(10, 20, 30, 40, 45, 60, 80, 130, 140, 150, 190, 200),
                text(c));
         assert(c == d, text(c, " vs ", d));
     }
 }
 
-private alias RleBitSet!ubyte uList;
-private alias RleBitSet!ushort mList;
-private alias RleBitSet!uint cList;
 
-@system unittest// set operations and integer overflow ;)
-{
-    uList a, b, c, d;
-    a = uList.fromIntervals(20, 40, 100,      300, 400,     1200);
-    b = uList.fromIntervals(0,           260, 300,      600);
-    assert(a.repr == [20, 20, 60, 200, 100, 255, 0, 255, 0, 255, 0, 35]);
-    assert(b.repr == [0, 255, 0, 5, 40, 255, 0, 45]);
-    c = a & b; //[20,40) [100, 260) [400, 600)
-    d = b & a;
-    auto e = uList.fromIntervals(20, 40, 100, 260, 400, 600);
-    assert(c == e, text(c, " vs ", e));
-    assert(c == d, text(c, " vs ", d));
-}
-
-@system unittest// ditto
-{
-    foreach(i, List; TypeTuple!(mList, cList))
-    {
-        List a, b, c, d;
-        a = List.fromIntervals(    150,       450,    550,    750,    1000,  75_000);
-        b = List.fromIntervals(80,    220,       460,      700,   900,             150_000);
-        c = a & b;
-        d = a | b;
-        assert(c == uList.fromIntervals(150, 220, 550, 700, 1000, 75_000), text(c));
-        assert(d == uList.fromIntervals(80, 450,  460, 750, 900, 150_000), text(d));
-
-        c = a - b;
-        d = b - a;
-        assert(c == mList.fromIntervals(220, 450, 700, 750), text(c));
-        assert(d == mList.fromIntervals(80, 150,   460, 550, 900, 1000, 75_000, 150_000), text(d));
-    }
-}
-
-//@@@BUG Error: safe function '__unittest13' cannot call system function 'opAssign' WTF?
-@system unittest//even more set operations with BIG intervals
-{
-    foreach(List; TypeTuple!(mList, cList))
-    {
-        List a, b, c, d, e, f;
-        a = List.fromIntervals(10_000,         100_000,
-                  1_000_000,                                           10_000_000);
-        b = List.fromIntervals(       50_000            ,150_000, 250_000 ,350_000,
-                  900_000       ,2_300_000,  4_600_000 ,6_400_000, 8_000_000 ,12_000_000);
-        c = a | b;
-        d = a & b;
-        assert(c == mList.fromIntervals(10_000, 150_000, 250_000, 350_000, 900_000, 12_000_000));
-        assert(d == cList.fromIntervals(50_000, 100_000, 1_000_000, 2_300_000, 4_600_000, 6_400_000, 8_000_000, 10_000_000));
-
-        c = a ~ b;
-        d = b ~ a;
-        assert(c == d);
-        assert(c == uList.fromIntervals(10_000, 50_000, 100_000, 150_000, 250_000, 350_000, 900_000, 1_000_000,
-                       2_300_000, 4_600_000, 6_400_000, 8_000_000, 10_000_000, 12_000_000));
-
-        c = a - b;
-        d = b - a;
-
-        assert(c == uList.fromIntervals(10_000, 50_000, 2_300_000, 4_600_000, 6_400_000, 8_000_000));
-        assert(d == mList.fromIntervals(100_000, 150_000, 250_000, 350_000, 900_000, 1_000_000,
-                       10_000_000, 12_000_000));
-    }
-}
 @system:
 unittest// vs single dchar
 {
-    mList a = mList.fromIntervals(10, 100, 120, 200);
-    assert(a - 'A' == uList.fromIntervals(10, 65, 66, 100, 120, 200), text(a - 'A'));
-    assert((a & 'B') == uList.fromIntervals(66, 67));
+    CodepointSet a = CodepointSet(10, 100, 120, 200);
+    assert(a - 'A' == CodepointSet(10, 65, 66, 100, 120, 200), text(a - 'A'));
+    assert((a & 'B') == CodepointSet(66, 67));
 }
 
-unittest//iteration
+unittest//iteration & opIndex
 {
     import std.typecons;
-    auto arr = "ABCDEFGHIJKLMabcdefghijklm"d;
-    auto a = mList.fromIntervals('A','N','a', 'n');
-    assert(equal(a.byInterval, [ tuple(cast(uint)'A', cast(uint)'N'), tuple(cast(uint)'a', cast(uint)'n')]), text(a.byInterval));
-
-    assert(equal(a.byChar, arr), text(a.byChar));
-
-    auto x = uList.fromIntervals(100, 500, 600, 900, 1200, 1500);
-    assert(equal(x.byInterval, [ tuple(100, 500), tuple(600, 900), tuple(1200, 1500)]), text(x.byInterval));
+    foreach(CodeList; AllSets)
+    {
+        auto arr = "ABCDEFGHIJKLMabcdefghijklm"d;
+        auto a = CodeList('A','N','a', 'n');
+        assert(equal(a.byInterval, 
+                [tuple(cast(uint)'A', cast(uint)'N'), tuple(cast(uint)'a', cast(uint)'n')]
+            ), text(a.byInterval));
+        assert(equal(retro(a.byInterval), 
+                [tuple(cast(uint)'a', cast(uint)'n'), tuple(cast(uint)'A', cast(uint)'N')]
+            ), text(retro(a.byInterval)));
+        assert(equal(a.byChar, arr), text(a.byChar));
+        foreach(ch; a.byChar)
+            assert(a[ch]);
+        auto x = CodeList(100, 500, 600, 900, 1200, 1500);
+        assert(equal(x.byInterval, [ tuple(100, 500), tuple(600, 900), tuple(1200, 1500)]), text(x.byInterval));
+        foreach(ch; x.byChar)
+            assert(x[ch]);
+        static if(is(CodeList == CodepointSet))
+        {
+            auto y = CodeList(x.byInterval);
+            assert(equal(x.byInterval, y.byInterval));
+        }
+        assert(equal(CodepointSet.init.byInterval, cast(Tuple!(uint, uint)[])[]));
+        assert(equal(CodepointSet.init.byChar, cast(dchar[])[]));
+    }
 }
 
 @trusted public struct Trie(Value, Key, Prefix...)
@@ -2505,19 +2540,19 @@ unittest//iteration
             static if(isDynamicArray!Keys)
             {
                 alias GetComparators!(Prefix.length, cmpK) Comps;
-				static if(type == TrieType.Set || (type == TrieType.Value && is(V == bool)))
-				{
-	                multiSort!(Comps, SwapStrategy.unstable)
-		                (keys);
-				}
-				else static if(is(Unqual!Keys  == V[]))
-				{
-					/* NOP */
-					//we consider indexes to be presorted as need as index in array is treated as key
-					//and value of elements is value
-				}
-				else
-					static assert(0, "Unsupported type of array "~Keys.stringof~" for Trie of "~V.stringof);
+                static if(type == TrieType.Set || (type == TrieType.Value && is(V == bool)))
+                {
+                    multiSort!(Comps, SwapStrategy.unstable)
+                        (keys);
+                }
+                else static if(is(Unqual!Keys  == V[]))
+                {
+                    /* NOP */
+                    //we consider indexes to be presorted as need as index in array is treated as key
+                    //and value of elements is value
+                }
+                else
+                    static assert(0, "Unsupported type of array "~Keys.stringof~" for Trie of "~V.stringof);
                 auto r = keys;
             }
             else
@@ -2533,8 +2568,8 @@ unittest//iteration
                         addValue!last(idxs, false, emptyFull[], keyIdx - j);
                         addValue!last(idxs, true, emptyFull[]);
                     }
-					else
-					{
+                    else
+                    {
                         addValue!last(idxs, r.front.init, emptyFull[], keyIdx - j);
                         addValue!last(idxs, r[i], emptyFull[]);
                     }
@@ -2710,9 +2745,9 @@ private:
                 static if(level == Prefix.length-1 && type != TrieType.Value)
                     putValue(ptr[indices[level]], val);
                 else{// can incurr narrowing conversion
-					assert(indices[level] < ptr.length);
+                    assert(indices[level] < ptr.length);
                     ptr[indices[level]] = force!(typeof(ptr[indices[level]]))(val);
-				}
+                }
                 indices[level]++;
                 numVals = 0;                
             }
@@ -2729,8 +2764,8 @@ private:
                     n = numVals;
                     numVals = 0;
                 }
-				static if(level < Prefix.length-1)
-					assert(indices[level] <= 2^^Prefix[level+1].bitSize);
+                static if(level < Prefix.length-1)
+                    assert(indices[level] <= 2^^Prefix[level+1].bitSize);
                 static if(level == Prefix.length-1 && type != TrieType.Value)
                 {
                     for(int i=0;i<n; i++)
@@ -2744,8 +2779,8 @@ private:
                 indices[level] = j;
 
             }
-			//last level (i.e. topmost) has 1 "page" 
-			//thus it need not to add a new page on upper level
+            //last level (i.e. topmost) has 1 "page" 
+            //thus it need not to add a new page on upper level
             static if(level != 0)
             {
                 alias typeof(table.slice!(level-1)[0]) NextIdx;
@@ -2794,9 +2829,9 @@ private:
                     }
 
                     if(j == last)
-                    {                        	
-                    L_allocate_page:	
-                        next_lvl_index = cast(NextIdx)(indices[level]/pageSize - 1);	                    
+                    {                            
+                    L_allocate_page:    
+                        next_lvl_index = cast(NextIdx)(indices[level]/pageSize - 1);                        
                         //allocate next page
                         version(none)
                         {
@@ -3120,18 +3155,18 @@ unittest
         }
         writefln("TOTAL: %s bytes", t.bytes);
         debug(std_uni)
-		{
-			writeln("INDEX (excluding value level):");
-			foreach(i; Sequence!(0, t.table.dim-1) )
-				writeln(t.table.slice!(i)[0..t.table.length!i]);
-		}
+        {
+            writeln("INDEX (excluding value level):");
+            foreach(i; Sequence!(0, t.table.dim-1) )
+                writeln(t.table.slice!(i)[0..t.table.length!i]);
+        }
         writeln("---------------------------");
     }
     //@@@BUG link failure, lambdas not found by linker somehow (in case of trie2)
     //alias assumeSize!(8, function (uint x) { return x&0xFF; }) lo8;
     //alias assumeSize!(7, function (uint x) { return (x&0x7F00)>>8; }) next8;
-    alias RleBitSet!ubyte Set;
-    auto set = Set.fromIntervals('A','Z','a','z');
+    alias CodepointSet Set;
+    auto set = Set('A','Z','a','z');
     auto trie = Trie!(bool, uint, lo8)(set, 256);//simple bool array
     for(int a='a'; a<'z';a++)
         assert(trie[a]);
@@ -3142,7 +3177,7 @@ unittest
     for(int a ='Z'; a<'a'; a++)
         assert(!trie[a]);
 
-    auto redundant2 = Set.fromIntervals(
+    auto redundant2 = Set(
         1, 18, 256+2, 256+111, 512+1, 512+18, 768+2, 768+111);
     auto trie2 = Trie!(bool, uint, mlo8, lo8)(redundant2, 1024);
     trieStats(trie2);
@@ -3154,7 +3189,7 @@ unittest
     }
     trieStats(trie2);
 
-    auto redundant3 = Set.fromIntervals(
+    auto redundant3 = Set(
           2,    4,    6,    8,    16,
        2+16, 4+16, 16+6, 16+8, 16+16,
        2+32, 4+32, 32+6, 32+8,
@@ -3171,7 +3206,7 @@ unittest
     foreach(i; 0..max3)
         assert(trie3[i] == (i in redundant3), text(cast(uint)i));
 
-    auto redundant4 = Set.fromIntervals(
+    auto redundant4 = Set(
             10, 64, 64+10, 128, 128+10, 256, 256+10, 512,
             1000, 2000, 3000, 4000, 5000, 6000
         );
@@ -3182,10 +3217,10 @@ unittest
                        , sliceBits!(6, 9) 
                        , sliceBits!(0, 6)
                        )(redundant4, max4);
-    foreach(i; 0..max4){		
+    foreach(i; 0..max4){        
         if(i in redundant4)
             assert(trie4[i], text(cast(uint)i));
-	}
+    }
     trieStats(trie4);
 
     string[] redundantS = ["tea", "tackle", "teenage", "start", "stray"];
@@ -3362,7 +3397,7 @@ unittest
     foreach(key; keywords)
         assert( key in keyTrie[key], text(key, (cast (size_t[])keyTrie[key].items)));
     trieStats(keyTrie);
-    /* TODO: rework Trie of maps and Trie of sets 
+    
     auto keywordsMap = [
             "abstract" : TokenKind.Abstract,
             "alias" : TokenKind.Alias,
@@ -3481,13 +3516,13 @@ unittest
     foreach(k,v; keywordsMap)
         assert((k in keyTrie2[k]) == v);
     trieStats(keyTrie2);
-    */
-	//a bit size test
-	auto a = array(map!(x => to!ubyte(x))(iota(0, 256)));
-	auto bt = Trie!(bool, ubyte, sliceBits!(7, 8), sliceBits!(5, 7), sliceBits!(0, 5))(a);
-	trieStats(bt);
-	foreach(i; 0..256)
-		assert(bt[cast(ubyte)i]);
+    
+    //a bit size test
+    auto a = array(map!(x => to!ubyte(x))(iota(0, 256)));
+    auto bt = Trie!(bool, ubyte, sliceBits!(7, 8), sliceBits!(5, 7), sliceBits!(0, 5))(a);
+    trieStats(bt);
+    foreach(i; 0..256)
+        assert(bt[cast(ubyte)i]);
 }
 
 template useItemAt(size_t idx, T)
@@ -3505,10 +3540,10 @@ template useLastItem(T)
 
 template fullBitSize(Prefix...)
 {
-	static if(Prefix.length > 0)
-		enum fullBitSize = Prefix[0].bitSize+fullBitSize!(Prefix[1..$]);
-	else
-		enum fullBitSize = 0;
+    static if(Prefix.length > 0)
+        enum fullBitSize = Prefix[0].bitSize+fullBitSize!(Prefix[1..$]);
+    else
+        enum fullBitSize = 0;
 }
 
 template idxTypes(Key, size_t fullBits, Prefix...)
@@ -3521,13 +3556,13 @@ template idxTypes(Key, size_t fullBits, Prefix...)
     {
         //Important note on bit packing
         //Each level has to hold enough of bits to address the next one    
-		//The bottom level is known to hold full bit width
-		//thus it's size in pages is fill_bit_width - size_of_last_prefix
-		//Recourse on this notion
+        //The bottom level is known to hold full bit width
+        //thus it's size in pages is fill_bit_width - size_of_last_prefix
+        //Recourse on this notion
         alias TypeTuple!(
-			idxTypes!(Key, fullBits - Prefix[$-1].bitSize, Prefix[0..$-1]),
-			BitPacked!(fullBits - Prefix[$-1].bitSize, typeof(Prefix[$-2].entity(Key.init)))
-		) idxTypes;
+            idxTypes!(Key, fullBits - Prefix[$-1].bitSize, Prefix[0..$-1]),
+            BitPacked!(fullBits - Prefix[$-1].bitSize, typeof(Prefix[$-2].entity(Key.init)))
+        ) idxTypes;
     }
 }
 
@@ -3571,15 +3606,145 @@ bool propertyNameLess(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
     return comparePropertyName(a, b) < 0;
 }
 
+//============================================================================
+//Utilities for compression of unicode character sets
+
+
+void compressTo(uint val, ref ubyte[] arr) pure nothrow
+{
+    //not optimized as usually done 1 time (and not public interface)
+    if(val < 128)
+        arr ~= cast(ubyte)val;
+    else if(val < (1<<13))
+    {
+        arr ~= (0b1_00<<5) | cast(ubyte)(val>>8);
+        arr ~= val & 0xFF;
+    }
+    else        
+    {
+        assert(val < (1<<21));
+        arr ~= (0b1_01<<5) | cast(ubyte)(val>>16);
+        arr ~= (val >> 8) & 0xFF;
+        arr ~= val  & 0xFF;
+    }
+}
+
+uint decompressFrom(const(ubyte)[] arr, ref size_t idx) pure
+{
+    uint first = arr[idx++];
+    if(!(first & 0x80)) //no top bit -> [0..127]
+        return first;
+    uint extra = ((first>>5) & 1) + 1; // [1, 2]
+    uint val = (first & 0x1F);
+    enforce(idx + extra <= arr.length, "bad codepoint interval encoding");
+    foreach(j; 0..extra)
+        val = (val<<8) | arr[idx+j];
+    idx += extra;
+    return val;
+}
+
+//compres
+public ubyte[] compressIntervals(Range)(Range intervals)
+    if(isInputRange!Range && isIntegralPair!(ElementType!Range))
+{
+    ubyte[] storage;
+    uint base = 0;
+    //RLE encode
+    foreach(val; intervals)
+    {        
+        compressTo(val[0]-base, storage);
+        base = val[0];
+        if(val[1] != lastDchar+1) //till the end of domain so don't store it
+        {
+            compressTo(val[1]-base, storage);
+            base = val[1];
+        }
+    }
+    return storage;
+}
+
+unittest
+{
+    auto run = [tuple(80, 127), tuple(128, (1<<10)+128)];
+    ubyte[] enc = [cast(ubyte)80, 47, 1, (0b1_00<<5) | (1<<2), 0];
+    assert(compressIntervals(run) == enc);
+    auto run2 = [tuple(0, (1<<20)+512+1), tuple((1<<20)+512+4, lastDchar+1)];
+    ubyte[] enc2 = [cast(ubyte)0, (0b1_01<<5) | (1<<4), 2, 1, 3]; //odd length-ed
+    assert(compressIntervals(run2) == enc2);
+    size_t  idx = 0;
+    assert(decompressFrom(enc, idx) == 80);
+    assert(decompressFrom(enc, idx) == 47);
+    assert(decompressFrom(enc, idx) == 1);
+    assert(decompressFrom(enc, idx) == (1<<10));
+    idx = 0;
+    assert(decompressFrom(enc2, idx) == 0);
+    assert(decompressFrom(enc2, idx) == (1<<20)+512+1);
+    assert(equal(decompressIntervals(compressIntervals(run)), run));
+    assert(equal(decompressIntervals(compressIntervals(run2)), run2));
+}
+
+///Creates a range of $(D CodepointInterval) that lazily decodes compressed data.
+//TODO: make it package
+public auto decompressIntervals(const(ubyte)[] data)
+{
+    return DecompressedIntervals(data);
+}
+
+struct DecompressedIntervals
+{
+    const(ubyte)[] _stream;
+    size_t _idx;
+    CodepointInterval _front;
+
+    this(const(ubyte)[] stream)
+    {
+        _stream = stream;
+        popFront();
+    }
+
+    @property CodepointInterval front()
+    {
+        assert(!empty);
+        return _front;
+    }
+
+    void popFront()
+    {
+        if(_idx == _stream.length)
+        {
+            _idx = size_t.max;
+            return;
+        }
+        uint base = _front[1];                
+        _front[0] = base + decompressFrom(_stream, _idx);
+        if(_idx == _stream.length)//odd length ---> till the end
+            _front[1] = lastDchar+1;
+        else
+        {
+            base = _front[0];
+            _front[1] = base + decompressFrom(_stream, _idx);
+        }
+    }
+
+    @property bool empty()
+    {
+        return _idx == size_t.max;
+    }
+
+    DecompressedIntervals save() const { return this; } 
+}
+
+
+
 version(std_uni_bootstrap){}
 
 else
 {
 
 //helper for static codepoint set tables
-ptrdiff_t findUnicodeSet(alias table, C)(in C[] name)
+ptrdiff_t findUnicodeSet(C)(in C[] name)
 {
-    auto range = assumeSorted!((a,b) => propertyNameLess(a,b))(table.map!"a.name");    
+    auto range = assumeSorted!((a,b) => propertyNameLess(a,b))(unicodeProps.map!"a.name");    
    
     size_t idx = range.lowerBound(name).length;
 
@@ -3590,12 +3755,12 @@ ptrdiff_t findUnicodeSet(alias table, C)(in C[] name)
 }
 
 //another one that loads it
-bool loadUnicodeSet(alias table, Set, C)(in C[] name, ref Set dest)
+bool loadUnicodeSet(Set, C)(in C[] name, ref Set dest)
 {
-    auto idx = findUnicodeSet!table(name);
+    auto idx = findUnicodeSet(name);
     if(idx >= 0)
     {
-        dest = Set(asSet(table[idx].set));
+        dest = Set(asSet(unicodeProps[idx].compressed));
         return true;
     }
     return false;
@@ -3658,17 +3823,13 @@ public struct unicode
         auto idx = names.countUntil!(x => comparePropertyName(x, name) == 0)();
         if(idx >= 0)
             return true;
-        if(findUnicodeSet!(tinyUnicodeProps)(name) >= 0)
-            return true;
-        if(findUnicodeSet!(smallUnicodeProps)(name) >= 0)
-            return true;
-        if(findUnicodeSet!(fullUnicodeProps)(name) >= 0)
+        if(findUnicodeSet(name) >= 0)
             return true;
         return false;
     }
 
-    static auto pickSet(Set=RleBitSet!uint, C)(in C[] name)
-    {
+    static auto pickSet(Set=CodepointSet, C)(in C[] name)
+    {        
         Set result;
         alias comparePropertyName ucmp;
 
@@ -3758,14 +3919,12 @@ public struct unicode
             result |= asSet(unicodeSo);
         }
         else if(ucmp(name, "any") == 0)
-            result = Set.fromIntervals(0,0x110000);
+            result = Set(0,0x110000);
         else if(ucmp(name, "ascii") == 0)
-            result = Set.fromIntervals(0,0x80);
+            result = Set(0,0x80);
         else
         {
-            if(loadUnicodeSet!tinyUnicodeProps(name, result) 
-                    || loadUnicodeSet!smallUnicodeProps(name, result)
-                    || loadUnicodeSet!fullUnicodeProps(name, result))
+            if(loadUnicodeSet(name, result))                    
                 return result;
             else
                 throw new Exception("no unicode set by name of " 
@@ -4327,7 +4486,7 @@ private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
 }
 
 /++
-	Does case insensitive comparison of $(D str1) and $(D str2).
+    Does case insensitive comparison of $(D str1) and $(D str2).
     Follows rules of full casefolding mapping. 
     This includes matching as equal german ß with "ss" and 
     other 1:M codepoints relations unlike $(D sicmp).
@@ -5285,11 +5444,11 @@ unittest
 }
 
 private:
-//wrap static data from pre-generated tables into usable datastructures
+//load static data from pre-generated tables into usable datastructures
 
-auto asSet(T)(in SetEntry!T e)
+auto asSet(const (ubyte)[] compressed)
 {
-    return RleBitSet!T(e.data);
+    return CodepointSet(decompressIntervals(compressed));
 }
 
 auto asTrie(T...)(in TrieEntry!T e)
@@ -5315,11 +5474,21 @@ immutable graphemeExtend = asTrie(graphemeExtendTrieEntries);
 immutable spacingMark = asTrie(mcTrieEntries);
 
 //TODO: move sets below to Tries
-immutable hangLV = asSet(unicodeLV);
-immutable hangLVT = asSet(unicodeLVT);
-immutable hangL = asSet(unicodeL);
-immutable hangV = asSet(unicodeV);
-immutable hangT = asSet(unicodeT);
+
+__gshared CodepointSet hangLV;
+__gshared CodepointSet hangLVT;
+__gshared CodepointSet hangL;
+__gshared CodepointSet hangV;
+__gshared CodepointSet hangT;
+
+shared static this()
+{
+    hangLV = asSet(unicodeLV);
+    hangLVT = asSet(unicodeLVT);
+    hangL = asSet(unicodeL);
+    hangV = asSet(unicodeV);
+    hangT = asSet(unicodeT);
+}
 
 immutable combiningClassTrie = asTrie(combiningClassTrieEntries);
 immutable canonMapping = asTrie(canonMappingTrieEntries);

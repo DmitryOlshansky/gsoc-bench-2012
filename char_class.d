@@ -1,4 +1,4 @@
-import bench_suite, std.stdio, std.typetuple, std.conv, std.utf;
+import bench_suite, std.algorithm, std.stdio, std.typetuple, std.conv, std.utf;
 
 version(std_uni)
 	import std.uni;
@@ -36,9 +36,10 @@ void clasifyIndex(alias mtd)(in char[] str)
 			count++;
 	}
 	lastCount = count;
+
 }
 
-bool noop(dchar ch){ return true; }
+bool noop(dchar ch){ return ch > 0; }
 
 void myTest(Result[] data)
 {
@@ -50,14 +51,20 @@ void myTest(Result[] data)
 	    }
         else
         {
-            bench!(clasifyCall!noop)("noop", x.name, x.data);
-    	    foreach(i, m; stdTests)
-    	       	bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
-            /*bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
+            bench!(clasifyCall!noop)("noop", x.name, x.data);            
+    	    foreach(i, m; stdTests){
+	       	   bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
+               writeln("CNT: ", lastCount);
+            }
+            bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
+            writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invMark)("inv-uint-mark", x.name, x.data);
+            writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invNumber)("inv-uint-num", x.name, x.data);
+            writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invSymbol)("inv-uint-sym", x.name, x.data);
-            bench!(clasifyIndex!triAlpha)("tri-uint-alpha", x.name, x.data);
+            writeln("CNT: ", lastCount);
+            /*bench!(clasifyIndex!triAlpha)("tri-uint-alpha", x.name, x.data);
             bench!(clasifyIndex!triMark)("tri-uint-mark", x.name, x.data);
             bench!(clasifyIndex!triNumber)("tri-uint-num", x.name, x.data);
             bench!(clasifyIndex!triSymbol)("tri-uint-sym", x.name, x.data); */
@@ -103,13 +110,13 @@ else
     shared static this()
     {
 
-        rleAlpha = unicodeSet("Letter");
-        rleMark = unicodeSet("Mark");
-        rleSymbol = unicodeSet("Symbol");
-        rleNumber = unicodeSet("number");
+        rleAlpha = unicode("Letter");
+        rleMark = unicode("Mark");
+        rleSymbol = unicode("Symbol");
+        rleNumber = unicode("number");
 
 
-        invAlpha = InvList(rleAlpha);
+        invAlpha = InvList(rleAlpha);        
         invMark = InvList(rleMark);
         invNumber = InvList(rleNumber);
         invSymbol = InvList(rleSymbol);
@@ -118,7 +125,7 @@ else
         triMark = MyTrie(rleMark);
         triNumber = MyTrie(rleNumber);
         triSymbol = MyTrie(rleSymbol);
-
+        assert(equal(rleAlpha.byInterval, invAlpha.byInterval));
     }
 
 }
