@@ -26,9 +26,9 @@
         auto b = currency - a; //subtract all ASCII, cyrilic and armenian
 
         //some properties of codepoint sets
-        assert(b.length > 45); // 46 in Unicode 6.1, even more in 6.2
+        assert(b.length > 45); // 46 items in Unicode 6.1, even more in 6.2
         //testing presense of a codepoint in a set
-        //is not really fast but works
+        //is just fine, it is O(logN)
         assert(!b['$']); 
         assert(!b['\u058F']); // armenian dram sign
         assert(b['¥']); 
@@ -36,7 +36,7 @@
         //building fast lookup tables, these guarantee O(1) complexity
         //1-level Trie lookup table
         auto oneTrie = buildTrie!1(b);
-        //2-level more compact but slower
+        //2-level more compact but typically slighlty slower
         auto twoTrie = buildTrie!2(b);
         //3-level even smaller, and a bit slower yet
         auto threeTrie = buildTrie!3(b);
@@ -113,9 +113,9 @@ unittest
     auto b = currency - a; //subtract all ASCII, cyrilic and armenian
 
     //some properties of codepoint sets
-    assert(b.length > 45); // 46 in Unicode 6.1, even more in 6.2
+    assert(b.length > 45); // 46 items in Unicode 6.1, even more in 6.2
     //testing presense of a codepoint in a set
-    //is not really fast but works
+    //is just fine, it is O(logN)
     assert(!b['$']); 
     assert(!b['\u058F']); // armenian dram sign
     assert(b['¥']); 
@@ -123,7 +123,7 @@ unittest
     //building fast lookup tables, these guarantee O(1) complexity
     //1-level Trie lookup table
     auto oneTrie = buildTrie!1(b);
-    //2-level more compact but slower
+    //2-level more compact but typically slighlty slower
     auto twoTrie = buildTrie!2(b);
     //3-level even smaller, and a bit slower yet
     auto threeTrie = buildTrie!3(b);
@@ -917,7 +917,7 @@ public template isIntegralPair(T, V=uint)
         && !is(typeof((T x){ V c = x[2]; }));
 }
 
-//bootstrap full set operations from 3 primitives:
+//bootstrap full set operations from 4 primitives:
 //addInterval, skipUpTo, dropUpTo & byInterval iteration
 mixin template BasicSetOps()
 {
@@ -1125,558 +1125,13 @@ private:
 
 }
 
-/**
-    RleBitSet is a data structure for sparce integer sets in general.
-    It supports all of the usual set operations and works as compact codepoint set.
-*/
-@trusted public struct RleBitSet(T, SP=GcPolicy)
-    if(isUnsigned!T)
-{
-public:
-    this(Set)(in Set set)
-        if(isCodepointSet!Set)
-    {
-        size_t top=0;
-        foreach(iv; set.byInterval)
-        {
-                appendPad(data, iv.a - top);
-                appendPad(data, iv.b - iv.a);
-                top = iv.b;
-        }
-    }
-
-
-    //
-    static RleBitSet(in uint[] intervals...) //@@@BUG text is not safe yet?!
-    in
-    {
-        assert(intervals.length % 2 == 0, "Odd number of interval bounds [a, b)!");
-        for(uint i=1; i<intervals.length; i++)
-            assert(intervals[i-1] < intervals[i]
-                   , text(intervals[i-1], ">", intervals[i], " in set c-tor"));
-    }
-    body
-    {
-        RleBitSet set;
-        size_t top=0;
-        for(size_t i = 0;  i < intervals.length; i+=2)
-        {
-            set.appendPad(set.data, intervals[i] - top);
-            set.appendPad(set.data, intervals[i+1] - intervals[i]);
-            top = intervals[i+1];
-        }
-        return set;
-    }
-
-    this(this) 
-    {//TODO: COW
-        data = SP.dup(data);
-    }
-
-    static if(is(SP == ReallocPolicy))
-        const ~this() 
-        {
-            SP.destroy(data);
-        }
-
-    ///Make a mutable copy of this set.
-    @property auto dup() const
-    {
-        RleBitSet s;
-        s.data = SP.dup(data);
-        return s;
-    }
-
-    @property auto byInterval() const
-    {
-        static struct IntervalRange
-        {
-            this(in RleBitSet set_)
-            {
-                data = set_.data;
-                popFront();
-            }
-
-            uint step(ref uint idx, uint value)
-            {
-                static if(T.sizeof == 4)
-                {
-                    value += data[idx];
-                    idx++;
-                }
-                else
-                {
-                    value += data[idx];
-                    while(idx+1 < data.length && data[idx+1] == 0)
-                    {
-                        assert(idx+2 < data.length);
-                        value += data[idx+2];
-                        idx += 2;
-                    }
-                    idx++;
-                }
-                return value;
-            }
-
-            @property auto front() const
-            {
-                return CodepointInterval(a, b);
-            }
-
-            @property bool empty() const
-            {
-                return data == null;
-            }
-
-            void popFront()
-            {
-                if(idx == data.length)
-                {
-                    data = null;
-                    return;
-                }
-                a = step(idx, b);
-                b = step(idx, a);
-            }
-
-            uint a, b, idx;
-            const(T)[] data;
-        }
-
-        return IntervalRange(this);
-    }
-
-    bool equal(U,SP)(const ref RleBitSet!(U,SP) rhs) const
-    {
-        static if(T.sizeof == 4 && U.sizeof == 4)//short-circuit full versions
-            return repr == rhs.repr;
-        else
-        {
-            uint top=0, rtop=0, idx=0, ridx=0;
-            while(idx < data.length && ridx < rhs.data.length)
-            {
-                top += data[idx];
-                rtop += rhs.data[ridx];
-                while(rtop != top)
-                {
-                    //check for ... x 0 y "prolong" sequence
-                    if(ridx + 1 < rhs.data.length && rhs.data[ridx+1] == 0)
-                    {
-                        //OK rhs has extra segment
-                        assert(ridx+2 < rhs.data.length); // 0 at the end is an error
-                        rtop += rhs.data[ridx+2];
-                        ridx += 2;
-                    }
-                    else if(idx + 1 < data.length && data[idx+1] == 0)
-                    {
-                        assert(idx+2 < data.length); // ditto at end
-                        top += data[idx+2];
-                        idx += 2;
-                    }
-                    else
-                        return false;
-                }
-                idx++;
-                ridx++;
-            }
-            if(idx == data.length)
-            {
-                if(ridx == rhs.data.length)
-                    return true;
-                //check overlong sequence
-                rtop += rhs.data[ridx];
-                while(rtop != top)
-                    if(ridx + 1 < rhs.data.length && rhs.data[ridx+1] == 0)
-                    {
-                        //rhs has extra segment
-                        assert(ridx+2 < rhs.data.length); // 0 at the end is an error
-                        rtop += rhs.data[ridx+2];
-                        ridx += 2;
-                    }
-                    else
-                        return false;
-            }
-            else
-            {
-                if(idx == data.length)
-                    return true;
-                //check overlong sequence
-                top += data[idx];
-                while(rtop != top)
-                    if(idx + 1 < data.length && data[idx+1] == 0)
-                    {
-                        //rhs has extra segment
-                        assert(idx+2 < data.length); // 0 at the end is an error
-                        top += data[idx+2];
-                        idx += 2;
-                    }
-                    else
-                        return false;
-            }
-            return idx == data.length && ridx == rhs.data.length;
-        }
-    }
-
-    bool opEquals(U,SP)(const ref RleBitSet!(U,SP) rhs) const
-        if(isUnsigned!U)
-    {
-        return this.equal(rhs);
-    }
-
-    bool opEquals(U,SP)(in RleBitSet!(U,SP) rhs) const
-        if(isUnsigned!U)
-    {
-        return this.equal(rhs);
-    }
-
-    bool opIndex(uint val)const
-    {
-        foreach(i; byInterval)
-            if(val < i.b)
-                return val >= i.a;
-        return false;
-    }
-
-    ///Number of characters in this set
-    @property size_t length() const
-    {
-        size_t sum = 0 ;
-        for(size_t i=0; i<data.length; i+=2)
-            sum += data[i+1];//sum up positive intervals
-        return sum;
-    }
-
-    ref invert()
-    {
-        //TODO: implement inversion
-        assert(0);
-        //return this;
-    }
-
-    @property bool empty()const
-    {
-        return data.length == 0;
-    }
-
-    void store(OutputRange)(scope OutputRange sink) const
-        if(isOutputRange!(OutputRange, T))
-    {
-        foreach(v; data)
-            put(sink, v);
-    }
-
-    @safe @property size_t bytes() pure const nothrow 
-    {
-        return data.length*T.sizeof;
-    }
-
-    mixin BasicSetOps;
-private:
-    static if(is(SP == GcPolicy))
-        this()(const T[] input) const
-        {//assumes it's a GC-ed slice
-            data = input;
-        }
-
-    struct Marker//denotes position in RleBitSet
-    {
-        uint idx;
-        uint top_before_idx;
-    };
-
-    //Think of it as of RLE compressed bit-array
-    //data holds _lengths_ of intervals
-    //first value is a length of negative portion, second interval is positive,
-    //3rd is negative etc. (length can be zero e.g. if interval contains 0 like [\x00-\x7f])
-    T[] data;
-
-    static void appendPad(ref T[] dest, size_t val)
-    {
-        while(val > T.max)
-        {//should be somewhat rare(!)
-            val -= T.max;
-            SP.append(dest, adaptIntRange!T([T.max, 0]));
-        }
-        SP.append(dest, val);
-    }
-
-    static size_t replacePad(ref T[] dest, size_t from, size_t to, uint[] to_insert)
-    {
-        static if(T.sizeof == 4)//short-circuit to optimal version
-        {
-            SP.replaceImpl(dest, from, to, to_insert);
-            return from+to_insert.length-1;
-        }
-        else
-        {
-            T[] scratch_space;
-            size_t s=0;
-            foreach(i, v; to_insert)
-                if(v > T.max)
-                {
-                    SP.append(scratch_space, adaptIntRange!T(to_insert[s..i]));
-                    appendPad(scratch_space, v);
-                    s = i+1;
-                }
-
-            if(s == 0)
-            {
-                SP.replaceImpl(dest, from, to, adaptIntRange!T(to_insert)); // short-circuit #2
-                return from+to_insert.length-1;
-            }
-            else
-            {// some of (T.max, 0) ended up there
-                SP.append(scratch_space, adaptIntRange!T(to_insert[s..$]));
-                SP.replaceImpl(dest, from, to, scratch_space);
-                SP.destroy(scratch_space);
-                return from+scratch_space.length-1;
-            }
-        }
-    }
-
-    @property const(T)[] repr() const{ return data; }
-
-    //special case for RLE set
-    ref subChar(dchar ch)
-    {
-        Marker mark;
-        mark = skipUpTo(ch, mark);
-        if(mark.top_before_idx == ch && mark.idx+1 != data.length)
-        {
-            data[mark.idx+1] -= 1;
-            data[mark.idx] += 1;
-            assert(data[mark.idx] == 1);
-        }
-        return this;
-    }
-
-    //returns last point of insertion (idx,  top_value right before idx),
-    // so that top += data[idx] on first iteration  gives top of idx
-    Marker addInterval(uint a, uint b, Marker mark=Marker.init)
-    in
-    {
-        assert(a <= b);
-    }
-    body
-    {
-        uint hint = mark.idx, hint_top_before=mark.top_before_idx;
-        static if(T.sizeof != 4)
-            if(a == b)//empty interval, happens often with ushort/ubyte lists
-                return Marker(hint, hint_top_before);
-        uint top=hint_top_before, idx, a_start, a_idx;
-        debug(std_uni)
-        {
-            scope(exit){
-                writefln("after adding (%d, %d):", a, b);
-                toString((x){ write(x); });
-            }
-        }
-        uint pos, pre_top;//marker that indicates place of insertion
-        assert(a >= top, text(a, "<=", top));
-        for(idx=hint; idx < data.length; idx++)
-        {
-            top += data[idx];
-            if(a <= top)
-            {
-                assert(top >=  data[idx]);
-                a_start = top - data[idx];
-                assert(a_start <= a);
-                a_idx = idx;
-                break;
-            }
-        }
-
-        if(idx == data.length)
-        {
-            //  [---+++----++++----++++++]
-            //  [                         a  b]
-            static if(T.sizeof < 4)
-            {
-               appendPad(data, a - top);
-               appendPad(data, b - a);
-            }
-            else
-                SP.append(data, adaptIntRange!T([a - top, b - a]));
-
-            return Marker(cast(uint)data.length-1, b - data[$-1]);
-        }
-
-        top -= data[idx];
-        for(; idx<data.length;idx++)
-        {
-            top += data[idx];
-            if(b <= top)
-                break;
-        }
-
-        debug(std_uni)
-        {
-            writefln("a_start=%d; a_idx=%d; idx=%d;", a_start, a_idx, idx);
-            writefln("a=%s; b=%s; top=%s; a_start=%s;", a, b, top, a_start);
-        }
-
-        uint[] to_insert;
-        if(idx == data.length)
-        {
-            //  [-------++++++++----++++++-]
-            //  [      s     a                 b]
-            if(a_idx & 1)//a in positive
-            {
-                to_insert = [ b - a_start ];
-            }
-            else// a in negative
-            {
-                to_insert = [ a - a_start, b - a];
-            }
-            pos = cast(uint)replacePad(data, a_idx, idx, to_insert);
-            pre_top = b - data[pos];
-            return Marker(cast(uint)pos, pre_top) ; //bail out early
-        }
-
-        if(a_idx & 1)
-        {//a in positive
-            if(idx & 1)//b in positive
-            {
-                //  [-------++++++++----++++++-]
-                //  [       s    a        b    ]
-                to_insert = [top - a_start];
-            }
-            else //b in negative
-            {
-                //  [-------++++++++----++++++-]
-                //  [       s    a   b         ]
-                if(top == b)
-                {
-                    assert(idx+1 < data.length);
-                    pre_top = b + data[idx+1];
-                    pos = cast(uint)replacePad(data, a_idx, idx+2, [b + data[idx+1] - a_start]);
-                    pre_top -= data[pos];
-                    return Marker(cast(uint)pos, pre_top);
-                }
-                to_insert = [b - a_start, top - b];
-            }
-        }
-        else
-        { // a in negative
-            if(idx & 1) //b in positive
-            {
-                //  [----------+++++----++++++-]
-                //  [     a     b              ]
-                to_insert = [a - a_start, top - a];
-            }
-            else// b in negative
-            {
-                //  [----------+++++----++++++-]
-                //  [  a       s      b        ]
-                if(top == b)
-                {
-                    assert(idx+1 < data.length);
-                    pre_top = top + data[idx+1];
-                    pos = cast(uint)replacePad(data, a_idx, idx+2, [a - a_start, top + data[idx+1] - a ]);
-                    pre_top -= data[pos];
-                    return Marker(cast(uint)pos, pre_top);
-                }
-                assert(a >= a_start, text(a, "<= ", a_start));
-                to_insert = [a - a_start, b - a, top - b];
-            }
-        }
-        pos = cast(uint)replacePad(data, a_idx, idx+1, to_insert);
-        pre_top = top - data[pos];
-        debug(std_uni)
-        {
-            writefln("marker idx: %d; length=%d", pos, pre_top, data.length);
-            writeln("inserting ", to_insert);
-        }
-        return Marker(cast(uint)pos, pre_top);
-    }
-
-    //remove intervals up to [..a) staring at Marker(idx, top_before)
-    Marker dropUpTo(uint a, Marker mark=Marker.init)
-    {
-        uint start_idx = mark.idx, top_before = mark.top_before_idx;
-        uint top=top_before, idx=start_idx;
-        uint pos, pre_top;//marker that indicates place of insertion
-        assert(idx % 2 == 0); //can't start in positive interval,
-        //though negative interval can be of length zero
-        for(; idx < data.length; idx++)
-        {
-            top += data[idx];
-            if(a <= top)
-                break;
-        }
-        if(idx >= data.length)
-        {
-            //nothing left
-            SP.replaceImpl(data, start_idx, data.length, cast(T[])[]);
-            return Marker(cast(uint)data.length, top);
-        }
-
-        if(idx & 1)
-        {   //a in positive
-            //[--+++----++++++----+++++++------...]
-            //      |<---si       s  a  t
-            uint start = top - data[idx];
-            if(top == a)//glue two negative intervals
-            {
-                // for negative stuff, idx can be equal data.length-1
-                if(idx + 1 == data.length)
-                {
-                    replacePad(data, start_idx, data.length, []);
-                    return Marker(cast(uint)data.length, top);
-                }
-                replacePad(data, start_idx, idx+2, [top + data[idx+1] - top_before]);
-                return Marker(start_idx, top_before);
-            }
-            replacePad(data, start_idx, idx+1, [a - top_before, top - a]);
-        }
-        else
-        {   //a in negative
-            //[--+++----++++++----+++++++-------+++...]
-            //      |<---si              s  a  t
-            replacePad(data, start_idx, idx+1, [top - top_before]);
-        }
-        return Marker(start_idx, top_before);
-    }
-
-    //skip intervals up to ..a)
-    Marker skipUpTo(uint a, Marker mark=Marker.init)
-    out(result)
-    {
-        assert(result.idx % 2 == 0);//always negative intervals
-        //(may be  0-width after-split)
-    }
-    body
-    {
-        uint start_idx = mark.idx, top_before = mark.top_before_idx;
-        uint top=top_before, idx=start_idx;
-        assert(data.length % 2 == 0);
-        for(; idx < data.length; idx++)
-        {
-            top += data[idx];
-            if(a <= top)
-                break;
-        }
-        if(idx >= data.length) //could have Marker point to recently removed stuff
-            return Marker(cast(uint)data.length, top);
-
-        if(idx & 1)//landed in positive, check for split
-        {
-            if(top == a)//no need to split, it's end
-                return Marker(idx+1, top);
-            uint start = top - data[idx];
-            //split it up
-            uint val = cast(uint)replacePad(data, idx, idx+1, [a - start, 0, top - a]);
-
-            return Marker(val-1, top - (data[val]+data[val-1]));        //avoid odd index
-        }
-        return Marker(idx, top - data[idx]);
-    }
-};
-
-///Recommended default type for set of codepoints.
+///The recommended default type for set of codepoints.
 public alias InversionList!GcPolicy CodepointSet;
 
-///Recommended variant of $(D Tuple) to represent intervals of codepoints.
+/**
+    The recommended type of $(XREF std._typecons, Tuple)
+    to represent [a, b) intervals of codepoints.
+*/
 public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
 
 /**
@@ -1685,6 +1140,7 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
 */
 @trusted public struct InversionList(SP=GcPolicy)
 {
+public:
     this(Set)(in Set set)
         if(is(typeof(Set.init.isSet)))
     {
@@ -1698,9 +1154,9 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
     }
 
     this(Range)(Range intervals)
-        if(isIntegralPair!(ElementType!Range))
-    {       
-        auto flattened = roundRobin(intervals.map!"a[0]", intervals.map!"a[1]");
+        if(isInputRange!Range && isIntegralPair!(ElementType!Range))
+    {
+        auto flattened = roundRobin(intervals.save.map!"a[0]", intervals.save.map!"a[1]");
         data = Uint24Array!(SP)(flattened);
     }
 
@@ -1717,7 +1173,7 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
     }
 
     this(this)
-    {//TODO: COW
+    {//TODO: COW?
         data = data.dup;
     }
 
@@ -1738,37 +1194,34 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
                 uint a = *cast(uint*)slice.ptr;
                 uint b = *cast(uint*)(slice.ptr+3);
                 //optimize a bit, since we go by even steps
-                return CodepointInterval(a & 0xFF_FFFF, b >> 8);
+                return CodepointInterval(a & 0xFF_FFFF, b & 0xFF_FFFF);
             }
 
             @property auto back()const
             {
-                uint a = *cast(uint*)&slice.ptr[slice.length-3];
-                uint b = *cast(uint*)&slice.ptr[slice.length-2];
+                uint a = *cast(uint*)&slice.ptr[slice.length-6];
+                uint b = *cast(uint*)&slice.ptr[slice.length-3];
                 //optimize a bit, since we go by even steps
-                return CodepointInterval(a & 0xFF_FFFF, b >> 8);
+                return CodepointInterval(a & 0xFF_FFFF, b & 0xFF_FFFF);
             }
 
             void popFront()
             {
-                len -= 2;
-                slice = slice[3..$];//3*2 16bit == 2*24 bits
+                slice = slice[6..$];//3*2 16bit == 2*24 bits
             }
 
             void popBack()
             {
-                len -= 2;
-                slice = slice[0..$-3];
+                slice = slice[0..$-6];
             }
 
-            @property bool empty()const { return len == 0; }
+            @property bool empty()const { return slice.empty; }
 
             @property auto save(){ return this; }
         private:
             const(ubyte)[] slice;
-            size_t len;
         }
-        return Intervals(data.data, data.length);
+        return Intervals(data.data);
     }
 
     bool opIndex(uint val) const
@@ -1831,7 +1284,7 @@ private:
     Marker addInterval(int a, int b, Marker hint=Marker.init)
     in
     {
-        assert(a <= b);
+        assert(a <= b, text(a, " > ", b));
     }
     body
     {
@@ -2046,6 +1499,26 @@ private:
         *dest = (val<<8) | (*dest & 0xFF);
 }
 
+uint read24(const ubyte* ptr, size_t idx)
+{
+    if(__ctfe)
+        return safeRead24(ptr, idx);
+    version(std_uni_aligned_reads)
+        return safeRead24(ptr, idx);
+    else
+        return unalignedRead24(ptr, idx);
+}
+
+void write24(ubyte* ptr, uint val, size_t idx)
+{
+    if(__ctfe)
+        return safeWrite24(ptr, val, idx);
+    version(std_uni_aligned_reads)
+        return safeRead24(ptr, idx);
+    else
+        return unalignedWrite24(ptr, val, idx);
+}
+
 //Packed array of 24-bit integers.
 @trusted struct Uint24Array(SP=GcPolicy)
 {
@@ -2084,12 +1557,7 @@ private:
     ///Read 24-bit packed integer
     uint opIndex(size_t idx)const
     {
-        if(__ctfe)
-            return safeRead24(data.ptr, idx);
-        version(std_uni_aligned_reads)
-            return safeRead24(data.ptr, idx);
-        else
-            return unalignedRead24(data.ptr, idx);
+        return read24(data.ptr, idx);
     }
 
     ///Write 24-bit packed integer
@@ -2100,12 +1568,7 @@ private:
     }
     body
     {
-        if(__ctfe)
-            return safeWrite24(data.ptr, val, idx);
-        version(std_uni_aligned_reads)
-            return safeRead24(data.ptr, idx);
-        else
-            return unalignedWrite24(data.ptr, val, idx);
+        write24(data.ptr, val, idx);        
     }
 
     //
@@ -2147,8 +1610,8 @@ private:
 
     bool opEquals(const ref Uint24Array rhs)const
     {
-        return data[0..data.length*3]
-            == rhs.data[0..rhs.data.length*3];
+        return data[0..data.length]
+            == rhs.data[0..rhs.data.length];
     }
 private:
 
@@ -3557,7 +3020,7 @@ template idxTypes(Key, size_t fullBits, Prefix...)
         //Important note on bit packing
         //Each level has to hold enough of bits to address the next one    
         //The bottom level is known to hold full bit width
-        //thus it's size in pages is fill_bit_width - size_of_last_prefix
+        //thus it's size in pages is full_bit_width - size_of_last_prefix
         //Recourse on this notion
         alias TypeTuple!(
             idxTypes!(Key, fullBits - Prefix[$-1].bitSize, Prefix[0..$-1]),
@@ -3956,31 +3419,6 @@ unittest
 
 enum EMPTY_CASE_TRIE = ushort.max;//from what gen_uni uses internally
 
-/*
-auto  getSet()()
-{
-    return RleBitSet!ushort.fromRawArray([0x1100, 0x60, 0x9800, 0x1d]);
-}
-//@@@BUG@@@ ICEes compiler
-private string switchFromSet(Set)(Set set)
-{
-    string result;
-    foreach(ch; set.byChar)
-    {
-        result ~= std.string.xformat(`case '\u%04x:\n`, ch);
-    }
-    return result;
-}
-
-
-string f()
-{
-    return switchFromSet(unicodeL);
-}
-
-pragma(msg, f());
-*/
-
 enum hangul_L = `
     case '\u1100': .. case '\u115E':
     case '\uA960': .. case '\uA97C':
@@ -4264,7 +3702,7 @@ public:
             static assert(false, "No operation "~op~" defined for Grapheme");
     }
 
-    ///Append all of codepoints from input range inp to this Grapheme.
+    ///Append all of codepoints from input range $(D inp) to this Grapheme.
     ref opOpAssign(string op, Input)(Input inp)
         if(isInputRange!Input)
     {
@@ -4313,7 +3751,7 @@ public:
 
 
 private:
-    enum small_bytes = (4*size_t.sizeof-1);
+    enum small_bytes = ((ubyte*).sizeof+3*size_t.sizeof-1);
     //out of the blue grow rate, needs testing 
     //(though graphemes are typically small < 9)
     enum grow = 20;
@@ -4348,17 +3786,6 @@ private:
         assert(grow > len_);
         cap_ = grow;
         setBig();
-    }
-
-    static dchar read24(const ubyte* base, size_t i)
-    {
-        return (*cast(const dchar*)&base[i*3]) & 0xFF_FFFF;
-    }
-
-    static void write24(ubyte* base, dchar ch, size_t i)
-    {
-        dchar* p = cast(dchar*)&base[i*3];
-        *p = (*p & 0xFF00_0000) | ch;
     }
 
     void setBig(){ slen_ |= small_flag; }
@@ -4917,7 +4344,7 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
         if(br.empty)//start is 0
             break;
         dchar ch = br.back;
-        if(combiningClassTrie[ch] == 0 && !notAllowedIn!norm(ch))
+        if(combiningClassTrie[ch] == 0 && allowedIn!norm(ch))
         {
             region_start = br.length - std.utf.codeLength!C(ch);
             break;
@@ -4928,7 +4355,7 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
     size_t region_end=input.length;//end is $ by default
     foreach(i, dchar ch; input[idx..$])
     {
-        if(combiningClassTrie[ch] == 0 && !notAllowedIn!norm(ch))
+        if(combiningClassTrie[ch] == 0 && allowedIn!norm(ch))
         {
             region_end = i+idx;
             break;
@@ -4938,7 +4365,14 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
     return tuple(region_start, region_end);
 }
 
-public bool notAllowedIn(string norm)(dchar ch)
+///Checks if dchar $(D ch) is always allowed (Quick_Check=YES) in normalization form $(D norm).
+public bool allowedIn(string norm)(dchar ch)
+{
+    return !notAllowedIn!norm(ch);
+}
+
+//not user friendly name but more direct 
+private bool notAllowedIn(string norm)(dchar ch)
 {
     static if(norm == NFC)
         return nfcQC[ch];
