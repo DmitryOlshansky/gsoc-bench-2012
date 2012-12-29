@@ -91,8 +91,14 @@ static import std.ascii;
 import std.traits, std.range, std.algorithm, std.typecons,
     std.format, std.conv, std.typetuple, std.exception, core.stdc.stdlib;
 import std.array; //@@BUG UFCS doesn't work with 'local' imports
-
+import core.bitop;
 import unicode_tables;
+
+version(X86)
+    version = std_uni_unaligned_reads;
+version(X86_64)
+    version = std_uni_unaligned_reads;
+//update to reflect all major CPUs supporting unaligned reads
 
 enum dchar lineSep = '\u2028'; /// UTF line separator
 enum dchar paraSep = '\u2029'; /// UTF paragraph separator
@@ -156,8 +162,8 @@ unittest
 
 //debug = std_uni;
 
-//debug(std_uni) import std.stdio;
-import std.stdio;
+debug(std_uni) import std.stdio;
+
 
 private:
 
@@ -581,7 +587,7 @@ struct PackedArrayView(T, size_t bits)
 
     auto opSlice(size_t from, size_t to)
     {
-        return SliceOverIndexed!PackedArrayView(from, to, &this);
+        return sliceOverIndexed(from, to, &this);
     }
 
     auto opSlice(){ return opSlice(0, length); }
@@ -608,8 +614,8 @@ private:
 
 private struct SliceOverIndexed(T)
 {
-    enum assignableIndex = is(typeof((){ T.init[0] = T.init[0]; }));
-    //enum assignableSlice = is(typeof((){ T.init[0..0] = T.init[0]; }));
+    enum assignableIndex = is(typeof((){ T.init[0] = Item.init; }));
+    enum assignableSlice = is(typeof((){ T.init[0..0] = Item.init; }));
 
     auto opIndex(size_t idx)const
     in
@@ -634,21 +640,23 @@ private struct SliceOverIndexed(T)
 
     auto opSlice(size_t a, size_t b)
     {
-        return SliceOverIndexed(from+a, from+b, arr);
+        return typeof(this)(from+a, from+b, arr);
     }
 
-    /*static if(assignableSlice)
+    //static if(assignableSlice)
     void opSliceAssign(T)(T val, size_t start, size_t end)
     {
         return (*arr)[start+from, end+from] = val;
-    }*/
+    }
 
     auto opSlice()
     {
         return opSlice(from, to);
     }
 
-    @property size_t length()const{ return to-from;}
+    @property size_t length()const { return to-from;}
+
+    auto opDollar()const { return length; }
 
     @property bool empty()const { return from == to; }
 
@@ -683,15 +691,16 @@ private:
     T* arr;
 }
 
-auto sliceOverIndexed(T)(size_t a, size_t b, const(T)* x)
+//BUG? forward reference to return type of sliceOverIndexed!Grapheme
+SliceOverIndexed!(const(T)) sliceOverIndexed(T)(size_t a, size_t b, const(T)* x)
     if(is(Unqual!T == T))
 {
     return SliceOverIndexed!(const(T))(a, b, x);
 }
 
-//@@@BUG inout is out of Mojo: 
+//BUG? inout is out of reach 
 //...SliceOverIndexed.arr only parameters or stack based variables can be inout
-auto sliceOverIndexed(T)(size_t a, size_t b, T* x)
+SliceOverIndexed!T sliceOverIndexed(T)(size_t a, size_t b, T* x)
     if(is(Unqual!T == T))
 {
     return SliceOverIndexed!T(a, b, x);
@@ -722,6 +731,137 @@ unittest
 }
 
 */
+
+//============================================================================
+// Partially unrolled binary search using Shar's method
+//============================================================================
+
+string genUnrolledSwitchSearch(size_t size)
+{
+    assert(isPowerOf2(size));
+    string code = `auto power = bsr(m)+1;
+    switch(power){`;
+    size_t i = bsr(size);
+    foreach(v; iota(0, bsr(size)).retro.map!"2^^a")
+    {
+        code ~= `
+        case pow:
+            if(pred(range[idx+m], needle))
+                idx +=  m;
+            goto case;
+        `.replace("m", to!string(v))
+        .replace("pow", to!string(i));   
+        i--;
+    }
+    code ~= `
+        case 0:
+            if(pred(range[idx], needle))
+                idx += 1;
+            goto default;
+        `;  
+    code ~= `
+        default:
+    }`;
+    return code;
+}
+
+bool isPowerOf2(size_t sz)
+{
+    return (sz & (sz-1)) == 0;
+}
+
+size_t uniformLowerBound(alias pred, Range, T)(Range range, T needle)
+    if(is(T : ElementType!Range))
+{
+    assert(isPowerOf2(range.length));
+    size_t idx = 0, m = range.length/2;        
+    while(m != 0)
+    {
+        if(pred(range[idx+m], needle))
+            idx += m;
+        m /= 2;        
+    }
+    if(pred(range[idx], needle))
+        idx += 1;
+    return idx;
+}
+
+size_t switchUniformLowerBound(alias pred, Range, T)(Range range, T needle)
+    if(is(T : ElementType!Range))
+{
+    assert(isPowerOf2(range.length));
+    size_t idx = 0, m = range.length/2;
+    enum max = 1<<10;
+    while(m >= max)
+    {
+        if(pred(range[idx+m], needle))
+            idx += m;
+        m /= 2;
+    }
+    mixin(genUnrolledSwitchSearch(max));
+    return idx;
+}
+   
+
+size_t prevPowerOf2(size_t arg)
+{
+    assert(arg > 1); //else bsr is undefined
+    return 1<<bsr(arg-1);
+}
+
+size_t nextPowerOf2(size_t arg)
+{
+    assert(arg > 1); //else bsr is undefined
+    return 1<<bsr(arg-1)+1;
+}
+
+template sharMethod(alias uniLowerBound)
+{
+    size_t sharMethod(alias _pred="a<b", Range, T)(Range range, T needle)
+        if(is(T : ElementType!Range))
+    {
+        import std.functional;
+        alias binaryFun!_pred pred;
+        if(range.length == 0)
+            return 0;
+        if(isPowerOf2(range.length))
+            return uniLowerBound!pred(range, needle);
+        size_t n = prevPowerOf2(range.length);
+        if(pred(range[n-1], needle))
+        {//search in another 2^^k area that fully covers the tail of range
+            size_t k = nextPowerOf2(range.length - n + 1);
+            return range.length - k + uniLowerBound!pred(range[$-k..$], needle);
+        }
+        else
+            return uniLowerBound!pred(range[0..n], needle);
+    }
+}
+
+alias sharMethod!uniformLowerBound sharLowerBound;
+alias sharMethod!switchUniformLowerBound sharSwitchLowerBound;
+
+unittest
+{
+    auto stdLowerBound(T)(T[] range, T needle)
+    {
+        return assumeSorted(range).lowerBound(needle).length;
+    }
+    immutable MAX = 5*1173;
+    auto arr = array(iota(5, MAX, 5));
+    assert(arr.length == MAX/5-1);
+    foreach(i; 0..MAX+5)
+    {
+        auto std = stdLowerBound(arr, i);
+        assert(std == sharLowerBound(arr, i));
+        assert(std == sharSwitchLowerBound(arr, i));
+    }
+    arr = [];
+    auto std = stdLowerBound(arr, 33);
+    assert(std == sharLowerBound(arr, 33));
+    assert(std == sharSwitchLowerBound(arr, 33));
+}
+//============================================================================
+
 @safe:
 //hope to see simillar stuff in public interface... once Allocators are out
 //@@@BUG moveFront and friends? dunno, for now it's POD-only
@@ -763,7 +903,7 @@ unittest
 }
 
 //Simple storage manipulation policy
-//TODO: stop working around the bugs rorts them!
+//TODO: stop working around bugs, report them!
 @trusted public struct GcPolicy
 {
     static T[] dup(T)(const T[] arr)
@@ -1125,6 +1265,8 @@ private:
 
 }
 
+
+
 ///The recommended default type for set of codepoints.
 public alias InversionList!GcPolicy CodepointSet;
 
@@ -1191,23 +1333,21 @@ public:
         {
             @property auto front()const
             {
-                uint a = *cast(uint*)slice.ptr;
-                uint b = *cast(uint*)(slice.ptr+3);
-                //optimize a bit, since we go by even steps
-                return CodepointInterval(a & 0xFF_FFFF, b & 0xFF_FFFF);
+                uint a = read24(slice.ptr, 0);
+                uint b = read24(slice.ptr, 1);
+                return CodepointInterval(a, b);
             }
 
             @property auto back()const
             {
-                uint a = *cast(uint*)&slice.ptr[slice.length-6];
-                uint b = *cast(uint*)&slice.ptr[slice.length-3];
-                //optimize a bit, since we go by even steps
-                return CodepointInterval(a & 0xFF_FFFF, b & 0xFF_FFFF);
+                uint a = read24(slice.ptr, slice.length/3 - 2);
+                uint b = read24(slice.ptr, slice.length/3 - 1);
+                return CodepointInterval(a, b);
             }
 
             void popFront()
             {
-                slice = slice[6..$];//3*2 16bit == 2*24 bits
+                slice = slice[6..$];
             }
 
             void popBack()
@@ -1227,7 +1367,8 @@ public:
     bool opIndex(uint val) const
     {
         // the <= ensures that searching in  interval of [a, b) for 'a' you get .length == 1
-        return assumeSorted!((a,b) => a<=b)(data[]).lowerBound(val).length & 1;
+        //return assumeSorted!((a,b) => a<=b)(data[]).lowerBound(val).length & 1;
+        return sharSwitchLowerBound!"a<=b"(data[], val) & 1;
     }
 
     ///Number of characters in this set
@@ -1255,6 +1396,84 @@ public:
             genericReplace(data, data.length, data.length, [lastDchar+1]);
 
         return this;
+    }
+
+    /**
+        Generates string with D source code of function that tests if the codepoint
+        belongs to this set or not. The result is to be used with string mixin.
+        The inteded usage area is agressive optimization via meta programming 
+        in parsers generators and the like.
+
+        $(I Notes): to be used with care for relatively small or regular sets. It
+        could be end up being slower then just using multi-staged tables.
+        Example:
+        ---
+        TODO: add an example
+        ---
+    */    
+    string asSourceCode()
+    {
+        import std.string;        
+        enum maxBinary = 3;
+        static string linearScope(R)(R ivals, string indent)
+        {
+            string result = indent~"{\n";
+            string deeper = indent~"    ";
+            foreach(ival; ivals)
+            {
+                auto span = ival[1] - ival[0];
+                assert(span != 0);
+                if(span == 1)
+                {
+                    result ~= format("%sif(ch == %s) return true;\n", deeper, ival[0]);
+                }
+                else if(span == 2)
+                {
+                    result ~= format("%sif(ch == %s || ch == %s) return true;\n", 
+                        deeper, ival[0], ival[0]+1);
+                }
+                else
+                {
+                    result ~= format("%sif(ch < %s) return false;\n", deeper, ival[0]);
+                    result ~= format("%sif(ch < %s) return true;\n", deeper, ival[1]);
+                }
+            }
+            result ~= format("%sreturn false;\n%s}\n", deeper, indent); //including empty range of intervals
+            return result;
+        }
+        static string binaryScope(R)(R ivals, string indent)
+        { 
+            //time to do unrolled comparisons?
+            if(ivals.length < maxBinary)
+                return linearScope(ivals, indent);
+            else
+                return bisect(ivals, ivals.length/2, indent);
+        }
+        static string bisect(R)(R range, size_t idx, string indent)
+        {
+            string deeper = indent ~ "    ";
+            //bisect on one [a, b) interval at idx
+            string result = indent~"{\n";
+            //less branch, < a
+            result ~= format("%sif(ch < %s)\n%s", 
+                deeper, range[idx][0], binaryScope(range[0..idx], deeper));
+            //middle point,  >= a && < b
+            result ~= format("%selse if (ch < %s) return true;\n", 
+                deeper, range[idx][1]);
+            //greater or equal branch,  >= b
+            result ~= format("%selse\n%s", 
+                deeper, binaryScope(range[idx+1..$], deeper));
+            return result~indent~"}\n";
+        }
+        string code = "(dchar ch)\n";
+        auto range = byInterval.array;
+        //special case first bisection to be on ASCII vs beyond
+        auto tillAscii = countUntil!"a[0] > 0x80"(range);
+        if(tillAscii <= 0) //everything is ASCII or nothing is ascii (-1 & 0)
+            code ~= binaryScope(range, "");
+        else
+            code ~= bisect(range, tillAscii, "");
+        return code;
     }
 
     @property bool empty() const
@@ -1503,20 +1722,20 @@ uint read24(const ubyte* ptr, size_t idx)
 {
     if(__ctfe)
         return safeRead24(ptr, idx);
-    version(std_uni_aligned_reads)
-        return safeRead24(ptr, idx);
-    else
+    version(std_uni_unaligned_reads)
         return unalignedRead24(ptr, idx);
+    else
+        return safeRead24(ptr, idx);
 }
 
 void write24(ubyte* ptr, uint val, size_t idx)
 {
     if(__ctfe)
         return safeWrite24(ptr, val, idx);
-    version(std_uni_aligned_reads)
-        return safeRead24(ptr, idx);
-    else
+    version(std_uni_unaligned_reads)
         return unalignedWrite24(ptr, val, idx);
+    else
+        return safeWrite24(ptr, val, idx);    
 }
 
 //Packed array of 24-bit integers.
@@ -2610,20 +2829,23 @@ unittest
 {
     static trieStats(TRIE)(TRIE t)
     {
-        writeln("---TRIE FOOTPRINT STATS---");
-        foreach(i; Sequence!(0, t.table.dim) )
-        {
-            writefln("lvl%s = %s bytes;  %s pages"
-                     , i, t.bytes!i, t.pages!i);
-        }
-        writefln("TOTAL: %s bytes", t.bytes);
         debug(std_uni)
         {
-            writeln("INDEX (excluding value level):");
-            foreach(i; Sequence!(0, t.table.dim-1) )
-                writeln(t.table.slice!(i)[0..t.table.length!i]);
+            writeln("---TRIE FOOTPRINT STATS---");
+            foreach(i; Sequence!(0, t.table.dim) )
+            {
+                writefln("lvl%s = %s bytes;  %s pages"
+                         , i, t.bytes!i, t.pages!i);
+            }
+            writefln("TOTAL: %s bytes", t.bytes);
+            version(none)
+            {
+                writeln("INDEX (excluding value level):");
+                foreach(i; Sequence!(0, t.table.dim-1) )
+                    writeln(t.table.slice!(i)[0..t.table.length!i]);
+            }
+            writeln("---------------------------");
         }
-        writeln("---------------------------");
     }
     //@@@BUG link failure, lambdas not found by linker somehow (in case of trie2)
     //alias assumeSize!(8, function (uint x) { return x&0xFF; }) lo8;
