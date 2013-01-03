@@ -11,31 +11,26 @@ alias TypeTuple!(isAlpha, isMark, isNumber, isSymbol, isWhite) stdTests;
 
 uint lastCount;
 
-void clasifyCall(alias mtd)(in char[] str)
+void clasifyCall(alias mtd)(in dchar[] str)
 {
     uint count=0;
-    size_t idx;
-    while(idx < str.length)
+    foreach(ch; str)
     {
-        dchar ch = decode(str, idx);
         if(mtd(ch))
             count++;
     }
     lastCount = count;
 }
 
-void clasifyIndex(alias mtd)(in char[] str)
+void clasifyIndex(alias mtd)(in dchar[] str)
 {
     uint count=0;
-    size_t idx;
-    while(idx < str.length)
+    foreach(ch; str)
     {
-        dchar ch = decode(str, idx);
         if(mtd[ch])
             count++;
     }
     lastCount = count;
-
 }
 
 bool noop(dchar ch){ return ch > 0; }
@@ -55,14 +50,14 @@ void myTest(Result[] data)
                   bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
                writeln("CNT: ", lastCount);
             }
-            bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
+            /*bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
             writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invMark)("inv-uint-mark", x.name, x.data);
             writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invNumber)("inv-uint-num", x.name, x.data);
             writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invSymbol)("inv-uint-sym", x.name, x.data);
-            writeln("CNT: ", lastCount);
+            writeln("CNT: ", lastCount);*/
             bench!(clasifyIndex!triAlpha)("tri-uint-alpha", x.name, x.data);
             bench!(clasifyIndex!triMark)("tri-uint-mark", x.name, x.data);
             bench!(clasifyIndex!triNumber)("tri-uint-num", x.name, x.data);
@@ -85,7 +80,8 @@ else
     __gshared MyTrie triAlpha, triMark, triNumber, triSymbol;
 
     //alias Trie!(bool, dchar, sliceBits!(16, 21), sliceBits!(0, 16)) MyTrie;
-    alias Trie!(bool, dchar, sliceBits!(16, 21), sliceBits!(8, 16), sliceBits!(0, 8)) MyTrie;
+    alias Trie!(bool, dchar, sliceBits!(13, 21), sliceBits!(8, 13), sliceBits!(0, 8)) MyTrie;
+    //alias Trie!(bool, dchar, sliceBits!(16, 24), sliceBits!(8, 16), sliceBits!(0, 8)) MyTrie;
 
     struct UtfTrie(Char)
         if(Char.sizeof == 1)
@@ -94,8 +90,8 @@ else
         //TODO: adjust with UTF-8 encoding layout in mind
         //+ remove extra work by avoiding top-level sliceBits
         Trie!(bool, ushort, sliceBits!(8, 16), sliceBits!(0, 8)) trie2;
-        Trie!(bool, uint,  sliceBis!(16, 24), sliceBits!(8, 16), sliceBits!(0, 8)) trie3;
-        Trie!(bool, uint,  sliceBis!(20, 32), sliceBits!(8, 20), sliceBits!(0, 8)) trie4;
+        Trie!(bool, uint,  sliceBits!(16, 24), sliceBits!(8, 16), sliceBits!(0, 8)) trie3;
+        Trie!(bool, uint,  sliceBits!(20, 32), sliceBits!(8, 20), sliceBits!(0, 8)) trie4;
 
         this(Set)(in Set set)
         {
@@ -112,9 +108,13 @@ else
         invNumber = unicode("number");
 
         triAlpha = MyTrie(invAlpha);
+        writeln("Alpha:", triAlpha.bytes);
         triMark = MyTrie(invMark);
+        writeln("Mark:", triMark.bytes);
         triNumber = MyTrie(invNumber);
+        writeln("Number:", triNumber.bytes);
         triSymbol = MyTrie(invSymbol);
+        writeln("Symbol:", triSymbol.bytes);
     }
 
 }

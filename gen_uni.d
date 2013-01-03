@@ -13,6 +13,9 @@ import uni, std.stdio, std.traits, std.typetuple,
 import std.file:exists;
 static import std.ascii;
 
+//if want absolute size packing at the expense of access speed
+//version = gen_uni_pack;
+
 //common binary propertiy sets and their aliases
 CodepointSet[string] props;
 string[string] aliases;
@@ -187,7 +190,8 @@ void main(string[] argv)
         writeCombining();
         writeDecomposition();
         writeCompositionTable();
-        writeEndPlatformDependent();        
+        writeEndPlatformDependent(); 
+        writeFunctions();       
     }
     catch(Exception e)
     {
@@ -315,7 +319,7 @@ void loadBlocks(string f)
             auto s2 = m.captures[2];
             auto a1 = parse!uint(s1, 16);
             auto a2 = parse!uint(s2, 16);
-            props["In"~to!string(m.captures[3])] = CodepointSet.fromIntervals([a1, a2+1]);
+            props["In"~to!string(m.captures[3])] = CodepointSet(a1, a2+1);
     })(f, r);
 }
 
@@ -494,7 +498,7 @@ string charsetString(CodepointSet set, string sep=";\n")
 {
     auto app = appender!(char[])();
     ubyte[] data = compressIntervals(set.byInterval);
-    assert(CodepointSet.fromIntervals(decompressIntervals(data)) == set);
+    assert(CodepointSet(decompressIntervals(data)) == set);
     formattedWrite(app, "[%(0x%x, %)];", data);
     return cast(string)app.data;
 }
@@ -633,13 +637,11 @@ void writeTries()
     CodepointSet graphical = alpha | mark | number | punctuation | symbol | props["Zs"];
     CodepointSet format = props["Cf"];
     CodepointSet nonCharacter = props["Cn"];
-
-
+ 
     CodepointSet nfcQC = normalization["NFC_QCN"] | normalization["NFC_QCM"];
     CodepointSet nfdQC = normalization["NFD_QCN"];
     CodepointSet nfkcQC = normalization["NFKC_QCN"] | normalization["NFKC_QCM"];
     CodepointSet nfkdQC = normalization["NFKD_QCN"];
-
     printBest3Level("alpha", alpha);
     printBest3Level("mark", mark);
     printBest3Level("number", number);
@@ -653,6 +655,7 @@ void writeTries()
     printBest3Level("nfdQC", nfdQC);
     printBest3Level("nfkcQC", nfkcQC);
     printBest3Level("nfkdQC", nfkdQC);
+
 
     //few specifics for grapheme cluster breaking algorithm
     printBest3Level("mc", props["Mc"]);
@@ -699,6 +702,20 @@ void writeDecomposition()
     writeln("immutable decompCanonTable = ", decompCanonTable, ";");
     writeln("immutable decompCompatTable = ", decompCompatTable, ";");
 }
+
+void writeFunctions()
+{
+    auto format = props["Cf"];
+    auto space = props["Zs"];
+    auto control = props["Cc"];
+    auto whitespace = props["White_Space"];
+
+    writeln(format.toSourceCode("isFormatGen"));
+    writeln(control.toSourceCode("isControlGen"));
+    writeln(space.toSourceCode("isSpaceGen"));
+    writeln(whitespace.toSourceCode("isWhiteGen"));
+}
+
 
 void writeCompositionTable()
 {
@@ -850,23 +867,39 @@ void printBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
 
 auto printBest3Level(Set)(string name, in Set set)
 {
-    alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-    size_t min = size_t.max;
     void delegate() print;
-    foreach(lvl_1; List)
-    foreach(lvl_2; List)
+    version(gen_uni_pack)
     {
-        static if(lvl_1 + lvl_2  <= 16)
+        alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        size_t min = size_t.max;        
+        foreach(lvl_1; List)
+        foreach(lvl_2; List)
         {
-            enum lvl_3 = 21-lvl_2-lvl_1;
-            alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3) CurTrie;
-            CurTrie t = CurTrie(set);
-            if(t.bytes < min)
+            static if(lvl_1 + lvl_2  <= 16)
             {
-                min = t.bytes;
-                print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
+                enum lvl_3 = 21-lvl_2-lvl_1;
+                alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3) CurTrie;
+                CurTrie t = CurTrie(set);
+                if(t.bytes < min)
+                {
+                    min = t.bytes;
+                    print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
+                }
             }
         }
+    }
+    else
+    {
+        // access speed trumps size, power of 2 is faster to access
+        // e.g. 9, 5, 7 is far slower then 8, 5, 8 because of how bits breakdown:
+        // 8-5-8: indexes are 21-8 = 13 bits, 13-5 = 8 bits
+        // 9-5-7: indexes are 21-7 = 14 bits, 14-5 = 9 bits (!!)
+
+        // 8-5-8 is hand picked to be a very close match to the best packing
+        // and it's the best size-wise in almost all cases
+        alias CodepointSetTrie!(8, 5, 8) CurTrie;
+        CurTrie t = CurTrie(set);
+        print = createPrinter!(8, 5, 8)(name, t);
     }
     print();
 }

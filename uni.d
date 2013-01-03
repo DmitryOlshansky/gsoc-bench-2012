@@ -515,37 +515,152 @@ size_t spaceFor(size_t bits)(size_t new_len)
     }
 }
 
+//============================================================================
+// Fast integer divison by constant 
+// Useful to not rely on compiler optimizations and have speed in debug builds
+// Currently GDC does this optimization, DMD doesn't
+//============================================================================
+struct Magic
+{
+    uint mul;    
+    uint shift;
+    bool add;
+}
+
+struct QR{
+    uint q;
+    uint r;
+}
+
+Magic magicNumbers(uint d)
+{
+    static double dumbPow2(int n)
+    {
+        double x = 1.0;
+        for(int i=0; i<n; i++)
+            x *= 2;
+        return x;
+    }
+    import core.bitop;
+    Magic m;
+    assert(d > 1);
+    uint r = 32 + bsr(d);
+    double f = dumbPow2(r) / d;    
+    double frac = f - cast(long)f;
+    if(frac < 0.5)
+    {
+        m.mul = cast(uint)f;
+        m.add = true;
+    }
+    else
+    {
+        m.mul = cast(uint)f + 1;
+        m.add = false;
+    }
+    m.shift = r - 32;
+    return m;
+}
+
+//creates q & r in local scope
+static string genFastModDiv(uint div)
+{
+    import std.string;
+    Magic m = magicNumbers(div);
+    if(m.mul == 0)
+        return format("auto q = (n >> %s);\nauto r = n & 0x%X;\n", 
+            m.shift,  (1U<<m.shift)-1);
+    else
+        return format("auto q = cast(uint)(((n%s) * 0x%XUL)>>%s);\n", 
+             m.add ? "+1" : "", m.mul, m.shift+32)
+        ~ format("auto r = n - q * %s;\n", div);
+}
+
+auto fastModDiv(uint d)(uint n)
+{
+    mixin(genFastModDiv(d));
+    return QR(q, r);
+}
+
+unittest
+{
+    //exhastive test is not feasible as unittest, uses 2M random numbers instead
+    import std.random;
+    uint seed = unpredictableSeed();
+    Xorshift rng = Xorshift(seed);
+    uint[] data = array(take(rng, 2*1000*1000));
+    foreach(divisor; TypeTuple!(2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15))
+    {
+        foreach(v; data)
+        {
+            auto rq = fastModDiv!divisor(v);
+            assert(v / divisor == rq.q && v % divisor == rq.r, 
+                text("fastDiv!", divisor," failed v=", v, " q=", rq.q,
+                    " rng seed=", seed));
+        }
+    }
+}
+//============================================================================
+
 //only per word packing, speed is more important
 //doesn't own memory, only provides access
 struct PackedArrayView(T, size_t bits)
+    if(isIntegral!T || is(T == bool) || isSomeChar!T)
 {
-    import core.bitop;
+    import core.bitop;    
+    version(std_uni_unaligned_reads)
+        enum hasUnaligned = true;    
+
     this(inout(size_t)[] arr)inout
     {
         original = arr;
     }
 
-    static if(T.sizeof*8 == bits)
-    {//by properly granular type itself        
-        ref opIndex(size_t idx)inout
-        {
-            return (cast(inout(T)*)original.ptr)[idx];
-        }
+    static if(factor == bytesPerWord// can pack by byte
+         || ((factor == bytesPerWord/2 || factor == bytesPerWord/4) && hasUnaligned))
+    {   
+        //pragma(msg, text("direct for ", factor));
+        static if(factor == bytesPerWord)
+            alias U = ubyte;
+        else static if(factor == bytesPerWord/2)
+            alias U = ushort;
+        else static if(factor == bytesPerWord/4)
+            alias U = uint;
 
-    }
-    else
-    {
-        T opIndex(size_t idx)inout
-        in
+        T opIndex(size_t idx) inout
         {
-            assert(idx/factor < original.length, text(idx/factor, " vs ", original.length));
-        }
-        body
-        {        
-            return cast(T)((original[idx/factor] >> bits*(idx%factor)) & mask);      
+            return cast(inout(T))(cast(U*)original.ptr)[idx];
         }
 
         void opIndexAssign(T val, size_t idx)
+        {
+            (cast(U*)original.ptr)[idx] = cast(U)val;
+        }
+    }
+    else
+    {
+        //pragma(msg, text("computed for ", factor));
+        T opIndex(size_t n) inout
+        in
+        {
+            assert(n/factor < original.length, text(n/factor, " vs ", original.length));
+        }
+        body
+        {            
+            // genFastModDiv is proven to be as fast as properly
+            // optimized div and faster then current DMD's one, v2.061            
+            static if(factor == bytesPerWord*8)
+            {   //can re-write so that there is less data dependency
+                mixin(genFastModDiv(factor));
+                return original[q] & (mask<<r) ? 1 : 0;
+            }
+            else
+            {
+                mixin(genFastModDiv(factor));
+                return cast(T)((original[q] >> bits*r) & mask);
+            }
+        }
+
+        void opIndexAssign(T val, size_t n)
         in
         {
             static if(isIntegral!T)
@@ -555,9 +670,11 @@ struct PackedArrayView(T, size_t bits)
         }
         body
         {
-            size_t tgt_shift = bits*(idx%(factor));
-            original[idx/factor] &= ~(mask<<tgt_shift);
-            original[idx/factor] |= cast(size_t)val << tgt_shift;
+            mixin(genFastModDiv(factor));
+            size_t tgt_shift = bits*r;
+            size_t word = original[q];
+            original[q] = (word & ~(mask<<tgt_shift)) 
+                | (cast(size_t)val << tgt_shift);
         }
     }
 
@@ -608,6 +725,7 @@ private:
 
     //factor - number of elements in one machine word
     enum factor = size_t.sizeof*8/bits, mask = 2^^bits-1;
+    enum bytesPerWord =  size_t.sizeof;
     size_t[] original;
 }
 
@@ -1411,7 +1529,7 @@ public:
         TODO: add an example
         ---
     */    
-    string asSourceCode()
+    string toSourceCode(string funcName="")
     {
         import std.string;        
         enum maxBinary = 3;
@@ -1434,13 +1552,15 @@ public:
                 }
                 else
                 {
-                    result ~= format("%sif(ch < %s) return false;\n", deeper, ival[0]);
+                    if(ival[0] != 0) //dchar is unsigned and  < 0 is useless
+                        result ~= format("%sif(ch < %s) return false;\n", deeper, ival[0]);
                     result ~= format("%sif(ch < %s) return true;\n", deeper, ival[1]);
                 }
             }
             result ~= format("%sreturn false;\n%s}\n", deeper, indent); //including empty range of intervals
             return result;
         }
+
         static string binaryScope(R)(R ivals, string indent)
         { 
             //time to do unrolled comparisons?
@@ -1449,6 +1569,30 @@ public:
             else
                 return bisect(ivals, ivals.length/2, indent);
         }
+
+        //not used yet if/elsebinary search is far better with DMD  as of 2.061
+        //and GDC is doing fine job either way
+        static string switchScope(R)(R ivals, string indent)
+        {
+            string result = indent~"switch(ch){\n";
+            string deeper = indent~"    ";
+            foreach(ival; ivals)
+            {
+                if(ival[0]+1 == ival[1])
+                {
+                    result ~= format("%scase %s: return true;\n", 
+                        deeper, ival[0]);
+                }
+                else
+                {
+                    result ~= format("%scase %s: .. case %s: return true;\n",
+                         deeper, ival[0], ival[1]-1);
+                } 
+            }
+            result ~= deeper~"default: return false;\n"~indent~"}\n";
+            return result;
+        }
+
         static string bisect(R)(R range, size_t idx, string indent)
         {
             string deeper = indent ~ "    ";
@@ -1456,7 +1600,7 @@ public:
             string result = indent~"{\n";
             //less branch, < a
             result ~= format("%sif(ch < %s)\n%s", 
-                deeper, range[idx][0], binaryScope(range[0..idx], deeper));
+                deeper, range[idx][0], binaryScope(range[0..idx], deeper));            
             //middle point,  >= a && < b
             result ~= format("%selse if (ch < %s) return true;\n", 
                 deeper, range[idx][1]);
@@ -1465,7 +1609,8 @@ public:
                 deeper, binaryScope(range[idx+1..$], deeper));
             return result~indent~"}\n";
         }
-        string code = "(dchar ch)\n";
+
+        string code = format("bool %s(dchar ch)\n", funcName.empty ? "function" : funcName);
         auto range = byInterval.array;
         //special case first bisection to be on ASCII vs beyond
         auto tillAscii = countUntil!"a[0] > 0x80"(range);
@@ -2915,293 +3060,6 @@ unittest
     assert(!strie["aea"]);
     assert(strie["s"]);
 
-    //A realistic example: keyword detector
-    enum keywords = [
-            "abstract",
-            "alias",
-            "align",
-            "asm",
-            "assert",
-            "auto",
-            "body",
-            "bool",
-            "break",
-            "byte",
-            "case",
-            "cast",
-            "catch",
-            "cdouble",
-            "cent",
-            "cfloat",
-            "char",
-            "class",
-            "const",
-            "continue",
-            "creal",
-            "dchar",
-            "debug",
-            "default",
-            "delegate",
-            "delete",
-            "deprecated",
-            "do",
-            "double",
-            "else",
-            "enum",
-            "export",
-            "extern",
-            "false",
-            "final",
-            "finally",
-            "float",
-            "for",
-            "foreach",
-            "foreach_reverse",
-            "function",
-            "goto",
-            "idouble",
-            "if",
-            "ifloat",
-            "immutable",
-            "import",
-            "in",
-            "inout",
-            "int",
-            "interface",
-            "invariant",
-            "ireal",
-            "is",
-            "lazy",
-            "long",
-            "macro",
-            "mixin",
-            "module",
-            "new",
-            "nothrow",
-            "null",
-            "out",
-            "override",
-            "package",
-            "pragma",
-            "private",
-            "protected",
-            "public",
-            "pure",
-            "real",
-            "ref",
-            "return",
-            "scope",
-            "shared",
-            "short",
-            "static",
-            "struct",
-            "super",
-            "switch",
-            "synchronized",
-            "template",
-            "this",
-            "throw",
-            "true",
-            "try",
-            "typedef",
-            "typeid",
-            "typeof",
-            "ubyte",
-            "ucent",
-            "uint",
-            "ulong",
-            "union",
-            "unittest",
-            "ushort",
-            "version",
-            "void",
-            "volatile",
-            "wchar",
-            "while",
-            "with",
-            "__FILE__",
-            "__gshared",
-            "__LINE__",
-            "__thread",
-            "__traits"
-    ];
-
-    //assumes T.init == empty, NG if T.init is a legal key
-    struct SmallSet(size_t N, T)
-    {
-        T[N] items;
-        void insert(T val)
-        {
-            int i;
-            if(val == T.init)
-                return;
-            for(i=0;i<N; i++)
-                if(items[i] == T.init)
-                {
-                    items[i] = val;
-                    return;
-                }
-            throw new Exception(text("out of slots in ", this," on key=", val));
-        }
-
-        bool opBinaryRight(string op, T)(T key) const
-            if(op == "in")
-        {
-            return  items[].countUntil(key) != -1;
-        }
-    }
-
-    struct SmallMap(size_t N, V, K)
-    {
-        void insert(Tuple!(V, K) t){ _set.insert(t); }
-
-        V opBinaryRight(string op, T)( T key) const
-            if(op == "in")
-        {
-            auto idx = map!"a[1]"(_set.items[]).countUntil(key);
-            ///@@@BUG now that's goofy - can't V.init go as const V insted of casting 
-            //both as ints ??
-            return idx < 0 ? cast(const)V.init : _set.items[idx][0];
-        }
-        private:
-            SmallSet!(N, Tuple!(V, K)) _set;
-    }
-
-    static size_t useLength(T)(T[] arr)
-    {
-        return arr.length > 63 ? 0 : arr.length; //need max length, 64 - 6bits
-    }
-
-    enum k = bitSizeOf!(SmallSet!(2, string));
-
-    auto keyTrie = Trie!(SetAsSlot!(SmallSet!(2,string))
-                         , string
-                         , assumeSize!(6, useLength)
-                         , useItemAt!(0, char)
-                         , useLastItem!(char))(keywords);
-    foreach(key; keywords)
-        assert( key in keyTrie[key], text(key, (cast (size_t[])keyTrie[key].items)));
-    trieStats(keyTrie);
-    
-    auto keywordsMap = [
-            "abstract" : TokenKind.Abstract,
-            "alias" : TokenKind.Alias,
-            "align" : TokenKind.Align,
-            "asm" : TokenKind.Asm,
-            "assert" : TokenKind.Assert,
-            "auto" : TokenKind.Auto,
-            "body" : TokenKind.Body,
-            "bool" : TokenKind.Bool,
-            "break" : TokenKind.Break,
-            "byte" : TokenKind.Byte,
-            "case" : TokenKind.Case,
-            "cast" : TokenKind.Cast,
-            "catch" : TokenKind.Catch,
-            "cdouble" : TokenKind.CDouble,
-            "cent" : TokenKind.Cent,
-            "cfloat" : TokenKind.CFloat,
-            "char" : TokenKind.Char,
-            "class" : TokenKind.Class,
-            "const" : TokenKind.Const,
-            "continue" : TokenKind.Continue,
-            "creal" : TokenKind.CReal,
-            "dchar" : TokenKind.DChar,
-            "debug" : TokenKind.Debug,
-            "default" : TokenKind.Default,
-            "delegate" : TokenKind.Delegate,
-            "delete" : TokenKind.Delete,
-            "deprecated" : TokenKind.Deprecated,
-            "do" : TokenKind.Do,
-            "double" : TokenKind.Double,
-            "else" : TokenKind.Else,
-            "enum" : TokenKind.Enum,
-            "export" : TokenKind.Export,
-            "extern" : TokenKind.Extern,
-            "false" : TokenKind.False,
-            "final" : TokenKind.Final,
-            "finally" : TokenKind.Finally,
-            "float" : TokenKind.Float,
-            "for" : TokenKind.For,
-            "foreach" : TokenKind.ForEach,
-            "foreach_reverse" : TokenKind.ForEach_Reverse,
-            "function" : TokenKind.Function,
-            "goto" : TokenKind.GoTo,
-            "idouble" : TokenKind.IDouble,
-            "if" : TokenKind.If,
-            "ifloat" : TokenKind.IFloat,
-            "immutable" : TokenKind.Immutable,
-            "import" : TokenKind.Import,
-            "in" : TokenKind.In,
-            "inout" : TokenKind.InOut,
-            "int" : TokenKind.Int,
-            "interface" : TokenKind.Interface,
-            "invariant" : TokenKind.Invariant,
-            "invariant" : TokenKind.Invariant,
-            "ireal" : TokenKind.IReal,
-            "is" : TokenKind.Is,
-            "lazy" : TokenKind.Lazy,
-            "long" : TokenKind.Long,
-            "macro" : TokenKind.Macro,
-            "mixin" : TokenKind.Mixin,
-            "module" : TokenKind.Module,
-            "new" : TokenKind.New,
-            "nothrow" : TokenKind.NoThrow,
-            "null" : TokenKind.Null,
-            "out" : TokenKind.Out,
-            "override" : TokenKind.Override,
-            "package" : TokenKind.Package,
-            "pragma" : TokenKind.Pragma,
-            "private" : TokenKind.Private,
-            "protected" : TokenKind.Protected,
-            "public" : TokenKind.Public,
-            "pure" : TokenKind.Pure,
-            "real" : TokenKind.Real,
-            "ref" : TokenKind.Ref,
-            "return" : TokenKind.Return,
-            "scope" : TokenKind.Scope,
-            "shared" : TokenKind.Shared,
-            "short" : TokenKind.Short,
-            "static" : TokenKind.Static,
-            "struct" : TokenKind.Struct,
-            "super" : TokenKind.Super,
-            "switch" : TokenKind.Switch,
-            "synchronized" : TokenKind.Synchronized,
-            "template" : TokenKind.Template,
-            "this" : TokenKind.This,
-            "throw" : TokenKind.Throw,
-            "true" : TokenKind.True,
-            "try" : TokenKind.Try,
-            "typedef" : TokenKind.TypeDef,
-            "typeid" : TokenKind.TypeId,
-            "typeof" : TokenKind.TypeOf,
-            "ubyte" : TokenKind.UByte,
-            "ucent" : TokenKind.UCent,
-            "uint" : TokenKind.UInt,
-            "ulong" : TokenKind.ULong,
-            "union" : TokenKind.Union,
-            "unittest" : TokenKind.UnitTest,
-            "ushort" : TokenKind.UShort,
-            "version" : TokenKind.Version,
-            "void" : TokenKind.Void,
-            "volatile" : TokenKind.Volatile,
-            "wchar" : TokenKind.WChar,
-            "while" : TokenKind.While,
-            "with" : TokenKind.With,
-            "__FILE__" : TokenKind._FILE_,
-            "__gshared" : TokenKind._GShared,
-            "__LINE__" : TokenKind._LINE_,
-            "__thread" : TokenKind._Thread,
-            "__traits" : TokenKind._Traits,
-    ];
-    auto keyTrie2 = Trie!(MapAsSlot!(SmallMap!(2, TokenKind, string), TokenKind, string)
-                         , string
-                         , assumeSize!(6, useLength)
-                         , useItemAt!(0, char)
-                         , useLastItem!(char))(keywordsMap);
-    foreach(k,v; keywordsMap)
-        assert((k in keyTrie2[k]) == v);
-    trieStats(keyTrie2);
-    
     //a bit size test
     auto a = array(map!(x => to!ubyte(x))(iota(0, 256)));
     auto bt = Trie!(bool, ubyte, sliceBits!(7, 8), sliceBits!(5, 7), sliceBits!(0, 5))(a);
@@ -3596,7 +3454,7 @@ public struct unicode
             result |= asSet(unicodePf);
             result |= asSet(unicodePo);
 
-            result |= asSet(unicodeWhite_Space);
+            result |= asSet(unicodeZs);
 
             result |= asSet(unicodeSm);
             result |= asSet(unicodeSc);
@@ -4610,6 +4468,23 @@ private bool notAllowedIn(string norm)(dchar ch)
 
 }
 
+version(std_uni_bootstrap)
+{
+    //old version used for bootstrapping of gen_uni.d that generates 
+    //up to date optimal versions of all of isXXX functions
+    public bool isWhite(dchar c) 
+    {
+        return std.ascii.isWhite(c) ||
+               c == lineSep || c == paraSep ||
+               c == '\u0085' || c == '\u00A0' || c == '\u1680' || c == '\u180E' ||
+               (c >= '\u2000' && c <= '\u200A') ||
+               c == '\u202F' || c == '\u205F' || c == '\u3000';
+    }
+}
+else
+{
+public:
+
 /++
     Whether or not $(D c) is a Unicode whitespace character.
     (general Unicode category: Part of C0(tab, vertical tab, form feed,
@@ -4617,17 +4492,8 @@ private bool notAllowedIn(string norm)(dchar ch)
   +/
 public bool isWhite(dchar c) 
 {
-    return std.ascii.isWhite(c) ||
-           c == lineSep || c == paraSep ||
-           c == '\u0085' || c == '\u00A0' || c == '\u1680' || c == '\u180E' ||
-           (c >= '\u2000' && c <= '\u200A') ||
-           c == '\u202F' || c == '\u205F' || c == '\u3000';
+    return isWhiteGen(c); //call pregenerated binary search
 }
-
-version(std_uni_bootstrap){}
-else
-{
-public:
 
 /++
    $(RED Deprecated. It will be removed in August 2012. Please use
@@ -4956,23 +4822,25 @@ unittest
         assert(isSymbol(ch), format("%04x", ch));
 }
 
-
 /++
-    Returns whether $(D c) is a Unicode whitespace character
+    Returns whether $(D c) is a Unicode space character
     (general Unicode category: Zs)
-    
+    Note: that this doesn't include '\n', '\r', \t' and other non-space characters.
+    For commonly used less strict semantics see $(LREF isWhite).
 +/
 bool isSpace(dchar c) //@safe pure nothrow
 {
-    //TODO: generate if/else search for small sets in gen_uni 
-    return unicode.Zs[c];
+    return isSpaceGen(c);
 }
 
 unittest
 {
     assert(isSpace('\u0020'));
-    foreach(ch; unicode("Zs").byChar)
+    auto space = unicode.Zs;
+    foreach(ch; space.byChar)
         assert(isSpace(ch));
+    foreach(ch; 0..0x1000)
+        assert(isSpace(ch) == space[ch]);
 }
 
 
@@ -4988,13 +4856,11 @@ bool isGraphical(dchar c) //@safe pure nothrow
 
 
 unittest
-{    
-    auto set = unicode("Alphabetic") | unicode("S") | unicode("P")
-        | unicode("M") | unicode("N") | unicode("Zs");    
-
+{   
+    auto set = unicode("Graphical");
+    import std.string;
     foreach(ch; set.byChar)
-        assert(isGraphical(ch));
-    
+        assert(isGraphical(ch), format("%4x", ch));    
     foreach(ch; 0..0x4000)
         assert((ch in set) == isGraphical(ch));
 }
@@ -5008,7 +4874,7 @@ unittest
 
 bool isControl(dchar c) //@safe pure nothrow
 {
-    return (c <= 0x1F || (0x7F <= c && c <= 0x9F));
+    return isControlGen(c);
 }
 
 unittest
@@ -5016,6 +4882,11 @@ unittest
     assert(isControl('\u0000'));
     assert(isControl('\u0081'));
     assert(!isControl('\u0100'));
+    auto cc = unicode.Cc;    
+    foreach(ch; cc.byChar)
+        assert(isControl(ch));
+    foreach(ch; 0..0x1000)
+        assert(isControl(ch) == cc[ch]);
 }
 
 
@@ -5026,8 +4897,7 @@ unittest
 +/
 bool isFormat(dchar c) //@safe pure nothrow
 {
-    //TODO: ditto code for small sets
-    return unicode.Cf[c];
+    return isFormatGen(c);
 }
 
 
@@ -5038,6 +4908,8 @@ unittest
         assert(isFormat(ch));
 }
 
+//codepoints for private use, surrogates are not likely to change in near feature
+//if need be they can be generated from unicode data as well
 
 /++
     Returns whether $(D c) is a Unicode Private Use character
