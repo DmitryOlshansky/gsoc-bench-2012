@@ -13,9 +13,6 @@ import uni, std.stdio, std.traits, std.typetuple,
 import std.file:exists;
 static import std.ascii;
 
-//if want absolute size packing at the expense of access speed
-//version = gen_uni_pack;
-
 //common binary propertiy sets and their aliases
 CodepointSet[string] props;
 string[string] aliases;
@@ -704,13 +701,21 @@ void writeFunctions()
 {
     auto format = props["Cf"];
     auto space = props["Zs"];
-    auto control = props["Cc"];
+    auto control = props["Cc"];    
     auto whitespace = props["White_Space"];
+
+    //hangul L, V, T
+    auto hangL = props["L"];
+    auto hangV = props["V"];
+    auto hangT = props["T"];
 
     writeln(format.toSourceCode("isFormatGen"));
     writeln(control.toSourceCode("isControlGen"));
     writeln(space.toSourceCode("isSpaceGen"));
     writeln(whitespace.toSourceCode("isWhiteGen"));
+    writeln(hangL.toSourceCode("isHangL"));
+    writeln(hangV.toSourceCode("isHangV"));
+    writeln(hangT.toSourceCode("isHangT"));
 }
 
 
@@ -862,60 +867,55 @@ void printBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
     print();
 }
 
+alias List_1 = TypeTuple!(4, 5, 6, 7, 8);
+
 auto printBest3Level(Set)(string name, in Set set)
 {
+    // access speed trumps size, power of 2 is faster to access
+    // e.g. 9, 5, 7 is far slower then 8, 5, 8 because of how bits breakdown:
+    // 8-5-8: indexes are 21-8 = 13 bits, 13-5 = 8 bits, fits into a byte
+    // 9-5-7: indexes are 21-7 = 14 bits, 14-5 = 9 bits, doesn't fit into a byte (!)
+
+    // plus 8-5-8 is one of hand picked that is a very close match 
+    // to the best packing
     void delegate() print;
-    version(gen_uni_pack)
+    
+    alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+    size_t min = size_t.max;        
+    foreach(lvl_1; List_1)//to have the first stage index fit in byte
+    foreach(lvl_2; List)
     {
-        alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-        size_t min = size_t.max;        
-        foreach(lvl_1; List)
-        foreach(lvl_2; List)
+        static if(lvl_1 + lvl_2  <= 16)//so that 2nd stage fits in ushort
         {
-            static if(lvl_1 + lvl_2  <= 16)
+            enum lvl_3 = 21-lvl_2-lvl_1;
+            alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3) CurTrie;
+            CurTrie t = CurTrie(set);
+            if(t.bytes < min)
             {
-                enum lvl_3 = 21-lvl_2-lvl_1;
-                alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3) CurTrie;
-                CurTrie t = CurTrie(set);
-                if(t.bytes < min)
-                {
-                    min = t.bytes;
-                    print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
-                }
+                min = t.bytes;
+                print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
             }
         }
-    }
-    else
-    {
-        // access speed trumps size, power of 2 is faster to access
-        // e.g. 9, 5, 7 is far slower then 8, 5, 8 because of how bits breakdown:
-        // 8-5-8: indexes are 21-8 = 13 bits, 13-5 = 8 bits
-        // 9-5-7: indexes are 21-7 = 14 bits, 14-5 = 9 bits (!!)
-
-        // 8-5-8 is hand picked to be a very close match to the best packing
-        // and it's the best size-wise in almost all cases
-        alias CodepointSetTrie!(8, 5, 8) CurTrie;
-        CurTrie t = CurTrie(set);
-        print = createPrinter!(8, 5, 8)(name, t);
     }
     print();
 }
 
 void printBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
 {
+    void delegate() print;
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
     size_t min = size_t.max;
-    void delegate() print;
-    foreach(lvl_1; List)
+    foreach(lvl_1; List_1)//to have the first stage index fit in byte
     foreach(lvl_2; List)
     {
-        static if(lvl_1 + lvl_2  <= 16)
+        static if(lvl_1 + lvl_2  <= 16)// into ushort
         {
             enum lvl_3 = 21-lvl_2-lvl_1;
             alias CodepointTrie!(V, lvl_1, lvl_2, lvl_3) CurTrie;
             CurTrie t = CurTrie(map, defValue);
             if(t.bytes < min)
             {
+                //stderr.writeln(lvl_1, "-", lvl_2, "-", lvl_3, ":", t.bytes);
                 min = t.bytes;
                 print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
             }
@@ -929,7 +929,7 @@ void printBest4Level(Set)(string name, in Set set)
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
     size_t min = size_t.max;
     void delegate() print;
-    foreach(lvl_1; List)
+    foreach(lvl_1; List_1)//to have the first stage index fit in byte
     foreach(lvl_2; List)
     foreach(lvl_3; List)
     {

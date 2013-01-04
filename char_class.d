@@ -35,6 +35,8 @@ void clasifyIndex(alias mtd)(in dchar[] str)
 
 bool noop(dchar ch){ return ch > 0; }
 
+bool combiningClassOf(dchar ch){ return combiningClass(ch) > 0; }
+
 void myTest(Result[] data)
 {
     foreach(x; data)
@@ -50,6 +52,7 @@ void myTest(Result[] data)
                   bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
                writeln("CNT: ", lastCount);
             }
+            bench!(clasifyCall!combiningClassOf)("combining class", x.name, x.data);
             /*bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
             writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invMark)("inv-uint-mark", x.name, x.data);
@@ -62,6 +65,7 @@ void myTest(Result[] data)
             bench!(clasifyIndex!triMark)("tri-uint-mark", x.name, x.data);
             bench!(clasifyIndex!triNumber)("tri-uint-num", x.name, x.data);
             bench!(clasifyIndex!triSymbol)("tri-uint-sym", x.name, x.data); 
+
         }
     }    
 }
