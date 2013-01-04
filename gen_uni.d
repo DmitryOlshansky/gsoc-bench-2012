@@ -635,7 +635,6 @@ void writeTries()
          | props["Pc"] | props["Po"] | props["Pi"] | props["Pf"];
     CodepointSet symbol = props["Sm"] | props["Sc"] | props["Sk"] | props["So"];
     CodepointSet graphical = alpha | mark | number | punctuation | symbol | props["Zs"];
-    CodepointSet format = props["Cf"];
     CodepointSet nonCharacter = props["Cn"];
  
     CodepointSet nfcQC = normalization["NFC_QCN"] | normalization["NFC_QCM"];
@@ -648,14 +647,12 @@ void writeTries()
     printBest3Level("punctuation", punctuation);
     printBest3Level("symbol", symbol);
     printBest3Level("graphical", graphical);
-    printBest3Level("format", format);
     printBest4Level("nonCharacter", nonCharacter);
 
     printBest3Level("nfcQC", nfcQC);
     printBest3Level("nfdQC", nfdQC);
     printBest3Level("nfkcQC", nfkcQC);
     printBest3Level("nfkdQC", nfkdQC);
-
 
     //few specifics for grapheme cluster breaking algorithm
     printBest3Level("mc", props["Mc"]);

@@ -4990,7 +4990,6 @@ immutable numberTrie = asTrie(numberTrieEntries);
 immutable punctuationTrie = asTrie(punctuationTrieEntries);
 immutable symbolTrie = asTrie(symbolTrieEntries);
 immutable graphicalTrie = asTrie(graphicalTrieEntries);
-immutable formatTrie = asTrie(formatTrieEntries);
 immutable nonCharacterTrie  = asTrie(nonCharacterTrieEntries);
 
 immutable nfcQC = asTrie(nfcQCTrieEntries);
