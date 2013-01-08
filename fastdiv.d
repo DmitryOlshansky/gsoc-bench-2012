@@ -1,3 +1,8 @@
+//============================================================================
+// Fast integer divison by constant 
+// Useful to not rely on compiler optimizations and have speed in debug builds
+// Currently GDC does this optimization, DMD doesn't
+//============================================================================
 struct Magic
 {
     uint mul;    
@@ -5,9 +10,9 @@ struct Magic
     bool add;
 }
 
-struct RQ{
-    uint r;
+struct QR{
     uint q;
+    uint r;
 }
 
 Magic magicNumbers(uint d)
@@ -39,26 +44,44 @@ Magic magicNumbers(uint d)
     return m;
 }
 
-RQ fastModDiv(uint d)(uint n)
+//creates q & r in local scope
+static string genFastModDiv(uint div)
 {
-    static string genFastModDiv(uint div, string rName)
-    {
-        import std.string;
-        Magic m = magicNumbers(div);
-        if(m.mul == 0)
-            return format("%s.q = (n >> %s);\n%s.r = n & 0x%X;\n", 
-                rName, m.shift, rName, (1<<m.shift)-1);
-        else
-            return format("%s.q = ((n%s) * 0x%XUL)>>%s;\n", 
-                rName, m.add ? "+1" : "", m.mul, m.shift+32)
-            ~ format("%s.r = n - %s.q * %s;\n", rName, rName, div);
-    }
-    RQ rq;
-    mixin(genFastModDiv(d, "rq"));
-    return rq;
+    import std.string;
+    Magic m = magicNumbers(div);
+    if(m.mul == 0)
+        return format("auto q = (n >> %s);\nauto r = n & 0x%X;\n", 
+            m.shift,  (1U<<m.shift)-1);
+    else
+        return format("auto q = cast(uint)(((n%s) * 0x%XUL)>>%s);\n", 
+             m.add ? "+1" : "", m.mul, m.shift+32)
+        ~ format("auto r = n - q * %s;\n", div);
 }
 
+auto fastModDiv(uint d)(uint n)
+{
+    mixin(genFastModDiv(d));
+    return QR(q, r);
+}
 
+unittest
+{
+    //exhastive test is not feasible as unittest, uses 2M random numbers instead
+    import std.random;
+    uint seed = unpredictableSeed();
+    Xorshift rng = Xorshift(seed);
+    uint[] data = array(take(rng, 2*1000*1000));
+    foreach(divisor; TypeTuple!(2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15))
+    {
+        foreach(v; data)
+        {
+            auto rq = fastModDiv!divisor(v);
+            assert(v / divisor == rq.q && v % divisor == rq.r, 
+                text("fastDiv!", divisor," failed v=", v, " q=", rq.q,
+                    " rng seed=", seed));
+        }
+    }
+}
 
 import std.math, std.typetuple, std.range;
 import std.conv, std.stdio, std.datetime, std.random;

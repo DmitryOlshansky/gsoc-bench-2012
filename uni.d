@@ -92,13 +92,19 @@ import std.traits, std.range, std.algorithm, std.typecons,
     std.format, std.conv, std.typetuple, std.exception, core.stdc.stdlib;
 import std.array; //@@BUG UFCS doesn't work with 'local' imports
 import core.bitop;
-import unicode_tables;
 
-version(X86)
-    version = std_uni_unaligned_reads;
-version(X86_64)
-    version = std_uni_unaligned_reads;
+version(std_uni_bootstrap){}
+else
+{
+    import unicode_tables; // generated file
+}
+
 //update to reflect all major CPUs supporting unaligned reads
+version(X86)
+    enum hasUnalignedReads = true;
+version(X86_64)
+    enum hasUnalignedReads = true;          
+
 
 enum dchar lineSep = '\u2028'; /// UTF line separator
 enum dchar paraSep = '\u2029'; /// UTF paragraph separator
@@ -164,7 +170,6 @@ unittest
 
 debug(std_uni) import std.stdio;
 
-
 private:
 
 enum lastDchar = 0x10FFFF;
@@ -174,6 +179,13 @@ auto force(T, F)(F from)
 {
     assert(from <= T.max && from >= T.min);
     return cast(T)from;
+}
+
+auto force(T, F)(F from)
+    if(isBitPacked!T && !is(T == F))
+{
+    assert(from <= 2^^bitSizeOf!T-1);
+    return T(cast(TypeOfBitPacked!T)from);
 }
 
 auto force(T, F)(F from)
@@ -264,7 +276,7 @@ struct MultiArray(Types...)
         //size_t len = raw_length!n;
         size_t len = spaceFor!(bitSizeOf!(Types[n]))(sz[n]);
         assert(ptr + len <= storage.ptr+storage.length);
-        return packedArrayView!(Unpack!(Types[n]), bitSizeOf!(Types[n]))(ptr[0..len]);
+        return packedArrayView!(Types[n])(ptr[0..len]);
     }
 
     template length(size_t n)
@@ -347,28 +359,10 @@ private:
             return storage.ptr+offsets[n];
         }
     }
-    size_t[Types.length] offsets;//offset for level x
-    size_t[Types.length] sz;//size of level x
     enum dim = Types.length;
-    static bool needNotifyGc()
-    {
-        bool yes = false;
-        foreach(v; staticMap!(hasIndirections, Types))
-            yes = yes || v;
-        return yes;
-    }
-    template Unpack(T)
-    {
-         //TODO: hackish! do proper pattern matching with BitPacked!(sz, T)
-        static if(is(typeof(T.bitSize)) && is(T.entity) )
-        {
-            alias T.entity Unpack;
-        }
-        else
-            alias T Unpack;
-    }
+    size_t[dim] offsets;//offset for level x
+    size_t[dim] sz;//size of level x
     alias staticMap!(bitSizeOf, Types) bitWidth;
-    enum indirections = needNotifyGc();
     size_t[] storage;
 }
 
@@ -430,7 +424,7 @@ unittest
     checkB!2(m, 33);
     check!0(m, 220);
 
-    auto marr = MultiArray!(BitPacked!(4, uint), BitPacked!(6, uint))(20, 10);
+    auto marr = MultiArray!(BitPacked!(uint, 4), BitPacked!(uint, 6))(20, 10);
     marr.length!0 = 15;
     marr.length!1 = 30;
     fill!1(marr, 30);
@@ -441,15 +435,15 @@ unittest
 
 unittest
 {//more bitpacking tests
-    alias MultiArray!(BitPacked!(3, size_t)
-                , BitPacked!(4, size_t)
-                , BitPacked!(3, size_t)
-                , BitPacked!(6, size_t)
+    alias MultiArray!(BitPacked!(size_t, 3)
+                , BitPacked!(size_t, 4)
+                , BitPacked!(size_t, 3)
+                , BitPacked!(size_t, 6)
                 , bool) Bitty;
-    alias sliceBits!(13, 16).entity fn1;
-    alias sliceBits!( 9, 13).entity fn2;
-    alias sliceBits!( 6,  9).entity fn3;
-    alias sliceBits!( 0,  6).entity fn4;
+    alias sliceBits!(13, 16) fn1;
+    alias sliceBits!( 9, 13) fn2;
+    alias sliceBits!( 6,  9) fn3;
+    alias sliceBits!( 0,  6) fn4;
     static void check(size_t lvl, MA)(ref MA arr){
         for(size_t i = 0; i< arr.length!lvl; i++)
             assert(arr.slice!(lvl)[i] == i, text("Mismatch on lvl ", lvl, " idx ", i, " value: ", arr.slice!(lvl)[i]));
@@ -501,8 +495,9 @@ unittest
     }
 }
 
-size_t spaceFor(size_t bits)(size_t new_len)
+size_t spaceFor(size_t _bits)(size_t new_len)
 {
+    enum bits = _bits == 1 ? 1 : ceilPowerOf2(_bits);//see PackedArrayView
     static if(bits > 8*size_t.sizeof)
     {
         static assert(bits % (size_t.sizeof*8) == 0);
@@ -511,104 +506,31 @@ size_t spaceFor(size_t bits)(size_t new_len)
     else
     {
         enum factor = size_t.sizeof*8/bits;
-        return (new_len+factor-1)/factor;
+        return (new_len+factor-1)/factor; //rounded up
     }
+}
+
+template bitPackableType(T)
+{
+    enum bitPackableType = isIntegral!T || is(T == bool) || isSomeChar!T;
 }
 
 //============================================================================
-// Fast integer divison by constant 
-// Useful to not rely on compiler optimizations and have speed in debug builds
-// Currently GDC does this optimization, DMD doesn't
-//============================================================================
-struct Magic
+template PackedArrayView(T)
+    if((is(T dummy == BitPacked!(U, sz), U, size_t sz) 
+        && bitPackableType!U) || bitPackableType!T)
 {
-    uint mul;    
-    uint shift;
-    bool add;
+    private enum bits = bitSizeOf!T;
+    alias PackedArrayView = PackedArrayViewImpl!(T, bits > 1 ? ceilPowerOf2(bits) : 1);
 }
 
-struct QR{
-    uint q;
-    uint r;
-}
-
-Magic magicNumbers(uint d)
+// data is packed only by power of two sized packs per word,
+// thus avoiding mul/div overhead at the cost of ultimate packing
+// this construct doesn't own memory, only provides access, see MultiArray for usage
+struct PackedArrayViewImpl(T, size_t bits)
 {
-    static double dumbPow2(int n)
-    {
-        double x = 1.0;
-        for(int i=0; i<n; i++)
-            x *= 2;
-        return x;
-    }
-    import core.bitop;
-    Magic m;
-    assert(d > 1);
-    uint r = 32 + bsr(d);
-    double f = dumbPow2(r) / d;    
-    double frac = f - cast(long)f;
-    if(frac < 0.5)
-    {
-        m.mul = cast(uint)f;
-        m.add = true;
-    }
-    else
-    {
-        m.mul = cast(uint)f + 1;
-        m.add = false;
-    }
-    m.shift = r - 32;
-    return m;
-}
-
-//creates q & r in local scope
-static string genFastModDiv(uint div)
-{
-    import std.string;
-    Magic m = magicNumbers(div);
-    if(m.mul == 0)
-        return format("auto q = (n >> %s);\nauto r = n & 0x%X;\n", 
-            m.shift,  (1U<<m.shift)-1);
-    else
-        return format("auto q = cast(uint)(((n%s) * 0x%XUL)>>%s);\n", 
-             m.add ? "+1" : "", m.mul, m.shift+32)
-        ~ format("auto r = n - q * %s;\n", div);
-}
-
-auto fastModDiv(uint d)(uint n)
-{
-    mixin(genFastModDiv(d));
-    return QR(q, r);
-}
-
-unittest
-{
-    //exhastive test is not feasible as unittest, uses 2M random numbers instead
-    import std.random;
-    uint seed = unpredictableSeed();
-    Xorshift rng = Xorshift(seed);
-    uint[] data = array(take(rng, 2*1000*1000));
-    foreach(divisor; TypeTuple!(2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15))
-    {
-        foreach(v; data)
-        {
-            auto rq = fastModDiv!divisor(v);
-            assert(v / divisor == rq.q && v % divisor == rq.r, 
-                text("fastDiv!", divisor," failed v=", v, " q=", rq.q,
-                    " rng seed=", seed));
-        }
-    }
-}
-//============================================================================
-
-//only per word packing, speed is more important
-//doesn't own memory, only provides access
-struct PackedArrayView(T, size_t bits)
-    if(isIntegral!T || is(T == bool) || isSomeChar!T)
-{
-    import core.bitop;    
-    version(std_uni_unaligned_reads)
-        enum hasUnaligned = true;    
+    static assert(isPowerOf2(bits));
+    import core.bitop;      
 
     this(inout(size_t)[] arr)inout
     {
@@ -616,7 +538,8 @@ struct PackedArrayView(T, size_t bits)
     }
 
     static if(factor == bytesPerWord// can pack by byte
-         || ((factor == bytesPerWord/2 || factor == bytesPerWord/4) && hasUnaligned))
+         || ((factor == bytesPerWord/2 || factor == bytesPerWord/4) 
+                && hasUnalignedReads))
     {   
         //pragma(msg, text("direct for ", factor));
         static if(factor == bytesPerWord)
@@ -631,7 +554,15 @@ struct PackedArrayView(T, size_t bits)
             return cast(inout(T))(cast(U*)original.ptr)[idx];
         }
 
-        void opIndexAssign(T val, size_t idx)
+        static if(isBitPacked!T) //lack of user-defined implicit conversion
+        {
+            void opIndexAssign(T val, size_t idx)
+            {
+                return opIndexAssign(cast(TypeOfBitPacked!T)val, idx);
+            }
+        }
+
+        void opIndexAssign(TypeOfBitPacked!T val, size_t idx)
         {
             (cast(U*)original.ptr)[idx] = cast(U)val;
         }
@@ -645,22 +576,31 @@ struct PackedArrayView(T, size_t bits)
             assert(n/factor < original.length, text(n/factor, " vs ", original.length));
         }
         body
-        {            
-            // genFastModDiv is proven to be as fast as properly
-            // optimized div and faster then current DMD's one, v2.061            
+        {                     
             static if(factor == bytesPerWord*8)
-            {   //can re-write so that there is less data dependency
-                mixin(genFastModDiv(factor));
-                return original[q] & (mask<<r) ? 1 : 0;
+            {
+                // a re-write with less data dependency
+                auto q = n / factor;
+                auto r = n % factor;
+                return force!T(original[q] & (mask<<r) ? 1 : 0);
             }
             else
             {
-                mixin(genFastModDiv(factor));
-                return cast(T)((original[q] >> bits*r) & mask);
+                auto q = n / factor;
+                auto r = n % factor;
+                return force!T((original[q] >> bits*r) & mask);
             }
         }
 
-        void opIndexAssign(T val, size_t n)
+        static if(isBitPacked!T) //lack of user-defined implicit conversion
+        {
+            void opIndexAssign(T val, size_t idx)
+            {
+                return opIndexAssign(cast(TypeOfBitPacked!T)val, idx);
+            }
+        }
+
+        void opIndexAssign(TypeOfBitPacked!T val, size_t n)
         in
         {
             static if(isIntegral!T)
@@ -670,7 +610,8 @@ struct PackedArrayView(T, size_t bits)
         }
         body
         {
-            mixin(genFastModDiv(factor));
+            auto q = n / factor;
+            auto r = n % factor;
             size_t tgt_shift = bits*r;
             size_t word = original[q];
             original[q] = (word & ~(mask<<tgt_shift)) 
@@ -678,8 +619,14 @@ struct PackedArrayView(T, size_t bits)
         }
     }
 
-
-    void opSliceAssign(T val, size_t start, size_t end)
+    static if(isBitPacked!T) //lack of user-defined implicit conversions
+    {
+        void opSliceAssign(T val, size_t start, size_t end)    
+        {
+            opSliceAssign(cast(TypeOfBitPacked!T)val, start, end);
+        }
+    }
+    void opSliceAssign(TypeOfBitPacked!T val, size_t start, size_t end)
     {
         //rounded to factor granuarity
         //TODO: re-test and implement
@@ -824,31 +771,11 @@ SliceOverIndexed!T sliceOverIndexed(T)(size_t a, size_t b, T* x)
     return SliceOverIndexed!T(a, b, x);
 }
 
-private auto packedArrayView(T, size_t bits)(inout(size_t)[] arr)inout
-{
-    return inout(PackedArrayView!(T, bits))(arr);
+private auto packedArrayView(T)(inout(size_t)[] arr)inout
+{    
+    return inout(PackedArrayView!T)(arr);
 }
 
-/*
-unittest
-{
-    size_t[] sample = new size_t[328];
-    auto parr = packedArrayView!(uint, 7)(sample);
-    foreach(i; 0..parr.length)
-        parr[i] = i % 128;
-    writefln("%(%x%)", sample);
-
-    foreach(i; 0..parr.length)
-        assert(parr[i] == i % 128, text(i, " vs ", parr[i]));
-
-    auto parr2 = packedArrayView!(uint, 14)(sample);
-    //re-viewing it as doubly sized is supported cleanly
-    for(int i=0; i<parr2.length; i++)
-        assert(parr2[i] == ((((2*i+1) % 128)<<7) | (2*i % 128)), text(i, " vs ", parr2[i]));
-    equal(parr2[0..2],  [128, 384+2]);
-}
-
-*/
 
 //============================================================================
 // Partially unrolled binary search using Shar's method
@@ -920,14 +847,14 @@ size_t switchUniformLowerBound(alias pred, Range, T)(Range range, T needle)
     return idx;
 }
    
-
-size_t prevPowerOf2(size_t arg)
+//
+size_t floorPowerOf2(size_t arg)
 {
     assert(arg > 1); //else bsr is undefined
     return 1<<bsr(arg-1);
 }
 
-size_t nextPowerOf2(size_t arg)
+size_t ceilPowerOf2(size_t arg)
 {
     assert(arg > 1); //else bsr is undefined
     return 1<<bsr(arg-1)+1;
@@ -944,10 +871,10 @@ template sharMethod(alias uniLowerBound)
             return 0;
         if(isPowerOf2(range.length))
             return uniLowerBound!pred(range, needle);
-        size_t n = prevPowerOf2(range.length);
+        size_t n = floorPowerOf2(range.length);
         if(pred(range[n-1], needle))
         {//search in another 2^^k area that fully covers the tail of range
-            size_t k = nextPowerOf2(range.length - n + 1);
+            size_t k = ceilPowerOf2(range.length - n + 1);
             return range.length - k + uniLowerBound!pred(range[$-k..$], needle);
         }
         else
@@ -1155,7 +1082,10 @@ unittest
 */
 public template isCodepointSet(T)
 {
-    enum isCodepointSet = is(typeof(T.init.isSet));
+    static if(is(T dummy == InversionList!(Args), Args...))
+        enum isCodepointSet = true;
+    else
+        enum isCodepointSet = false;
 }
 
 /**
@@ -1867,7 +1797,7 @@ uint read24(const ubyte* ptr, size_t idx)
 {
     if(__ctfe)
         return safeRead24(ptr, idx);
-    version(std_uni_unaligned_reads)
+    static if(hasUnalignedReads)
         return unalignedRead24(ptr, idx);
     else
         return safeRead24(ptr, idx);
@@ -1877,7 +1807,7 @@ void write24(ubyte* ptr, uint val, size_t idx)
 {
     if(__ctfe)
         return safeWrite24(ptr, val, idx);
-    version(std_uni_unaligned_reads)
+    static if(hasUnalignedReads)
         return unalignedWrite24(ptr, val, idx);
     else
         return safeWrite24(ptr, val, idx);    
@@ -2472,9 +2402,9 @@ unittest//iteration & opIndex
     {
         size_t idx;
         alias Prefix p;
-        idx = cast(size_t)p[0].entity(key);
+        idx = cast(size_t)p[0](key);
         foreach(i, v; p[0..$-1])
-            idx = cast(size_t)((table.slice!i[idx]<<p[i+1].bitSize) + p[i+1].entity(key));
+            idx = cast(size_t)((table.slice!i[idx]<<p[i+1].bitSize) + p[i+1](key));
         return table.slice!(p.length-1)[idx];
     }
 
@@ -2492,7 +2422,7 @@ unittest//iteration & opIndex
     //needed for multisort to work
     static bool cmpK(size_t i)(Key a, Key b)
     {
-        return Prefix[i].entity(a) < Prefix[i].entity(b);
+        return Prefix[i](a) < Prefix[i](b);
     }
 
     //ditto
@@ -2500,7 +2430,7 @@ unittest//iteration & opIndex
     static bool cmpK0(size_t i)
         (const ref Tuple!(Item,Key) a, const ref Tuple!(Item, Key) b)
     {
-        return Prefix[i].entity(a[1]) < Prefix[i].entity(b[1]);
+        return Prefix[i](a[1]) < Prefix[i](b[1]);
     }
 
     void store(OutputRange)(scope OutputRange sink)
@@ -2531,12 +2461,12 @@ private:
         size_t idx;
         foreach(i, v; p[0..$-1])
         {
-            //writeln(i, ": ", cast(size_t) p[i].entity(key));
-            idx |= p[i].entity(key);
+            //writeln(i, ": ", cast(size_t) p[i](key));
+            idx |= p[i](key);
             idx <<= p[i+1].bitSize;
         }
-        //writeln(p.length-1, ": ", cast(size_t) p[$-1].entity(key));
-        idx |= p[$-1].entity(key);
+        //writeln(p.length-1, ": ", cast(size_t) p[$-1](key));
+        idx |= p[$-1](key);
         return idx;
     }
 
@@ -2625,7 +2555,7 @@ private:
                             }
                             else
                             {
-                                next_lvl_index = cast(NextIdx)emptyFull[level].idx_empty;
+                                next_lvl_index = force!NextIdx(emptyFull[level].idx_empty);
                                 indices[level] -= pageSize;//it is a duplicate
                                 goto L_know_index;
                             }
@@ -2639,7 +2569,7 @@ private:
                         if(equal(ptr[j..j+pageSize], slice[0..pageSize]))
                         {
                             //get index to it, reuse ptr space for the next block
-                            next_lvl_index = cast(NextIdx)(j/pageSize);
+                            next_lvl_index = force!NextIdx(j/pageSize);
                             version(none)
                             {
                             writefln("LEVEL(%s) page maped idx: %s: 0..%s  ---> [%s..%s]"
@@ -2658,7 +2588,7 @@ private:
                     if(j == last)
                     {                            
                     L_allocate_page:    
-                        next_lvl_index = cast(NextIdx)(indices[level]/pageSize - 1);                        
+                        next_lvl_index = force!NextIdx(indices[level]/pageSize - 1);                        
                         //allocate next page
                         version(none)
                         {
@@ -2675,7 +2605,7 @@ private:
                         table.length!level = table.length!level + pageSize;
                     }
                     L_know_index:
-                    static if(is(T : bool))
+                    static if(is(TypeOfBitPacked!T : bool))
                     {
                         emptyFull[level].empty = true;
                         emptyFull[level].full = true;
@@ -2690,7 +2620,7 @@ private:
 
     //last index is not stored in table, it is used as offset to values in a block.
     static if(is(V  == bool))//always pack bool
-        MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), BitPacked!(1, V)) table;
+        MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), BitPacked!(V, 1)) table;
     else
         MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), V) table;
 }
@@ -2779,7 +2709,9 @@ public auto buildLookup(Set)(in Set set)
     return (dchar ch) => t[ch];
 }
 
-/**
+//these two are up for redesign
+
+/*
     Wrapping T by SetAsSlot indicates that T should be considered
     as a set of values.
     When SetAsSlot!T is used as $(D Value) type, $(D Trie) template will internally
@@ -2787,7 +2719,7 @@ public auto buildLookup(Set)(in Set set)
 */
 public struct SetAsSlot(T){}
 
- /**
+ /*
     Wrapping T by MapAsSlot indicates that T should be considered
     as a map Key -> Value.
     When MapAsSlot!T is used as $(D Value) type, $(D Trie) template will internally
@@ -2795,22 +2727,63 @@ public struct SetAsSlot(T){}
 */
 public struct MapAsSlot(T, Value, Key){}
 
-/**
-    Wrapper, used in definition of custom data structures from $(D Trie) template.
-    Use it on a lambda function to indicate that returned value always
-     fits within $(D bits) of bits.
-*/
-public template assumeSize(size_t bits, alias Fn)
-{
-    enum bitSize = bits;
-    alias Fn entity;
-}
 
-//indicates MultiArray to apply bit packing to this field
-struct BitPacked(size_t sz, T) if(isIntegral!T || is(T:dchar))
+//indicate this the value is confined to the range of [0, 2^^sz)
+//thus can be packed more tightly in appropriate data-structures
+struct BitPacked(T, size_t sz) 
+    if(isIntegral!T || is(T:dchar))
 {
     enum bitSize = sz;
-    alias T entity;
+    T _value;
+    alias this = _value;
+}
+
+template bitSizeOf(Args...)
+    if(Args.length == 1)
+{
+    alias T = Args[0];
+    static if(is(typeof(T.bitSize) : size_t))
+    {
+        enum bitSizeOf = T.bitSize;
+    }
+    else static if(is(ReturnType!T dummy == BitPacked!(U, bits), U, size_t bits))
+    {
+        enum bitSizeOf = ReturnType!T.bitSize;
+    }
+    else
+    {
+        pragma(msg, T);
+        enum bitSizeOf = T.sizeof*8;
+    }
+}
+
+template isBitPacked(T)
+{
+    static if(is(T dummy == BitPacked!(U, bits), U, size_t bits))    
+        enum isBitPacked = true;
+    else
+        enum isBitPacked = false;
+}
+
+template TypeOfBitPacked(T)
+{
+    static if(is(T dummy == BitPacked!(U, bits), U, size_t bits))    
+        alias TypeOfBitPacked = U;
+    else
+        alias TypeOfBitPacked = T;   
+}
+
+/**
+    Wrapper, used in definition of custom data structures from $(D Trie) template.
+    Use it on a unary lambda function to indicate that returned value always
+     fits within $(D bits) of bits.
+*/
+public struct assumeSize(alias Fn, size_t bits)
+{
+    enum bitSize = bits;
+    static auto ref opCall(T)(auto ref T arg) {
+        return Fn(arg);
+    }
 }
 
 template sliceBitsImpl(size_t from, size_t to)
@@ -2828,20 +2801,24 @@ template sliceBitsImpl(size_t from, size_t to)
 }
 
 /++
-    A helper for defining lambda function that yileds a slice 
-    of sertain bits from integer value.
+    A helper for defining lambda function that yields a slice 
+    of certain bits from integer value.
     The resulting lambda is wrapped in assumeSize and can be used directly 
     with $(D Trie) template.
 +/
 public template sliceBits(size_t from, size_t to)
 {
-    alias assumeSize!(to-from, sliceBitsImpl!(from, to)) sliceBits;
+    alias assumeSize!(sliceBitsImpl!(from, to), to-from) sliceBits;
 }
 
 uint low_8(uint x) { return x&0xFF; }
 uint midlow_8(uint x){ return (x&0xFF00)>>8; }
-alias assumeSize!(8, low_8) lo8;
-alias assumeSize!(8, midlow_8) mlo8;
+alias assumeSize!(low_8, 8) lo8;
+alias assumeSize!(midlow_8, 8) mlo8;
+
+static assert(bitSizeOf!lo8 == 8);
+static assert(bitSizeOf!(sliceBits!(4, 7)) == 3);
+static assert(bitSizeOf!(BitPacked!(uint, 2)) == 2);
 
 template Sequence(size_t start, size_t end)
 {
@@ -2852,130 +2829,13 @@ template Sequence(size_t start, size_t end)
 }
 
 //---- TRIE TESTS ----
-version(unittest)
-private enum TokenKind : ubyte { //from DCT by Roman Boiko (Boost v1.0 licence)
-        // token kind has not been initialized to a valid value
-        Invalid = 0,
-
-        // protection
-        Package, Private, Protected, Public, // note: extern also specifies protection level
-
-        // storage classes
-        Extern, Abstract, Auto, Const, Deprecated, Enum, Final, Immutable, InOut, NoThrow, Override, Pure, Scope, Shared, Static, Synchronized, _GShared,
-
-        // basic type names
-        Bool, Char, UByte, Byte, WChar, UShort, Short, DChar, UInt, Int, ULong, Long, Float, Double, Real, CFloat, CDouble, CReal, IFloat, IDouble, IReal, Void,
-
-        // other keywords
-        Alias, Align, Asm, Assert, Body, Break, Case, Cast, Catch, Cent, Class, Continue, Debug, Default, Delegate, Delete, Do, Else, Export, False, Finally, ForEach_Reverse, ForEach, For, Function,
-        GoTo, If, Import, Interface, Invariant, In, Is, Lazy, Macro, Mixin, Module, New, Null, Out, Pragma, Ref, Return, Struct, Super, Switch,
-        Template, This, Throw, True, Try, TypeDef, TypeId, TypeOf, UCent, Union, UnitTest, Version, Volatile, While, With, _FILE_, _LINE_, _Thread, _Traits,
-
-        // any identifier which is not a keyword
-        Identifier,
-
-        // literals
-        StringLiteral, CharacterLiteral, IntegerLiteral, FloatLiteral,
-
-        // punctuation
-
-        // brackets
-        LeftParen,          // (
-        RightParen,         // )
-        LeftBracket,        // [
-        RightBracket,       // ]
-        LeftCurly,          // {
-        RightCurly,         // }
-
-        // assignment operators
-        Assign,             // =
-        AmpersandAssign,    // &=
-        TildeAssign,        // ~=
-        SlashAssign,        // /=
-        LeftShiftAssign,    // <<=
-        MinusAssign,        // -=
-        PercentAssign,      // %=
-        StarAssign,         // *=
-        OrAssign,           // |=
-        PlusAssign,         // +=
-        PowerAssign,        // ^^=
-        RightShiftAssign,   // >>=
-        URightShiftAssign,  // >>>=
-        XorAssign,          // ^=
-
-        // relational operators
-        Eq,                 // ==
-        NotEq,              // !=
-        GreaterThan,        // >
-        GreaterOrEq,        // >=
-        LessThan,           // <
-        LessEqOrGreater,    // <>=
-        LessOrGreater,      // <>
-        LessOrEq,           // <=
-        UnordCompare,       // !<>=
-        UnordGreaterOrEq,   // !<
-        UnordLessOrEq,      // !>
-        UnordOrEq,          // !<>
-        UnordOrGreater,     // !<=
-        UnordOrLess,        // !>=
-
-        // shift operators
-        LeftShift,          // <<
-        RightShift,         // >>
-        URightShift,        // >>>
-
-        // other binary operators
-        Power,              // ^^
-        BoolAnd,            // &&
-        BoolOr,             // ||
-        BitOr,              // |
-        BitXor,             // ^
-        Percent,            // %
-        Slash,              // /
-
-        // operators which can be either unary or binary
-        Star,               // * (multiply; pointer)
-        Minus,              // -
-        Plus,               // +
-        Ampersand,          // & (address of; bitwise and)
-        Tilde,              // ~ (concat; complement)
-
-        // unary operators
-        Bang,               // ! (not; actual compile time parameter)
-        Decrement,          // --
-        Increment,          // ++
-
-        // other punctuation
-        Dot,                // .
-        Slice,              // ..
-        Ellipsis,           // ...
-        Lambda,             // =>
-        Question,           // ?
-        Comma,              // ,
-        Semicolon,          // ;
-        Colon,              // :
-        Dollar,             // $
-        Hash,               // #
-        At,                 // @
-
-        // other tokens
-
-        SpecialToken, EndOfLine,
-        // note: it is important that the following tokens are last, because column calculation depends on whether tab appears in token spelling
-        WhiteSpace, ScriptLine, Comment, SpecialTokenSequence,
-        // end of file is always inserted (at the end)
-        // it corresponds to either of \0 or \1A, but is also inserted immediately after __EOF__ special token
-        // spelling includes everything starting from frontIndex and till the physical end of file, and it may be ""
-        // __EOF__ inside a comment, character or string literal is treated as string (unlike DMD, which treats it as EoF inside token strings and character literals)
-        _EOF_
-};
-
 unittest
 {
     static trieStats(TRIE)(TRIE t)
     {
-        debug(std_uni)
+        version(std_uni_stats)
         {
+            import std.stdio;
             writeln("---TRIE FOOTPRINT STATS---");
             foreach(i; Sequence!(0, t.table.dim) )
             {
@@ -3006,6 +2866,7 @@ unittest
         assert(!trie[a]);
     for(int a ='Z'; a<'a'; a++)
         assert(!trie[a]);
+    trieStats(trie);
 
     auto redundant2 = Set(
         1, 18, 256+2, 256+111, 512+1, 512+18, 768+2, 768+111);
@@ -3017,7 +2878,7 @@ unittest
     {
         assert(trie2[i] == (i in redundant2));
     }
-    trieStats(trie2);
+
 
     auto redundant3 = Set(
           2,    4,    6,    8,    16,
@@ -3071,20 +2932,20 @@ unittest
 template useItemAt(size_t idx, T)
     if(isIntegral!T || is(T: dchar))
 {
-    size_t entity(in T[] arr){ return arr[idx]; }
-    enum bitSize = 8*T.sizeof;
+    size_t impl(in T[] arr){ return arr[idx]; }
+    alias useItemAt = assumeSize!(impl, 8*T.sizeof);
 }
 
 template useLastItem(T)
 {
-    size_t entity(in T[] arr){ return arr[$-1]; }
-    enum bitSize = 8*T.sizeof;
+    size_t impl(in T[] arr){ return arr[$-1]; }
+    alias useLastItem = assumeSize!(impl, 8*T.sizeof);
 }
 
 template fullBitSize(Prefix...)
 {
     static if(Prefix.length > 0)
-        enum fullBitSize = Prefix[0].bitSize+fullBitSize!(Prefix[1..$]);
+        enum fullBitSize = bitSizeOf!(Prefix[0])+fullBitSize!(Prefix[1..$]);
     else
         enum fullBitSize = 0;
 }
@@ -3103,20 +2964,11 @@ template idxTypes(Key, size_t fullBits, Prefix...)
         //thus it's size in pages is full_bit_width - size_of_last_prefix
         //Recourse on this notion
         alias TypeTuple!(
-            idxTypes!(Key, fullBits - Prefix[$-1].bitSize, Prefix[0..$-1]),
-            BitPacked!(fullBits - Prefix[$-1].bitSize, typeof(Prefix[$-2].entity(Key.init)))
+            idxTypes!(Key, fullBits - bitSizeOf!(Prefix[$-1]), Prefix[0..$-1]),
+            BitPacked!(typeof(Prefix[$-2](Key.init)), fullBits - bitSizeOf!(Prefix[$-1]))
         ) idxTypes;
     }
 }
-
-template bitSizeOf(T)
-{
-    static if(is(typeof(T.bitSize)))
-        enum bitSizeOf = T.bitSize;
-    else
-        enum bitSizeOf = T.sizeof*8;
-}
-
 
 int comparePropertyName(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
 {
@@ -3186,7 +3038,7 @@ uint decompressFrom(const(ubyte)[] arr, ref size_t idx) pure
     return val;
 }
 
-//compres
+
 public ubyte[] compressIntervals(Range)(Range intervals)
     if(isInputRange!Range && isIntegralPair!(ElementType!Range))
 {
@@ -3197,7 +3049,7 @@ public ubyte[] compressIntervals(Range)(Range intervals)
     {        
         compressTo(val[0]-base, storage);
         base = val[0];
-        if(val[1] != lastDchar+1) //till the end of domain so don't store it
+        if(val[1] != lastDchar+1) //till the end of the domain so don't store it
         {
             compressTo(val[1]-base, storage);
             base = val[1];

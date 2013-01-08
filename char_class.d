@@ -34,8 +34,11 @@ void clasifyIndex(alias mtd)(in dchar[] str)
 }
 
 bool noop(dchar ch){ return ch > 0; }
-
-bool combiningClassOf(dchar ch){ return combiningClass(ch) > 0; }
+version(std_uni){}
+else
+{
+    bool combiningClassOf(dchar ch){ return combiningClass(ch) > 0; }
+}
 
 void myTest(Result[] data)
 {
@@ -50,17 +53,18 @@ void myTest(Result[] data)
             bench!(clasifyCall!noop)("noop", x.name, x.data);            
             foreach(i, m; stdTests){
                   bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
-               writeln("CNT: ", lastCount);
+               //writeln("CNT: ", lastCount);
             }
             bench!(clasifyCall!combiningClassOf)("combining class", x.name, x.data);
+            
             /*bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
-            writeln("CNT: ", lastCount);
+            //writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invMark)("inv-uint-mark", x.name, x.data);
-            writeln("CNT: ", lastCount);
+            //writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invNumber)("inv-uint-num", x.name, x.data);
-            writeln("CNT: ", lastCount);
+            //writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invSymbol)("inv-uint-sym", x.name, x.data);
-            writeln("CNT: ", lastCount);*/
+            //writeln("CNT: ", lastCount);*/
             bench!(clasifyIndex!triAlpha)("tri-uint-alpha", x.name, x.data);
             bench!(clasifyIndex!triMark)("tri-uint-mark", x.name, x.data);
             bench!(clasifyIndex!triNumber)("tri-uint-num", x.name, x.data);
@@ -84,8 +88,8 @@ else
     __gshared MyTrie triAlpha, triMark, triNumber, triSymbol;
 
     //alias Trie!(bool, dchar, sliceBits!(16, 21), sliceBits!(0, 16)) MyTrie;
-    alias Trie!(bool, dchar, sliceBits!(13, 21), sliceBits!(8, 13), sliceBits!(0, 8)) MyTrie;
-    //alias Trie!(bool, dchar, sliceBits!(16, 24), sliceBits!(8, 16), sliceBits!(0, 8)) MyTrie;
+    alias Trie!(bool, dchar, sliceBits!(18, 21), sliceBits!(9, 18), sliceBits!(0, 9)) MyTrie;
+    //alias Trie!(bool, dchar, sliceBits!(16, 21), sliceBits!(8, 16), sliceBits!(0, 8)) MyTrie;
 
     struct UtfTrie(Char)
         if(Char.sizeof == 1)

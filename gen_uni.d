@@ -876,7 +876,7 @@ auto printBest3Level(Set)(string name, in Set set)
     // 8-5-8: indexes are 21-8 = 13 bits, 13-5 = 8 bits, fits into a byte
     // 9-5-7: indexes are 21-7 = 14 bits, 14-5 = 9 bits, doesn't fit into a byte (!)
 
-    // plus 8-5-8 is one of hand picked that is a very close match 
+    // e.g. 8-5-8 is one of hand picked that is a very close match 
     // to the best packing
     void delegate() print;
     
@@ -915,7 +915,6 @@ void printBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
             CurTrie t = CurTrie(map, defValue);
             if(t.bytes < min)
             {
-                //stderr.writeln(lvl_1, "-", lvl_2, "-", lvl_3, ":", t.bytes);
                 min = t.bytes;
                 print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
             }
