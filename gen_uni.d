@@ -608,6 +608,7 @@ void writeTries()
             fullIndices[v.ch] = cast(ushort)i;
     }
 
+    //these 2 only for verification of Trie code itself
     auto st = CodepointTrie!(ushort, 12, 9)(simpleIndices, ushort.max);
     auto ft = CodepointTrie!(ushort, 12, 9)(fullIndices, ushort.max);
 
@@ -619,10 +620,10 @@ void writeTries()
         assert(ft[k] == fullIndices[k]);
     }
 
-    printBest2Level("lowerCase", lowerCaseSet);
-    printBest2Level("upperCase", upperCaseSet);
-    printBest2Level("simpleCase", simpleIndices, ushort.max);
-    printBest2Level("fullCase", fullIndices, ushort.max);
+    printBest3Level("lowerCase", lowerCaseSet);
+    printBest3Level("upperCase", upperCaseSet);
+    printBest3Level("simpleCase", simpleIndices, ushort.max);
+    printBest3Level("fullCase", fullIndices, ushort.max);
 
     //common isXXX properties
     CodepointSet alpha = props["Alphabetic"]; //it includes some numbers, symbols & marks
@@ -683,6 +684,7 @@ void writeDecomposition()
     assert(decompCanonTable.length < 2^^16);
     assert(decompCompatTable.length < 2^^16);
 
+    //these 2 are just a self-test for Trie template code
     auto compatTrie = CodepointTrie!(ushort, 12, 9)(mappingCompat, 0);
     auto canonTrie =  CodepointTrie!(ushort, 12, 9)(mappingCanon, 0);
     
@@ -691,8 +693,8 @@ void writeDecomposition()
     foreach(k, v; fullCanon)
         assert(decompCanonTable[canonTrie[k]] == v);
 
-    printBest2Level("compatMapping", mappingCompat, cast(ushort)0);
-    printBest2Level("canonMapping", mappingCanon, cast(ushort)0);    
+    printBest3Level("compatMapping", mappingCompat, cast(ushort)0);
+    printBest3Level("canonMapping", mappingCanon, cast(ushort)0);    
     writeln("immutable decompCanonTable = ", decompCanonTable, ";");
     writeln("immutable decompCompatTable = ", decompCompatTable, ";");
 }

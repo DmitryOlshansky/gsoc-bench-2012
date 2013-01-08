@@ -19,7 +19,7 @@ auto bench(alias func)(string title, string name, in dchar[] data)
     sw.stop();
     auto spent = sw.peek().usecs;
     //time in usecs - throughput number is thus in millions/s
-    writefln("%16s [%6s], %9s, %.2fM/s"
+    writefln("%16s [%6s], %9s, %.2f M/s"
         , title,  name[0..min($,6)], spent/1000.0,  data.length*1.0/spent); 
 }
 

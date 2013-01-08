@@ -2752,11 +2752,13 @@ template bitSizeOf(Args...)
     }
     else
     {
-        pragma(msg, T);
         enum bitSizeOf = T.sizeof*8;
     }
 }
 
+/**
+
+*/
 template isBitPacked(T)
 {
     static if(is(T dummy == BitPacked!(U, bits), U, size_t bits))    

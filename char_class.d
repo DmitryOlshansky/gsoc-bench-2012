@@ -42,17 +42,21 @@ else
 
 void myTest(Result[] data)
 {
+    alias names = TypeTuple!("alpha", "mark", "num", "sym", "white");
     foreach(x; data)
-    {        
+    {
         version(std_uni){
+            writeln("\nBaselines");
             foreach(i, m; stdTests)
-                bench!(clasifyCall!m)("std-"~to!string(i), x.name, x.data);
+                bench!(clasifyCall!m)("std-"~names[i], x.name, x.data);
         }
         else
         {
-            bench!(clasifyCall!noop)("noop", x.name, x.data);            
+            writeln("\nBaselines");
+            bench!(clasifyCall!noop)("noop", x.name, x.data);  
+            
             foreach(i, m; stdTests){
-                  bench!(clasifyCall!m)("new-std-"~to!string(i), x.name, x.data);
+                  bench!(clasifyCall!m)("new-std-"~names[i], x.name, x.data);
                //writeln("CNT: ", lastCount);
             }
             bench!(clasifyCall!combiningClassOf)("combining class", x.name, x.data);
@@ -65,10 +69,14 @@ void myTest(Result[] data)
             //writeln("CNT: ", lastCount);
             bench!(clasifyIndex!invSymbol)("inv-uint-sym", x.name, x.data);
             //writeln("CNT: ", lastCount);*/
-            bench!(clasifyIndex!triAlpha)("tri-uint-alpha", x.name, x.data);
-            bench!(clasifyIndex!triMark)("tri-uint-mark", x.name, x.data);
-            bench!(clasifyIndex!triNumber)("tri-uint-num", x.name, x.data);
-            bench!(clasifyIndex!triSymbol)("tri-uint-sym", x.name, x.data); 
+            foreach(idx, ref level; customTries)
+            {
+                writeln("\nTries of level ", idx+1);
+                bench!(clasifyIndex!(level.triAlpha))("trie-alpha", x.name, x.data);
+                bench!(clasifyIndex!(level.triMark))("trie-mark", x.name, x.data);
+                bench!(clasifyIndex!(level.triNumber))("trie-num", x.name, x.data);
+                bench!(clasifyIndex!(level.triSymbol))("trie-sym", x.name, x.data); 
+            }
 
         }
     }    
@@ -84,28 +92,21 @@ else
 {
     alias InversionList!(GcPolicy) InvList;
 
-    __gshared InvList invAlpha, invMark, invNumber, invSymbol;
-    __gshared MyTrie triAlpha, triMark, triNumber, triSymbol;
-
-    //alias Trie!(bool, dchar, sliceBits!(16, 21), sliceBits!(0, 16)) MyTrie;
-    alias Trie!(bool, dchar, sliceBits!(18, 21), sliceBits!(9, 18), sliceBits!(0, 9)) MyTrie;
-    //alias Trie!(bool, dchar, sliceBits!(16, 21), sliceBits!(8, 16), sliceBits!(0, 8)) MyTrie;
-
-    struct UtfTrie(Char)
-        if(Char.sizeof == 1)
-    {
-        Trie!(bool, char, x => x) trie1;
-        //TODO: adjust with UTF-8 encoding layout in mind
-        //+ remove extra work by avoiding top-level sliceBits
-        Trie!(bool, ushort, sliceBits!(8, 16), sliceBits!(0, 8)) trie2;
-        Trie!(bool, uint,  sliceBits!(16, 24), sliceBits!(8, 16), sliceBits!(0, 8)) trie3;
-        Trie!(bool, uint,  sliceBits!(20, 32), sliceBits!(8, 20), sliceBits!(0, 8)) trie4;
-
-        this(Set)(in Set set)
-        {
-            
-        }
+    __gshared InvList invAlpha, invMark, invNumber, invSymbol;    
+    //1st is a simple array of packed bools thus is exceptionally fast at the cost of ~262Kb of RAM
+    alias MyTrie1 = CodepointSetTrie!(21);
+    alias MyTrie2 = CodepointSetTrie!(10, 11);
+    alias MyTrie3 = CodepointSetTrie!(8, 5, 8);
+    alias MyTrie4 = CodepointSetTrie!(7, 4, 4, 6);
+    
+    struct Level(T){
+        __gshared T triAlpha, triMark, triNumber, triSymbol;
     }
+    Level!(MyTrie1) levelOne;
+    Level!(MyTrie2) levelTwo;
+    Level!(MyTrie3) levelThree;
+    Level!(MyTrie4) levelFour;
+    alias customTries = TypeTuple!(levelOne, levelTwo, levelThree, levelFour);
 
     shared static this()
     {
@@ -114,15 +115,19 @@ else
         invMark = unicode("Mark");
         invSymbol = unicode("Symbol");
         invNumber = unicode("number");
-
-        triAlpha = MyTrie(invAlpha);
-        writeln("Alpha:", triAlpha.bytes);
-        triMark = MyTrie(invMark);
-        writeln("Mark:", triMark.bytes);
-        triNumber = MyTrie(invNumber);
-        writeln("Number:", triNumber.bytes);
-        triSymbol = MyTrie(invSymbol);
-        writeln("Symbol:", triSymbol.bytes);
+        foreach(idx, ref level; customTries)
+        {
+            alias T = typeof(level.triAlpha);
+            writefln("Creating level %s of Tries.", idx+1);
+            level.triAlpha = T(invAlpha);
+            writeln("Alpha:", level.triAlpha.bytes);
+            level.triMark = T(invMark);
+            writeln("Mark:", level.triMark.bytes);
+            level.triNumber = T(invNumber);
+            writeln("Number:", level.triNumber.bytes);
+            level.triSymbol = T(invSymbol);
+            writeln("Symbol:", level.triSymbol.bytes);
+        }
     }
 
 }
