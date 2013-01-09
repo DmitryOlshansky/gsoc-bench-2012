@@ -511,15 +511,15 @@ size_t spaceFor(size_t _bits)(size_t new_len)
     }
 }
 
-template bitPackableType(T)
+template isBitPackableType(T)
 {
-    enum bitPackableType = isIntegral!T || is(T == bool) || isSomeChar!T;
+    enum isBitPackableType = isIntegral!T || is(T == bool) || isSomeChar!T;
 }
 
 //============================================================================
 template PackedArrayView(T)
     if((is(T dummy == BitPacked!(U, sz), U, size_t sz) 
-        && bitPackableType!U) || bitPackableType!T)
+        && isBitPackableType!U) || isBitPackableType!T)
 {
     private enum bits = bitSizeOf!T;
     alias PackedArrayView = PackedArrayViewImpl!(T, bits > 1 ? ceilPowerOf2(bits) : 1);
@@ -2228,7 +2228,7 @@ template mapTrieIndex(Prefix...)
 
 ///
 @trusted struct TrieBuilder(Value, Key, Args...)
-    if(bitPackableType!Value && isValidArgsForTrie!(Key, Args))
+    if(isBitPackableType!Value && isValidArgsForTrie!(Key, Args))
 {
 private:
     // last index is not stored in table, it is used as an offset to values in a block.
@@ -2576,13 +2576,29 @@ template GetBitSlicing(size_t top, sizes...)
         alias TypeTuple!()  GetBitSlicing;
 }
 
+template callableWith(T)
+{
+    template callableWith(alias Pred)
+    {
+        static if(!is(typeof(Pred(T.init))))
+            enum callableWith = false;
+        else
+        {
+            alias Result = typeof(Pred(T.init));
+            enum callableWith = isBitPackableType!(TypeOfBitPacked!(Result));
+        }
+    }
+}
+
 /**
     Check if $(D Prefix) is a valid set of predicates 
     for $(D Trie) template having $(D Key) as the type of keys.
+    This requires all predicates to be callable, take 
+    single argument of type $(D Key) and return unsigned value.
 */
 template isValidPrefixForTrie(Key, Prefix...)
 {
-    enum isValidPrefixForTrie = true; //TODO: tighten the screws
+    enum isValidPrefixForTrie = allSatisfy!(callableWith!Key, Prefix); //TODO: tighten the screws
 }
 
 /**
