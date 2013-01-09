@@ -180,14 +180,11 @@ void main(string[] argv)
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
 
-        
         writeProperties();
-        writeBeginPlatformDependent();
         writeTries();
         writeCombining();
         writeDecomposition();
         writeCompositionTable();
-        writeEndPlatformDependent(); 
         writeFunctions();       
     }
     catch(Exception e)

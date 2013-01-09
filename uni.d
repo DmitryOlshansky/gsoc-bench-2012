@@ -947,7 +947,6 @@ unittest
 }
 
 // Simple storage manipulation policy
-// TODO: stop working around bugs, report them!
 @trusted public struct GcPolicy
 {
     static T[] dup(T)(const T[] arr)
@@ -1076,8 +1075,7 @@ unittest
 }
 
 /**
-    Checks if T is some kind a set of codepoints. Intended for template constraints.
-    TODO: decribe operations provided by any codepoint set.
+    Checks if T is some kind a set of codepoints. Intended for template constraints.    
 */
 public template isCodepointSet(T)
 {
@@ -1362,7 +1360,8 @@ public:
     }
 
     this(this)
-    {// TODO: COW?
+    {
+        // TODO: change to COW
         data = data.dup;
     }
 
@@ -1451,11 +1450,37 @@ public:
         The inteded usage area is agressive optimization via meta programming 
         in parsers generators and the like.
 
-        $(I Notes): to be used with care for relatively small or regular sets. It
+        Note: to be used with care for relatively small or regular sets. It
         could be end up being slower then just using multi-staged tables.
+
         Example:
         ---
-        TODO: add an example
+        import std.stdio;
+
+        //construct set directly from [a, b) intervals
+        auto set = CodepointSet(10, 12, 45, 65, 100, 200);
+        writeln(set);
+        writeln(set.toSourceCode("func"));
+        ---
+
+        The above outputs something along the lines of:
+        ---
+        bool func(dchar ch)
+        {
+            if(ch < 45)
+            {
+                if(ch == 10 || ch == 11) return true;
+                return false;
+            }
+            else if (ch < 65) return true;
+            else
+            {
+                if(ch < 100) return false;
+                if(ch < 200) return true;
+                return false;
+            }
+        }
+        ---
         ---
     */    
     string toSourceCode(string funcName="")
@@ -3674,6 +3699,12 @@ unittest
     assert(gr.length == 1 && gr[0] == ' ');
     gr = decodeGrapheme(s);
     assert(gr.length == 2 && equal(gr[0..2], " \u0308"));
+    s = "\u0300\u0308\u1100";
+    assert(equal(decodeGrapheme(s)[], "\u0300\u0308"));
+    assert(equal(decodeGrapheme(s)[], "\u1100"));
+    s = "\u11A8\u0308\uAC01";
+    assert(equal(decodeGrapheme(s)[], "\u11A8\u0308"));
+    assert(equal(decodeGrapheme(s)[], "\uAC01"));
 }
 
 /++
