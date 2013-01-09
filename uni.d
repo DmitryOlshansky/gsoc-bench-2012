@@ -7,63 +7,63 @@
     For functions which operate on ASCII characters and ignore Unicode
     characters, see $(LINK2 std_ascii.html, std.ascii).
 
-    (Short introduction to come)
+    (a short introduction to come)
 
     Synopsis:
     ---
     void main()
     {
-        //intialize codepoint sets using regex notation
+        // initialize codepoint sets using regex notation
         //$(D set) contains codepoints from both scripts.
         auto set = unicode("Cyrillic") | unicode("Armenian");
         auto ascii = unicode("ASCII");
         auto currency = unicode("Currency_Symbol");
 
-        //easy set ops
+        // easy set ops
         auto a = set & ascii;
-        assert(a.empty); //as it has no intersection with ascii
+        assert(a.empty); // as it has no intersection with ascii
         a = set | ascii;
-        auto b = currency - a; //subtract all ASCII, cyrilic and armenian
+        auto b = currency - a; // subtract all ASCII, Cyrillic and Armenian
 
-        //some properties of codepoint sets
+        // some properties of codepoint sets
         assert(b.length > 45); // 46 items in Unicode 6.1, even more in 6.2
-        //testing presense of a codepoint in a set
-        //is just fine, it is O(logN)
+        // testing presence of a codepoint in a set
+        // is just fine, it is O(logN)
         assert(!b['$']); 
-        assert(!b['\u058F']); // armenian dram sign
+        assert(!b['\u058F']); // Armenian dram sign
         assert(b['¥']); 
 
-        //building fast lookup tables, these guarantee O(1) complexity
-        //1-level Trie lookup table
-        auto oneTrie = buildTrie!1(b);
-        //2-level more compact but typically slighlty slower
-        auto twoTrie = buildTrie!2(b);
-        //3-level even smaller, and a bit slower yet
-        auto threeTrie = buildTrie!3(b);
+        // building fast lookup tables, these guarantee O(1) complexity
+        // 1-level Trie lookup table
+        auto oneTrie = toTrie!1(b);
+        // 2-level more compact but typically slightly slower
+        auto twoTrie = toTrie!2(b);
+        // 3-level even smaller, and a bit slower yet
+        auto threeTrie = toTrie!3(b);
         assert(oneTrie['£']);
         assert(twoTrie['£']);
         assert(threeTrie['£']);
         
-        //build the trie with the most sensible trie level 
-        //and bind it as a functor
-        auto cyrilicOrArmenian = buildLookup(set);
+        // build the trie with the most sensible trie level 
+        // and bind it as a functor
+        auto cyrilicOrArmenian = toDelegate(set);
         auto balance = find!(cyrilicOrArmenian)("Hello ընկեր!");
         assert(balance == "ընկեր!");
-        //compatible with bool delegate(dchar)
+        // compatible with bool delegate(dchar)
         bool delegate(dchar) bindIt = cyrilicOrArmenian;
 
-        //Normalization
+        // Normalization
         string s = "Plain ascii (and not only), is always normalized!";
-        assert(s is normalize(s));//is the same string
+        assert(s is normalize(s));// is the same string
 
-        string nonS = "A\u0308ffin"; //A ligature
-        auto nS = normalize(nonS); //to NFC, the W3C endorsed standard
+        string nonS = "A\u0308ffin"; // A ligature
+        auto nS = normalize(nonS); // to NFC, the W3C endorsed standard
         assert(nS == "Äffin");
         assert(nS != nonS);
         string composed = "Äffin";
         
         assert(normalize!NFD(composed) == "A\u0308ffin");
-        //to NFKD, compatibility decomposition useful for fuzzy matching/searching
+        // to NFKD, compatibility decomposition useful for fuzzy matching/searching
         assert(normalize!NFKD("2¹⁰") == "210");
     }
     ---
@@ -79,11 +79,11 @@
     Macros:
         WIKI=Phobos/StdUni
 
-    Copyright: Copyright 2000 -
+    Copyright: Copyright 2013 -
     License:   $(WEB www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
     Authors:   Dmitry Olshansky
     Source:    $(PHOBOSSRC std/_uni.d)
-    Standards: $(WEB www.unicode.org/versions/Unicode6.1.0/, Unicode v6.1)
+    Standards: $(WEB www.unicode.org/versions/Unicode6.2.0/, Unicode v6.2)
   +/
 module uni;
 
@@ -99,74 +99,76 @@ else
     import unicode_tables; // generated file
 }
 
-//update to reflect all major CPUs supporting unaligned reads
+import std.stdio;
+
+// update to reflect all major CPUs supporting unaligned reads
 version(X86)
     enum hasUnalignedReads = true;
 version(X86_64)
-    enum hasUnalignedReads = true;          
-
+    enum hasUnalignedReads = true;
 
 enum dchar lineSep = '\u2028'; /// UTF line separator
 enum dchar paraSep = '\u2029'; /// UTF paragraph separator
 
-//test the intro example
+// test the intro example
 unittest
 {
-    //intialize codepoint sets using regex notation
+    // initialize codepoint sets using regex notation
     //$(D set) contains codepoints from both scripts.
     auto set = unicode("Cyrillic") | unicode("Armenian");
     auto ascii = unicode("ASCII");
     auto currency = unicode("Currency_Symbol");
 
-    //easy set ops
+    // easy set ops
     auto a = set & ascii;
-    assert(a.empty); //as it has no intersection with ascii
+    assert(a.empty); // as it has no intersection with ascii
     a = set | ascii;
-    auto b = currency - a; //subtract all ASCII, cyrilic and armenian
+    auto b = currency - a; // subtract all ASCII, Cyrillic and Armenian
 
-    //some properties of codepoint sets
+    // some properties of codepoint sets
     assert(b.length > 45); // 46 items in Unicode 6.1, even more in 6.2
-    //testing presense of a codepoint in a set
-    //is just fine, it is O(logN)
+    // testing presence of a codepoint in a set
+    // is just fine, it is O(logN)
     assert(!b['$']); 
-    assert(!b['\u058F']); // armenian dram sign
+    assert(!b['\u058F']); // Armenian dram sign
     assert(b['¥']); 
 
-    //building fast lookup tables, these guarantee O(1) complexity
-    //1-level Trie lookup table
-    auto oneTrie = buildTrie!1(b);
-    //2-level more compact but typically slighlty slower
-    auto twoTrie = buildTrie!2(b);
-    //3-level even smaller, and a bit slower yet
-    auto threeTrie = buildTrie!3(b);
+    // building fast lookup tables, these guarantee O(1) complexity
+    // 1-level Trie lookup table, a huge bit set basically
+    auto oneTrie = toTrie!1(b);
+    // 2-level is far more compact but slower
+    auto twoTrie = toTrie!2(b);
+    // 3-level is even smaller, and a tiny bit slower yet
+    auto threeTrie = toTrie!3(b);
     assert(oneTrie['£']);
     assert(twoTrie['£']);
     assert(threeTrie['£']);
     
-    //build the trie with the most sensible trie level 
-    //and bind it as a functor
-    auto cyrilicOrArmenian = buildLookup(set);
+    // build the trie with the most sensible trie level 
+    // and bind it as a delegate
+    auto cyrilicOrArmenian = toDelegate(set);
     auto balance = find!(cyrilicOrArmenian)("Hello ընկեր!");
     assert(balance == "ընկեր!");
-    //compatible with bool delegate(dchar)
+    // compatible with bool delegate(dchar)
     bool delegate(dchar) bindIt = cyrilicOrArmenian;
 
-    //Normalization
+    // Normalization
     string s = "Plain ascii (and not only), is always normalized!";
-    assert(s is normalize(s));//is the same string
+    assert(s is normalize(s));// is the same string
 
-    string nonS = "A\u0308ffin"; //A ligature
-    auto nS = normalize(nonS); //to NFC, the W3C endorsed standard
+    string nonS = "A\u0308ffin"; // A ligature
+    auto nS = normalize(nonS); // to NFC, the W3C endorsed standard
     assert(nS == "Äffin");
     assert(nS != nonS);
     string composed = "Äffin";
     
     assert(normalize!NFD(composed) == "A\u0308ffin");
-    //to NFKD, compatibility decomposition useful for fuzzy matching/searching
+    // to NFKD, compatibility decomposition useful for fuzzy matching/searching
     assert(normalize!NFKD("2¹⁰") == "210");
+
 }
 
-//debug = std_uni;
+// debug = std_uni;
 
 debug(std_uni) import std.stdio;
 
@@ -194,7 +196,7 @@ auto force(T, F)(F from)
     return from;
 }
 
-//cheap algorithm grease ;)
+// cheap algorithm grease ;)
 auto adaptIntRange(T, F)(F[] src)
 {
     static struct ConvertIntegers//@@@BUG when in the 9 hells will map be copyable again?!
@@ -217,13 +219,13 @@ auto adaptIntRange(T, F)(F[] src)
             return ConvertIntegers(data[s..e]);
         }
 
-        //doesn't work with slices @@@BUG 7097
+        // doesn't work with slices @@@BUG 7097
         @property size_t opDollar(){   return data.length; }
     }
     return ConvertIntegers(src);
 }
 
-//repeat bit X times pattern in val assuming it's length is 'bits'
+// repeat bit X times pattern in val assuming it's length is 'bits'
 size_t replicateBits(size_t times, size_t bits)(size_t val)
 {
     static if(times == 1)
@@ -235,16 +237,16 @@ size_t replicateBits(size_t times, size_t bits)(size_t val)
 }
 
 unittest
-{//for replicate
+{// for replicate
     size_t m = 0b111;
     foreach(i; TypeTuple!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
     {
         assert(replicateBits!(i, 3)(m)+1 == (1<<(3*i)));
-        //writefln("%2d:%32b", i, replicateBits!(i, 3)(m));
+        // writefln("%2d:%32b", i, replicateBits!(i, 3)(m));
     }
 }
 
-//multiple arrays squashed into one memory block
+// multiple arrays squashed into one memory block
 struct MultiArray(Types...)
 {
     this(size_t[] sizes...)
@@ -272,8 +274,7 @@ struct MultiArray(Types...)
 
     @property auto slice(size_t n)()inout
     {
-        auto ptr = raw_ptr!n;
-        //size_t len = raw_length!n;
+        auto ptr = raw_ptr!n;        
         size_t len = spaceFor!(bitSizeOf!(Types[n]))(sz[n]);
         assert(ptr + len <= storage.ptr+storage.length);
         return packedArrayView!(Types[n])(ptr[0..len]);
@@ -286,34 +287,34 @@ struct MultiArray(Types...)
         @property void length(size_t new_size)
         {
             if(new_size > sz[n])
-            {//extend
+            {// extend
                 size_t delta = (new_size - sz[n]);
                 sz[n] += delta;
                 delta = spaceFor!(bitSizeOf!(Types[n]))(delta);
-                storage.length +=  delta;//extend space at end
-                //raw_slice!x must follow resize as it could be moved!
-                //next stmts move all data past this array, last-one-goes-first
+                storage.length +=  delta;// extend space at end
+                // raw_slice!x must follow resize as it could be moved!
+                // next stmts move all data past this array, last-one-goes-first
                 static if(n != dim-1)
                 {
                     auto start = raw_ptr!(n+1);
-                    //len includes delta
+                    // len includes delta
                     size_t len = (storage.ptr+storage.length-start);
 
                     copy(retro(start[0..len-delta])
                         , retro(start[delta..len]));
 
                     start[0..delta] = 0;
-                    //offsets are used for raw_slice, ptr etc.
+                    // offsets are used for raw_slice, ptr etc.
                     foreach(i; n+1..dim)
                         offsets[i] += delta;
                 }
             }
             else if(new_size < sz[n])
-            {//shrink
+            {// shrink
                 size_t delta = (sz[n] - new_size);
                 sz[n] -= delta;
                 delta = spaceFor!(bitSizeOf!(Types[n]))(delta);            
-                //move all data past this array, forward direction
+                // move all data past this array, forward direction
                 static if(n != dim-1)
                 {
                     auto start = raw_ptr!(n+1);
@@ -321,13 +322,13 @@ struct MultiArray(Types...)
                     copy(start[delta..len]
                      , start[0..len-delta]);
                     
-                    //adjust offsets last, they affect raw_slice
+                    // adjust offsets last, they affect raw_slice
                     foreach(i; n+1..dim)
                         offsets[i] -= delta;
                 }
                 storage.length -= delta;
             }
-            //else - NOP
+            // else - NOP
         }
     }
 
@@ -341,8 +342,8 @@ struct MultiArray(Types...)
             return (storage.ptr+storage.length - raw_ptr!n)*size_t.sizeof;
     }
 
-    void store(OutputRange)(OutputRange sink)
-        if(isOutputRange!(OutputRange, ubyte))         
+    void store(OutRange)(scope OutRange sink) const
+        if(isOutputRange!(OutRange, char))
     {
         formattedWrite(sink, "[%( 0x%x, %)]", offsets[]);
         formattedWrite(sink, ", [%( 0x%x, %)]", sz[]);
@@ -360,8 +361,8 @@ private:
         }
     }
     enum dim = Types.length;
-    size_t[dim] offsets;//offset for level x
-    size_t[dim] sz;//size of level x
+    size_t[dim] offsets;// offset for level x
+    size_t[dim] sz;// size of level x
     alias staticMap!(bitSizeOf, Types) bitWidth;
     size_t[] storage;
 }
@@ -369,7 +370,7 @@ private:
 unittest
 {
     // sizes are:
-    //lvl0: 3, lvl1 : 2, lvl2: 1
+    // lvl0: 3, lvl1 : 2, lvl2: 1
     auto m = MultiArray!(int, ubyte, int)(3,2,1);
 
     static void check(size_t k, T)(ref T m, int n)
@@ -434,7 +435,7 @@ unittest
 }
 
 unittest
-{//more bitpacking tests
+{// more bitpacking tests
     alias MultiArray!(BitPacked!(size_t, 3)
                 , BitPacked!(size_t, 4)
                 , BitPacked!(size_t, 3)
@@ -497,7 +498,7 @@ unittest
 
 size_t spaceFor(size_t _bits)(size_t new_len)
 {
-    enum bits = _bits == 1 ? 1 : ceilPowerOf2(_bits);//see PackedArrayView
+    enum bits = _bits == 1 ? 1 : ceilPowerOf2(_bits);// see PackedArrayView
     static if(bits > 8*size_t.sizeof)
     {
         static assert(bits % (size_t.sizeof*8) == 0);
@@ -506,7 +507,7 @@ size_t spaceFor(size_t _bits)(size_t new_len)
     else
     {
         enum factor = size_t.sizeof*8/bits;
-        return (new_len+factor-1)/factor; //rounded up
+        return (new_len+factor-1)/factor; // rounded up
     }
 }
 
@@ -541,7 +542,6 @@ struct PackedArrayViewImpl(T, size_t bits)
          || ((factor == bytesPerWord/2 || factor == bytesPerWord/4) 
                 && hasUnalignedReads))
     {   
-        //pragma(msg, text("direct for ", factor));
         static if(factor == bytesPerWord)
             alias U = ubyte;
         else static if(factor == bytesPerWord/2)
@@ -554,7 +554,7 @@ struct PackedArrayViewImpl(T, size_t bits)
             return cast(inout(T))(cast(U*)original.ptr)[idx];
         }
 
-        static if(isBitPacked!T) //lack of user-defined implicit conversion
+        static if(isBitPacked!T) // lack of user-defined implicit conversion
         {
             void opIndexAssign(T val, size_t idx)
             {
@@ -569,7 +569,6 @@ struct PackedArrayViewImpl(T, size_t bits)
     }
     else
     {
-        //pragma(msg, text("computed for ", factor));
         T opIndex(size_t n) inout
         in
         {
@@ -592,7 +591,7 @@ struct PackedArrayViewImpl(T, size_t bits)
             }
         }
 
-        static if(isBitPacked!T) //lack of user-defined implicit conversion
+        static if(isBitPacked!T) // lack of user-defined implicit conversion
         {
             void opIndexAssign(T val, size_t idx)
             {
@@ -619,7 +618,7 @@ struct PackedArrayViewImpl(T, size_t bits)
         }
     }
 
-    static if(isBitPacked!T) //lack of user-defined implicit conversions
+    static if(isBitPacked!T) // lack of user-defined implicit conversions
     {
         void opSliceAssign(T val, size_t start, size_t end)    
         {
@@ -628,20 +627,20 @@ struct PackedArrayViewImpl(T, size_t bits)
     }
     void opSliceAssign(TypeOfBitPacked!T val, size_t start, size_t end)
     {
-        //rounded to factor granuarity
-        //TODO: re-test and implement
-        /*size_t pad_start = (start+factor/2)/factor*factor;//rounded up
-        size_t pad_end = end/factor*factor; //rounded down
+        // rounded to factor granuarity
+        // TODO: re-test and implement
+        /*size_t pad_start = (start+factor/2)/factor*factor;// rounded up
+        size_t pad_end = end/factor*factor; // rounded down
         size_t i;
         for(i=start; i<pad_start; i++)
             this[i] = val;
         writeln("!!~!~!!");
-        //all in between is x*factor elements
+        // all in between is x*factor elements
         if(pad_start != pad_end)
         {
             size_t repval = replicateBits!(factor, bits)(val);
             for(size_t j=i/factor; i<pad_end; i+=factor, j++)
-                original[j] = repval;//so speed it up by factor
+                original[j] = repval;// so speed it up by factor
         }
         for(; i<end; i++)
             this[i] = val;*/
@@ -670,7 +669,7 @@ struct PackedArrayViewImpl(T, size_t bits)
 
 private:
 
-    //factor - number of elements in one machine word
+    // factor - number of elements in one machine word
     enum factor = size_t.sizeof*8/bits, mask = 2^^bits-1;
     enum bytesPerWord =  size_t.sizeof;
     size_t[] original;
@@ -708,7 +707,7 @@ private struct SliceOverIndexed(T)
         return typeof(this)(from+a, from+b, arr);
     }
 
-    //static if(assignableSlice)
+    // static if(assignableSlice)
     void opSliceAssign(T)(T val, size_t start, size_t end)
     {
         return (*arr)[start+from, end+from] = val;
@@ -756,14 +755,14 @@ private:
     T* arr;
 }
 
-//BUG? forward reference to return type of sliceOverIndexed!Grapheme
+// BUG? forward reference to return type of sliceOverIndexed!Grapheme
 SliceOverIndexed!(const(T)) sliceOverIndexed(T)(size_t a, size_t b, const(T)* x)
     if(is(Unqual!T == T))
 {
     return SliceOverIndexed!(const(T))(a, b, x);
 }
 
-//BUG? inout is out of reach 
+// BUG? inout is out of reach 
 //...SliceOverIndexed.arr only parameters or stack based variables can be inout
 SliceOverIndexed!T sliceOverIndexed(T)(size_t a, size_t b, T* x)
     if(is(Unqual!T == T))
@@ -850,13 +849,13 @@ size_t switchUniformLowerBound(alias pred, Range, T)(Range range, T needle)
 //
 size_t floorPowerOf2(size_t arg)
 {
-    assert(arg > 1); //else bsr is undefined
+    assert(arg > 1); // else bsr is undefined
     return 1<<bsr(arg-1);
 }
 
 size_t ceilPowerOf2(size_t arg)
 {
-    assert(arg > 1); //else bsr is undefined
+    assert(arg > 1); // else bsr is undefined
     return 1<<bsr(arg-1)+1;
 }
 
@@ -873,7 +872,7 @@ template sharMethod(alias uniLowerBound)
             return uniLowerBound!pred(range, needle);
         size_t n = floorPowerOf2(range.length);
         if(pred(range[n-1], needle))
-        {//search in another 2^^k area that fully covers the tail of range
+        {// search in another 2^^k area that fully covers the tail of range
             size_t k = ceilPowerOf2(range.length - n + 1);
             return range.length - k + uniLowerBound!pred(range[$-k..$], needle);
         }
@@ -908,7 +907,7 @@ unittest
 //============================================================================
 
 @safe:
-//hope to see simillar stuff in public interface... once Allocators are out
+// hope to see simillar stuff in public interface... once Allocators are out
 //@@@BUG moveFront and friends? dunno, for now it's POD-only
 
 @trusted size_t genericReplace(Policy=void, T, Range)
@@ -917,8 +916,8 @@ unittest
     size_t delta = to - from;
     size_t stuff_end = from+stuff.length;
     if(stuff.length > delta)
-    {//replace increases length
-        delta = stuff.length - delta;//now, new is > old  by delta
+    {// replace increases length
+        delta = stuff.length - delta;// now, new is > old  by delta
         static if(is(Policy == void))
             dest.length = dest.length+delta;//@@@BUG lame @property
         else
@@ -933,7 +932,7 @@ unittest
         copy(stuff, dest[from..to]);
     }
     else
-    {//replace decreases length by delta
+    {// replace decreases length by delta
         delta = delta - stuff.length;
         copy(stuff, dest[from..stuff_end]);
         auto rem =  copy(dest[to..dest.length]
@@ -947,8 +946,8 @@ unittest
     return stuff_end;
 }
 
-//Simple storage manipulation policy
-//TODO: stop working around bugs, report them!
+// Simple storage manipulation policy
+// TODO: stop working around bugs, report them!
 @trusted public struct GcPolicy
 {
     static T[] dup(T)(const T[] arr)
@@ -993,7 +992,7 @@ unittest
     { /*NOP*/ }
 }
 
-//ditto
+// ditto
 @trusted struct ReallocPolicy
 {    
     static T[] dup(T)(const T[] arr)
@@ -1105,8 +1104,8 @@ public template isIntegralPair(T, V=uint)
         && !is(typeof((T x){ V c = x[2]; }));
 }
 
-//bootstrap full set operations from 4 primitives:
-//addInterval, skipUpTo, dropUpTo & byInterval iteration
+// bootstrap full set operations from 4 primitives:
+// addInterval, skipUpTo, dropUpTo & byInterval iteration
 mixin template BasicSetOps()
 {
 @trusted:
@@ -1125,7 +1124,7 @@ mixin template BasicSetOps()
         if(isCodepointSet!U || is(U:dchar))
     {
         static if(op == "&" || op == "|" || op == "~")
-        {//symmetric ops thus can swap arguments to reuse r-value
+        {// symmetric ops thus can swap arguments to reuse r-value
             static if(is(U:dchar))
             {
                 auto copy = this.dup;
@@ -1136,7 +1135,7 @@ mixin template BasicSetOps()
             {
                 static if(is(Unqual!U == U))
                 {
-                    //try hard to reuse r-value         
+                    // try hard to reuse r-value         
                     mixin("rhs "~op~"= this;");
                     return rhs;
                 }
@@ -1164,11 +1163,11 @@ mixin template BasicSetOps()
         return this[ch];
     }
 
-    ///The 'op=' versions of the above overloaded operators.
+    /// The 'op=' versions of the above overloaded operators.
     ref This opOpAssign(string op, U)(in U rhs)
         if(isCodepointSet!U || is(U:dchar))
     {
-        static if(op == "|")    //union
+        static if(op == "|")    // union
         {
             static if(is(U:dchar))
             {
@@ -1178,11 +1177,11 @@ mixin template BasicSetOps()
             else
                 return this.add(rhs);
         }
-        else static if(op == "&")   //intersection
-                return this.intersect(rhs);//overloaded
-        else static if(op == "-")   //set difference
-                return this.sub(rhs);//overloaded
-        else static if(op == "~")   //symmetric set difference
+        else static if(op == "&")   // intersection
+                return this.intersect(rhs);// overloaded
+        else static if(op == "-")   // set difference
+                return this.sub(rhs);// overloaded
+        else static if(op == "~")   // symmetric set difference
         {
             auto copy = this & rhs;
             this |= rhs;
@@ -1193,7 +1192,7 @@ mixin template BasicSetOps()
             static assert(0, "no operator "~op~" defined for Set");
     }
 
-    ///Range that spans each codepoint in this set.
+    /// Range that spans each codepoint in this set.
     @property auto byChar() const
     {
         static struct CharRange
@@ -1282,11 +1281,11 @@ private:
 
     ref sub()(dchar ch)
     {
-        //workaround a BUG, somehow overload below doesn't survive if base class has sub(dchar)
+        // workaround a BUG, somehow overload below doesn't survive if base class has sub(dchar)
         return subChar(ch);
     }
 
-    //same as the above except that skip & drop parts are swapped
+    // same as the above except that skip & drop parts are swapped
     ref sub(U)(in U rhs)
         if(isCodepointSet!U)
     {
@@ -1315,7 +1314,7 @@ private:
 
 
 
-///The recommended default type for set of codepoints.
+/// The recommended default type for set of codepoints.
 public alias InversionList!GcPolicy CodepointSet;
 
 /**
@@ -1363,11 +1362,11 @@ public:
     }
 
     this(this)
-    {//TODO: COW?
+    {// TODO: COW?
         data = data.dup;
     }
 
-    ///Make a mutable copy of this set.
+    /// Make a mutable copy of this set.
     @property auto dup()const
     {
         InversionList s;
@@ -1415,11 +1414,11 @@ public:
     bool opIndex(uint val) const
     {
         // the <= ensures that searching in  interval of [a, b) for 'a' you get .length == 1
-        //return assumeSorted!((a,b) => a<=b)(data[]).lowerBound(val).length & 1;
+        // return assumeSorted!((a,b) => a<=b)(data[]).lowerBound(val).length & 1;
         return sharSwitchLowerBound!"a<=b"(data[], val) & 1;
     }
 
-    ///Number of characters in this set
+    /// Number of characters in this set
     @property size_t length() const
     {
         size_t sum = 0;
@@ -1430,7 +1429,7 @@ public:
         return sum;
     }
 
-    ///Do an in-place inversion of set.  See also '!' unary operator.
+    /// Do an in-place inversion of set.  See also '!' unary operator.
     ref invert()
     {
         if(data.length == 0)
@@ -1482,26 +1481,26 @@ public:
                 }
                 else
                 {
-                    if(ival[0] != 0) //dchar is unsigned and  < 0 is useless
+                    if(ival[0] != 0) // dchar is unsigned and  < 0 is useless
                         result ~= format("%sif(ch < %s) return false;\n", deeper, ival[0]);
                     result ~= format("%sif(ch < %s) return true;\n", deeper, ival[1]);
                 }
             }
-            result ~= format("%sreturn false;\n%s}\n", deeper, indent); //including empty range of intervals
+            result ~= format("%sreturn false;\n%s}\n", deeper, indent); // including empty range of intervals
             return result;
         }
 
         static string binaryScope(R)(R ivals, string indent)
         { 
-            //time to do unrolled comparisons?
+            // time to do unrolled comparisons?
             if(ivals.length < maxBinary)
                 return linearScope(ivals, indent);
             else
                 return bisect(ivals, ivals.length/2, indent);
         }
 
-        //not used yet if/elsebinary search is far better with DMD  as of 2.061
-        //and GDC is doing fine job either way
+        // not used yet if/elsebinary search is far better with DMD  as of 2.061
+        // and GDC is doing fine job either way
         static string switchScope(R)(R ivals, string indent)
         {
             string result = indent~"switch(ch){\n";
@@ -1526,15 +1525,15 @@ public:
         static string bisect(R)(R range, size_t idx, string indent)
         {
             string deeper = indent ~ "    ";
-            //bisect on one [a, b) interval at idx
+            // bisect on one [a, b) interval at idx
             string result = indent~"{\n";
-            //less branch, < a
+            // less branch, < a
             result ~= format("%sif(ch < %s)\n%s", 
                 deeper, range[idx][0], binaryScope(range[0..idx], deeper));            
-            //middle point,  >= a && < b
+            // middle point,  >= a && < b
             result ~= format("%selse if (ch < %s) return true;\n", 
                 deeper, range[idx][1]);
-            //greater or equal branch,  >= b
+            // greater or equal branch,  >= b
             result ~= format("%selse\n%s", 
                 deeper, binaryScope(range[idx+1..$], deeper));
             return result~indent~"}\n";
@@ -1542,9 +1541,9 @@ public:
 
         string code = format("bool %s(dchar ch)\n", funcName.empty ? "function" : funcName);
         auto range = byInterval.array;
-        //special case first bisection to be on ASCII vs beyond
+        // special case first bisection to be on ASCII vs beyond
         auto tillAscii = countUntil!"a[0] > 0x80"(range);
-        if(tillAscii <= 0) //everything is ASCII or nothing is ascii (-1 & 0)
+        if(tillAscii <= 0) // everything is ASCII or nothing is ascii (-1 & 0)
             code ~= binaryScope(range, "");
         else
             code ~= bisect(range, tillAscii, "");
@@ -1561,14 +1560,14 @@ private:
     alias typeof(this) This;
     alias size_t Marker;
 
-    //special case for normal InversionList
+    // special case for normal InversionList
     ref subChar(dchar ch)
     {
         auto mark = skipUpTo(ch);
         if(mark != data.length
             && data[mark] == ch && data[mark-1] == ch)
         {
-            //it has split, meaning that ch happens to be in one of intervals
+            // it has split, meaning that ch happens to be in one of intervals
             data[mark] = data[mark]+1;
         }
         return this;
@@ -1602,7 +1601,7 @@ private:
         {
             //  [-------++++++++----++++++-]
             //  [      s     a                 b]
-            if(a_idx & 1)//a in positive
+            if(a_idx & 1)// a in positive
             {
                 to_insert = [ b ];
             }
@@ -1622,14 +1621,14 @@ private:
             writefln("a=%s; b=%s; top=%s;", a, b, top);
         }
         if(a_idx & 1)
-        {//a in positive
-            if(b_idx & 1)//b in positive
+        {// a in positive
+            if(b_idx & 1)// b in positive
             {
                 //  [-------++++++++----++++++-]
                 //  [       s    a        b    ]
                 to_insert = [top];
             }
-            else //b in negative
+            else // b in negative
             {
                 //  [-------++++++++----++++++-]
                 //  [       s    a   b         ]
@@ -1644,7 +1643,7 @@ private:
         }
         else
         { // a in negative
-            if(b_idx & 1) //b in positive
+            if(b_idx & 1) // b in positive
             {
                 //  [----------+++++----++++++-]
                 //  [     a     b              ]
@@ -1676,7 +1675,7 @@ private:
     Marker dropUpTo(uint a, Marker pos=Marker.init)
     in
     {
-        assert(pos % 2 == 0); //at start of interval
+        assert(pos % 2 == 0); // at start of interval
     }
     body
     {
@@ -1694,13 +1693,13 @@ private:
         if(idx == data.length)
             return genericReplace(data, pos, idx, cast(uint[])[]);
         if(idx & 1)
-        {   //a in positive
+        {   // a in positive
             //[--+++----++++++----+++++++------...]
             //      |<---si       s  a  t
             genericReplace(data, pos, idx, [a]);
         }
         else
-        {   //a in negative
+        {   // a in negative
             //[--+++----++++++----+++++++-------+++...]
             //      |<---si              s  a  t
             genericReplace(data, pos, idx, cast(uint[])[]);
@@ -1712,7 +1711,7 @@ private:
     Marker skipUpTo(uint a, Marker pos=Marker.init)
     out(result)
     {
-        assert(result % 2 == 0);//always start of interval
+        assert(result % 2 == 0);// always start of interval
         //(may be  0-width after-split)
     }
     body
@@ -1721,21 +1720,21 @@ private:
         auto range = assumeSorted!"a<=b"(data[pos..data.length]);
         size_t idx = pos+range.lowerBound(a).length;
 
-        if(idx >= data.length) //could have Marker point to recently removed stuff
+        if(idx >= data.length) // could have Marker point to recently removed stuff
             return data.length;
 
-        if(idx & 1)//inside of interval, check for split
+        if(idx & 1)// inside of interval, check for split
         {
 
             uint top = data[idx];
-            if(top == a)//no need to split, it's end
+            if(top == a)// no need to split, it's end
                 return idx+1;
             uint start = data[idx-1];
             if(a == start)
                 return idx-1;
-            //split it up
+            // split it up
             genericReplace(data, idx, idx+1, [a, a, top]);
-            return idx+1;        //avoid odd index
+            return idx+1;        // avoid odd index
         }
         return idx;
     }
@@ -1743,7 +1742,7 @@ private:
     Uint24Array!SP data;
 };
 
-//pedantic version for ctfe, and aligned-access only architectures
+// pedantic version for ctfe, and aligned-access only architectures
 @trusted uint safeRead24(const ubyte* ptr, size_t idx)
 {
     idx *= 3;
@@ -1755,7 +1754,7 @@ private:
              + ptr[idx+2];
 }
 
-//ditto
+// ditto
 @trusted void safeWrite24(ubyte* ptr, uint val, size_t idx)
 {
     idx *= 3;
@@ -1773,7 +1772,7 @@ private:
     }
 }
 
-//unaligned x86-like read/write functions
+// unaligned x86-like read/write functions
 @trusted uint unalignedRead24(const ubyte* ptr, size_t idx)
 {
     uint* src = cast(uint*)(ptr+3*idx);
@@ -1783,7 +1782,7 @@ private:
         return *src >> 8;
 }
 
-//ditto
+// ditto
 @trusted void unalignedWrite24(ubyte* ptr, uint val, size_t idx)
 {
     uint* dest = cast(uint*)(cast(ubyte*)ptr + 3*idx);
@@ -1795,25 +1794,21 @@ private:
 
 uint read24(const ubyte* ptr, size_t idx)
 {
-    if(__ctfe)
-        return safeRead24(ptr, idx);
     static if(hasUnalignedReads)
-        return unalignedRead24(ptr, idx);
+        return __ctfe ? safeRead24(ptr, idx) : unalignedRead24(ptr, idx);
     else
         return safeRead24(ptr, idx);
 }
 
 void write24(ubyte* ptr, uint val, size_t idx)
 {
-    if(__ctfe)
-        return safeWrite24(ptr, val, idx);
     static if(hasUnalignedReads)
-        return unalignedWrite24(ptr, val, idx);
+        return __ctfe ? safeWrite24(ptr, val, idx) : unalignedWrite24(ptr, val, idx);
     else
         return safeWrite24(ptr, val, idx);    
 }
 
-//Packed array of 24-bit integers.
+// Packed array of 24-bit integers.
 @trusted struct Uint24Array(SP=GcPolicy)
 {
     this(Range)(Range range)
@@ -1826,7 +1821,7 @@ void write24(ubyte* ptr, uint val, size_t idx)
     this(Range)(Range range)
         if(isInputRange!Range && !hasLength!Range)
     {
-        auto a = array(range); //TODO: use better things like appending to Uint24Array
+        auto a = array(range); // TODO: use better things like appending to Uint24Array
         this(a);
     }
 
@@ -1848,13 +1843,13 @@ void write24(ubyte* ptr, uint val, size_t idx)
         data = SP.realloc(data, len*3);
     }
 
-    ///Read 24-bit packed integer
+    /// Read 24-bit packed integer
     uint opIndex(size_t idx)const
     {
         return read24(data.ptr, idx);
     }
 
-    ///Write 24-bit packed integer
+    /// Write 24-bit packed integer
     void opIndexAssign(uint val, size_t idx)
     in
     {
@@ -1912,7 +1907,7 @@ private:
     ubyte[] data;
 }
 
-@trusted unittest//Uint24 tests //@@@BUG@@ iota is system ?!
+@trusted unittest// Uint24 tests //@@@BUG@@ iota is system ?!
 {
     InversionList!GcPolicy val;
     foreach(Policy; TypeTuple!(GcPolicy, ReallocPolicy))
@@ -1949,7 +1944,7 @@ private alias TypeTuple!(InversionList!GcPolicy, InversionList!ReallocPolicy) Al
 
 }
 
-@trusted unittest//core set primitives test
+@trusted unittest// core set primitives test
 {
     foreach(CodeList; AllSets)
     {
@@ -1969,7 +1964,7 @@ private alias TypeTuple!(InversionList!GcPolicy, InversionList!ReallocPolicy) Al
         a.add(20, 50);
         assert(a == CodeList(10, 60), text(a));
 
-        //simple unions, mostly edge effects
+        // simple unions, mostly edge effects
         x = CodeList.init;
         x.add(10, 20).add(40, 60);
 
@@ -1986,7 +1981,7 @@ private alias TypeTuple!(InversionList!GcPolicy, InversionList!ReallocPolicy) Al
         assert(a == CodeList(0, 20, 40, 60));
 
         a = x;
-        a.add(0, 5); //prepand
+        a.add(0, 5); // prepand
         assert(a == CodeList(0, 5, 10, 20, 40, 60));
 
         a = x;
@@ -2001,7 +1996,7 @@ private alias TypeTuple!(InversionList!GcPolicy, InversionList!ReallocPolicy) Al
         a.add(37, 65);
         assert(a == CodeList(10, 20, 37, 65), text(a.byInterval));
 
-        //some tests on helpers for set intersection
+        // some tests on helpers for set intersection
         x = CodeList.init.add(10, 20).add(40, 60).add(100, 120);
         a = x;
 
@@ -2024,7 +2019,7 @@ private alias TypeTuple!(InversionList!GcPolicy, InversionList!ReallocPolicy) Al
 }
 
 @trusted unittest
-{   //full set operations
+{   // full set operations
     foreach(CodeList; AllSets)
     {
         CodeList a, b, c, d;
@@ -2134,7 +2129,7 @@ unittest// vs single dchar
     assert((a & 'B') == CodepointSet(66, 67));
 }
 
-unittest//iteration & opIndex
+unittest// iteration & opIndex
 {
     import std.typecons;
     foreach(CodeList; AllSets)
@@ -2164,344 +2159,121 @@ unittest//iteration & opIndex
     }
 }
 
-@trusted public struct Trie(Value, Key, Prefix...)
-    if(Prefix.length >= 1)
+//============================================================================
+// Generic Trie template and various ways to build it
+//============================================================================
+
+// debug helper to get a shortened array dump
+auto arrayRepr(T)(T x)
 {
-    static if(is(Value dummy : SetAsSlot!(U), U))
+    if(x.length > 32)
     {
-        alias U V;
-        enum type = TrieType.Set;
-        static putValue(ref V cont, Key val)
-        {
-            cont.insert(val);
-        }
-    }
-    else static if(is(Value dummy: MapAsSlot!(C, U, X), C, U, X))
-    {//TODO: built-in AA are somehow sluggish and need GC addRoot (still not implemented)
-        alias C V;
-        alias U Item;
-        static assert(is(X == Key));
-        enum type = TrieType.Map;
-        static putValue(Pair)(ref V cont, Pair val)
-        {
-            cont.insert(val);
-        }
+        return text(x[0..16],"~...~", x[x.length-16..x.length]);
     }
     else
-    {
-        alias Value V;
-        alias V Item;
-        enum type = TrieType.Value;
-        static putValue(ref V x, V val)
-        {
-            x = val;
-        }
-    }
+        return text(x);
+}
 
-    private size_t bootstrap(size_t[Prefix.length] idxs)
-    {
-        enum pageBits=Prefix[$-1].bitSize, pageSize = 1<<pageBits;
-        size_t maxIdx = 1;
-        foreach(v; Prefix)
-            maxIdx *= 2^^v.bitSize;
+/**
+    Maps $(D Key to a suitable integer index (within the bounds of $(D size_t).
+    The mapping is constructed by applying predicates from $(D Prefix) left to right
+    and concatenating the resulting bits. 
 
-        table = typeof(table)(idxs);
-        //one page per level is bootstrap minimum
-        foreach(i; Sequence!(0, Prefix.length))
-            table.length!i = (1<<Prefix[i].bitSize);
-        return maxIdx;
-    }
-
-    static if(type == TrieType.Value)
-    this()(Value[Key] hash, Value defvalue=Value.init)
-    {
-        ConstructState[Prefix.length] emptyFull;//empty page index, full page index
-        size_t[Prefix.length] idxs;
-        enum last = Prefix.length-1;
-        size_t maxIdx = bootstrap(idxs);
-
-        auto r = array(zip(hash.values, hash.keys));
-        alias GetComparators!(Prefix.length, cmpK0) Comps;
-        multiSort!Comps(r);
-
-        size_t j = 0;
-        for(size_t i=0;i<r.length; i++)
-        {
-
-            size_t keyIdx = getIndex(r[i][1]);
-            //writeln(keyIdx);
-            addValue!last(idxs, defvalue, emptyFull[], keyIdx - j);
-            //writeln("~~~~~~~~~~~~~~");
-            addValue!last(idxs, r[i][0], emptyFull[]);
-            //writeln("~~~~~~~~~~~~~~");
-            j = keyIdx+1;
-        }
-        addValue!last(idxs, defvalue, emptyFull[], maxIdx-j);
-    }
-
-    static if(type == TrieType.Map)
-    this()(Item[Key] hash)
-    {
-        ConstructState[Prefix.length] emptyFull;//empty page index, full page index
-        size_t[Prefix.length] idxs;
-        enum last = Prefix.length-1;
-        size_t maxIdx = bootstrap(idxs);
-
-        auto r = array(zip(hash.byValue, hash.byKey));
-        alias GetComparators!(Prefix.length, cmpK0) Comps;
-        multiSort!Comps(r);
-
-        size_t j = 0;
-        size_t prevKeyIdx = size_t.max;
-        for(size_t i=0;i<r.length; i++)
-        {
-            size_t keyIdx = getIndex(r[i][1]);
-            if(keyIdx != prevKeyIdx)
-            {
-                addValue!last(idxs, r.front.init, emptyFull[], keyIdx - j);
-                addValue!last(idxs, r[i], emptyFull[]);                
-                j = keyIdx+1;
-                prevKeyIdx = keyIdx;
-            }
-            else
-            {//duplicate keyIdx, quite possible with MapAsSlot
-                idxs[last]--;
-                addValue!last(idxs, r[i], emptyFull[]);
-            }
-        }
-        addValue!last(idxs, r.front.init, emptyFull[], maxIdx-j);
-    }
-
-    ///Construct Trie from array of keys
-    ///fills all possible keys with zeros in index
-    this(Keys)(Keys keys)
-        if(!is(typeof(Keys.init.isSet)) && !isAssociativeArray!Keys)
-    {
-        ConstructState[Prefix.length] emptyFull; //empty page index, full page index
-        enum last = Prefix.length-1;
-        enum pageBits=Prefix[$-1].bitSize, pageSize = 1<<pageBits;
-        size_t maxIdx = 1;
-        //maximum index is sizes of each level multiplied
-        foreach(v; Prefix)
-            maxIdx *= 2^^v.bitSize;
-
-        size_t[Prefix.length] idxs;
-        table = typeof(table)(idxs);
-        //one page per level is bootstrap minimum
-        foreach(i; Sequence!(0, Prefix.length))
-            table.length!i = (1<<Prefix[i].bitSize);
-
-        {//don't pollute the ctor scope
-            size_t j = 0;
-            size_t prevKeyIdx = size_t.max;
-            static if(isDynamicArray!Keys)
-            {
-                alias GetComparators!(Prefix.length, cmpK) Comps;
-                static if(type == TrieType.Set || (type == TrieType.Value && is(V == bool)))
-                {
-                    multiSort!(Comps, SwapStrategy.unstable)
-                        (keys);
-                }
-                else static if(is(Unqual!Keys  == V[]))
-                {
-                    /* NOP */
-                    //we consider indexes to be presorted as need as index in array is treated as key
-                    //and value of elements is value
-                }
-                else
-                    static assert(0, "Unsupported type of array "~Keys.stringof~" for Trie of "~V.stringof);
-                auto r = keys;
-            }
-            else
-                static assert(false, "unsupported constructor for "~Keys.stringof);
-
-            for(size_t i=0;i<r.length; i++)
-            {
-                size_t keyIdx = getIndex(r[i]);
-                if(keyIdx != prevKeyIdx)
-                {
-                    static if(type == TrieType.Value && is(V == bool))
-                    {
-                        addValue!last(idxs, false, emptyFull[], keyIdx - j);
-                        addValue!last(idxs, true, emptyFull[]);
-                    }
-                    else
-                    {
-                        addValue!last(idxs, r.front.init, emptyFull[], keyIdx - j);
-                        addValue!last(idxs, r[i], emptyFull[]);
-                    }
-                    prevKeyIdx = keyIdx;
-                    j = keyIdx+1;
-                }
-                else
-                {//Set or map version can have "duplicate" slot keys
-                     static if(type == TrieType.Set)
-                     {
-                        idxs[last]--;
-                        addValue!last(idxs, r[i], emptyFull[]);
-                     }
-                }
-
-            }
-            static if(type == TrieType.Set)
-                addValue!last(idxs, Key.init, emptyFull[], maxIdx-j);
-            else
-                addValue!last(idxs, false, emptyFull[], maxIdx-j);
-        }
-    }
-
-    ///Construct boolean Trie from set.
-    this(Set)(in Set set, Key maxKey=Key.max)
-        if(is(typeof(Set.init.isSet)))
-    {
-        ConstructState[Prefix.length] emptyFull; //empty page index, full page index
-        foreach(ref v; emptyFull)
-            v = ConstructState(true, true, uint.max, uint.max);
-        enum last = Prefix.length-1;
-        enum pageBits=Prefix[$-1].bitSize, pageSize = 1<<pageBits;
-        maxKey =((maxKey + pageSize-1)>>pageBits)<<pageBits;
-
-        auto ivals = set.byInterval;
-        size_t[Prefix.length] idxs;
-
-
-        table = typeof(table)(idxs);
-        //one page per level is bootstrap minimum
-        foreach(i; Sequence!(0, Prefix.length))
-            table.length!i = (1<<Prefix[i].bitSize);
-
-        {//don't pollute the ctor scope
-            auto ptr = table.slice!(last);
-            size_t i = 0;
-            for(;;)
-            {
-                if(ivals.empty)
-                    break;
-                uint a = ivals.front.a, b = ivals.front.b;
-
-                addValue!last(idxs, false, emptyFull[], a - i);
-                i = a;
-                assert(i <= maxKey, text("set has keys > maxKey in Trie c-tor: ", i, " vs ", maxKey));
-                addValue!last(idxs, true, emptyFull[], b - i);
-                i = b;
-
-                ivals.popFront();
-            }
-            addValue!last(idxs, false, emptyFull[], maxKey - i);
-        }
-    }
-
-    //only for constant Tries constructed from preconstructed tables
-    private this()(const(size_t)[] offsets, const(size_t)[] sizes, 
-        const(size_t)[] data) const
-    {
-        table = typeof(table)(offsets, sizes, data);
-    }
-
-    inout(V) opIndex(Key key) inout
-    {
-        size_t idx;
-        alias Prefix p;
-        idx = cast(size_t)p[0](key);
-        foreach(i, v; p[0..$-1])
-            idx = cast(size_t)((table.slice!i[idx]<<p[i+1].bitSize) + p[i+1](key));
-        return table.slice!(p.length-1)[idx];
-    }
-
-    @property size_t bytes(size_t n=size_t.max)() const
-    {
-        return table.bytes!n;
-    }
-
-    @property size_t pages(size_t n)() const
-    {
-        return (bytes!n+2^^(Prefix[n].bitSize-1))
-                /2^^Prefix[n].bitSize;
-    }
-
-    //needed for multisort to work
-    static bool cmpK(size_t i)(Key a, Key b)
-    {
-        return Prefix[i](a) < Prefix[i](b);
-    }
-
-    //ditto
-    static if(type == TrieType.Map || type==TrieType.Value)
-    static bool cmpK0(size_t i)
-        (const ref Tuple!(Item,Key) a, const ref Tuple!(Item, Key) b)
-    {
-        return Prefix[i](a[1]) < Prefix[i](b[1]);
-    }
-
-    void store(OutputRange)(scope OutputRange sink)
-        if(isOutputRange!(OutputRange, ubyte))
-    {
-        table.store(sink);
-    }
-
-private:
-    struct ConstructState//used during creation of Trie
-    {
-        bool empty, full; //current page is empty? full?
-        uint idx_empty, idx_full;
-    }
-    enum TrieType{ Value, Set, Map };
-    //for multi-sort
-    template GetComparators(size_t n, alias cmpFn)
-    {
-        static if(n > 0)
-            alias TypeTuple!(GetComparators!(n-1, cmpFn), cmpFn!(n-1)) GetComparators;
-        else
-            alias TypeTuple!() GetComparators;
-    }
-
-    static size_t getIndex(Key key)//get "mapped" virtual integer index
+    The first (leftmost) predicate defines the most significant bits of 
+    the resulting index.
+ */
+template mapTrieIndex(Prefix...)
+{
+    size_t mapTrieIndex(Key)(Key key)
+        if(isValidPrefixForTrie!(Key, Prefix))
     {
         alias Prefix p;
         size_t idx;
         foreach(i, v; p[0..$-1])
         {
-            //writeln(i, ": ", cast(size_t) p[i](key));
+            // writeln(i, ": ", cast(size_t) p[i](key));
             idx |= p[i](key);
             idx <<= p[i+1].bitSize;
         }
-        //writeln(p.length-1, ": ", cast(size_t) p[$-1](key));
+        // writeln(p.length-1, ": ", cast(size_t) p[$-1](key));
         idx |= p[$-1](key);
         return idx;
     }
+}
 
-    static arrayRepr(T)(T x)
+///
+@trusted struct TrieBuilder(Value, Key, Args...)
+    if(bitPackableType!Value && isValidArgsForTrie!(Key, Args))
+{
+private:
+    // last index is not stored in table, it is used as an offset to values in a block.
+    static if(is(Value == bool))// always pack bool
+        alias V = BitPacked!(Value, 1);
+    else
+        alias V = Value;
+
+    static if(is(typeof(Args[0]) : Key)) // Args start with upper bound on Key
     {
-        if(x.length > 32)
-        {
-            return text(x[0..16],"~...~", x[x.length-16..x.length]);
-        }
-        else
-            return text(x);
+        alias Prefix = Args[1..$];
+        enum maxIndex = mapTrieIndex!(Prefix)(Args[0]);
     }
+    else
+    {
+        alias Prefix = Args;
+        static auto deduceMaxIndex()()
+        {
+            size_t idx = 1;
+            foreach(v; Prefix)
+                idx *= 2^^v.bitSize;
+            return idx;
+        }
+        enum maxIndex = deduceMaxIndex();
+    }
+    
+    alias getIndex = mapTrieIndex!(Prefix);
 
-    //true if page was allocated, false is it was mapped or not an end of page yet
-    void addValue(size_t level, T)(size_t[] indices, T val, ConstructState[] emptyFull, size_t numVals=1)
+    enum lastLevel = Prefix.length-1;
+    struct ConstructState
+    {
+        bool zeros, ones; // current page is zeros? ones?
+        uint idx_zeros, idx_ones;
+    }
+    // iteration over levels of Trie, each indexes its own level and thus a shortened domain
+    size_t[Prefix.length] indices;
+    // default filler value to use
+    Value defValue; 
+    // this is a full-width index of next item
+    size_t curIndex; 
+    // all-zeros page index, all-ones page index (+ indicator if there is such a page)
+    ConstructState[Prefix.length] state;
+    // the table being constructed 
+    MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), V) table;   
+
+    @disable this();
+
+    // this function assumes no holes in the input so 
+    // indices are going one by one
+    void addValue(size_t level, T)(T val, size_t numVals)
     {
         enum pageSize = 1<<Prefix[level].bitSize;
         if(numVals == 0)
             return;
         do
         {
-            //need to take pointer again, memory block  may move on resize
+            // need to take pointer again, memory block may move on resize
             auto ptr = table.slice!(level);
             static if(is(T : bool))
             {
                 if(val)
-                    emptyFull[level].empty = false;
+                    state[level].zeros = false;
                 else
-                    emptyFull[level].full = false;
+                    state[level].ones = false;
             }
             if(numVals == 1)
             {
-                static if(level == Prefix.length-1 && type != TrieType.Value)
-                    putValue(ptr[indices[level]], val);
-                else{// can incurr narrowing conversion
+                static if(level == Prefix.length-1)
+                    ptr[indices[level]] = val;
+                else{// can incur narrowing conversion
                     assert(indices[level] < ptr.length);
                     ptr[indices[level]] = force!(typeof(ptr[indices[level]]))(val);
                 }
@@ -2510,10 +2282,10 @@ private:
             }
             else
             {
-                //where is the next page boundary
+                // where is the next page boundary
                 size_t nextPB = (indices[level]+pageSize)/pageSize*pageSize;
                 size_t j = indices[level];
-                size_t n =  nextPB-j;//can fill right in this page
+                size_t n =  nextPB-j;// can fill right in this page
                 if(numVals > n)
                     numVals -= n;
                 else
@@ -2522,214 +2294,558 @@ private:
                     numVals = 0;
                 }
                 static if(level < Prefix.length-1)
-                    assert(indices[level] <= 2^^Prefix[level+1].bitSize);
-                static if(level == Prefix.length-1 && type != TrieType.Value)
-                {
-                    for(int i=0;i<n; i++)
-                        putValue(ptr[j++], val);
-                }
-                else
-                {
-                    ptr[j..j+n]  = val;
-                    j += n;
-                }
+                    assert(indices[level] <= 2^^Prefix[level+1].bitSize);                
+                ptr[j..j+n]  = val;
+                j += n;
                 indices[level] = j;
-
             }
-            //last level (i.e. topmost) has 1 "page" 
-            //thus it need not to add a new page on upper level
+            // last level (i.e. topmost) has 1 "page" 
+            // thus it need not to add a new page on upper level
             static if(level != 0)
             {
-                alias typeof(table.slice!(level-1)[0]) NextIdx;
-                NextIdx next_lvl_index;
                 if(indices[level] % pageSize == 0)
-                {
-                    static if(is(T : bool))
-                    {
-                        if(emptyFull[level].empty)
-                        {
-                            if(emptyFull[level].idx_empty == uint.max)
-                            {
-                                emptyFull[level].idx_empty = cast(uint)(indices[level]/pageSize - 1);
-                                goto L_allocate_page;
-                            }
-                            else
-                            {
-                                next_lvl_index = force!NextIdx(emptyFull[level].idx_empty);
-                                indices[level] -= pageSize;//it is a duplicate
-                                goto L_know_index;
-                            }
-                        }                        
-                    }
-                    auto last = indices[level]-pageSize;
-                    auto slice = ptr[indices[level] - pageSize..indices[level]];
-                    size_t j;
-                    for(j=0; j<last; j+=pageSize)
-                    {                        
-                        if(equal(ptr[j..j+pageSize], slice[0..pageSize]))
-                        {
-                            //get index to it, reuse ptr space for the next block
-                            next_lvl_index = force!NextIdx(j/pageSize);
-                            version(none)
-                            {
-                            writefln("LEVEL(%s) page maped idx: %s: 0..%s  ---> [%s..%s]"
-                                    ,level
-                                    ,indices[level-1], pageSize, j, j+pageSize);
-                            writeln("LEVEL(", level
-                                    , ") mapped page is: ", slice, ": ", arrayRepr(ptr[j..j+pageSize]));
-                            writeln("LEVEL(", level
-                                    , ") src page is :", ptr, ": ", arrayRepr(slice[0..pageSize]));
-                            }
-                            indices[level] -= pageSize; //reuse this page, it is duplicate
-                            break;
-                        }
-                    }
-
-                    if(j == last)
-                    {                            
-                    L_allocate_page:    
-                        next_lvl_index = force!NextIdx(indices[level]/pageSize - 1);                        
-                        //allocate next page
-                        version(none)
-                        {
-                        writefln("LEVEL(%s) page allocated: %s"
-                                 , level, arrayRepr(slice[0..pageSize]));
-                        writefln("LEVEL(%s) index: %s ; page at this index %s"
-                                 , level
-                                 , next_lvl_index
-                                 , arrayRepr(
-                                     table.slice!(level)
-                                      [pageSize*next_lvl_index..(next_lvl_index+1)*pageSize]
-                                    ));
-                        }
-                        table.length!level = table.length!level + pageSize;
-                    }
-                    L_know_index:
-                    static if(is(TypeOfBitPacked!T : bool))
-                    {
-                        emptyFull[level].empty = true;
-                        emptyFull[level].full = true;
-                    }
-
-                    addValue!(level-1)(indices, next_lvl_index, emptyFull);
-                }
+                    spillToNextPage!level(ptr); 
             }
         }
         while(numVals);
     }
 
-    //last index is not stored in table, it is used as offset to values in a block.
-    static if(is(V  == bool))//always pack bool
-        MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), BitPacked!(V, 1)) table;
-    else
-        MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), V) table;
+
+    // this can re-use the current page if duplicate or allocate a new one
+    // it also makes sure that previous levels point to the correct page in this level
+    void spillToNextPage(size_t level, Slice)(ref Slice ptr)
+    {
+        alias typeof(table.slice!(level-1)[0]) NextIdx;
+        NextIdx next_lvl_index;
+        enum pageSize = 1<<Prefix[level].bitSize;
+        static if(is(T : bool))
+        {
+            if(state[level].zeros)
+            {
+                if(state[level].idx_empty == uint.max)
+                {
+                    state[level].idx_empty = cast(uint)(indices[level]/pageSize - 1);
+                    goto L_allocate_page;
+                }
+                else
+                {
+                    next_lvl_index = force!NextIdx(state[level].idx_empty);
+                    indices[level] -= pageSize;// it is a duplicate
+                    goto L_know_index;
+                }
+            }
+        }
+        auto last = indices[level]-pageSize;
+        auto slice = ptr[indices[level] - pageSize..indices[level]];
+        size_t j;
+        for(j=0; j<last; j+=pageSize)
+        {                        
+            if(equal(ptr[j..j+pageSize], slice[0..pageSize]))
+            {
+                // get index to it, reuse ptr space for the next block
+                next_lvl_index = force!NextIdx(j/pageSize);
+                version(none)
+                {
+                writefln("LEVEL(%s) page maped idx: %s: 0..%s  ---> [%s..%s]"
+                        ,level
+                        ,indices[level-1], pageSize, j, j+pageSize);
+                writeln("LEVEL(", level
+                        , ") mapped page is: ", slice, ": ", arrayRepr(ptr[j..j+pageSize]));
+                writeln("LEVEL(", level
+                        , ") src page is :", ptr, ": ", arrayRepr(slice[0..pageSize]));
+                }
+                indices[level] -= pageSize; // reuse this page, it is duplicate
+                break;
+            }
+        }
+        if(j == last)
+        {                            
+    L_allocate_page:    
+            next_lvl_index = force!NextIdx(indices[level]/pageSize - 1);                        
+            // allocate next page
+            version(none)
+            {
+            writefln("LEVEL(%s) page allocated: %s"
+                     , level, arrayRepr(slice[0..pageSize]));
+            writefln("LEVEL(%s) index: %s ; page at this index %s"
+                     , level
+                     , next_lvl_index
+                     , arrayRepr(
+                         table.slice!(level)
+                          [pageSize*next_lvl_index..(next_lvl_index+1)*pageSize]
+                        ));
+            }
+            table.length!level = table.length!level + pageSize;
+        }
+    L_know_index:
+        // reset all zero/ones tracking variables
+        static if(is(TypeOfBitPacked!T : bool))
+        {
+            state[level].zeros = true;
+            state[level].ones = true;
+        }
+        // for the previous level, values are indices to the pages in the current level
+        addValue!(level-1)(next_lvl_index, 1);
+    }
+
+    // idx - full-width index to fill with v (full-width index != key)
+    // fills everything in the range of [curIndex, idx) with filler
+    void putAt(size_t idx, Value v)
+    {
+        assert(idx >= curIndex);
+        size_t numFillers = idx - curIndex;
+        addValue!lastLevel(defValue, numFillers);
+        addValue!lastLevel(v, 1);
+        curIndex = idx + 1;
+    }
+
+    // ditto, but sets the range of [idxA, idxB) to v
+    void putRangeAt(size_t idxA, size_t idxB, Value v)
+    {
+        assert(idxA >= curIndex);
+        assert(idxB >= idxA);
+        size_t numFillers = idxA - curIndex;
+        addValue!lastLevel(defValue, numFillers);
+        addValue!lastLevel(v, idxB - idxA);
+        curIndex = idxB; //open-right
+    }
+
+    enum errMsg = "non-monotonic prefix function(s), an unsorted range or "
+        "duplicate key->value mapping";
+
+public:
+    /**
+        Construct a builder, where $(D filler) is a value 
+        to indicate empty slots (or "not found" condition).
+    */
+    this(Value filler) 
+    {
+        curIndex = 0;
+        defValue = filler;
+        // zeros-page index, ones-page index
+        foreach(ref v; state)
+            v = ConstructState(true, true, uint.max, uint.max);
+        table = typeof(table)(indices);
+        // one page per level is a bootstrap minimum
+        foreach(i; Sequence!(0, Prefix.length))
+            table.length!i = (1<<Prefix[i].bitSize);
+    }
+
+    /// Puts 
+    void putRange(Key a, Key b, Value v)
+    {
+        auto idxA = getIndex(a), idxB = getIndex(b);
+        // indexes of key should always grow
+        enforce(idxB >= idxA && idxA >= curIndex, errMsg);
+        putRangeAt(idxA, idxB, v);
+    }
+
+    /// Puts 
+    void putValue(Key key, Value v)
+    {
+        auto idx = getIndex(key);
+        enforce(idx >= curIndex, text(errMsg, " ", idx));
+        putAt(idx, v);
+    }
+
+    /// Finishes construction of Trie, yielding an immutable Trie instance.
+    auto build()
+    {
+        static if(maxIndex != 0) // doesn't cover full range of size_t
+        {
+            assert(curIndex <= maxIndex);
+            addValue!lastLevel(defValue, maxIndex - curIndex);
+        }
+        else
+        {
+            if(curIndex != 0 //couldn't wrap around
+                || (Prefix.length != 1 && indices[lastLevel] == 0)) //can be just empty 
+            {
+                addValue!lastLevel(defValue, size_t.max - curIndex);
+                addValue!lastLevel(defValue, 1);
+            }
+            //else curIndex already completed the full range of size_t by wrapping around
+        }
+        return Trie!(V, Key, maxIndex, Prefix)(table);
+    }
 }
 
-template GetBitSlicing(size_t Top, Sizes...)
+/**
+    A generic Trie data-structure for a fixed number of stages.
+    The design goal is optimal speed with smallest footprint size.
+
+    It's intentionally immutable only. To construct one use 
+    a special builder, see $(LREF TrieBuilder) and $(LREF buildTrie).
+*/
+@trusted public struct Trie(Value, Key, Args...)
+    if(isValidPrefixForTrie!(Key, Args)
+        || (isValidPrefixForTrie!(Key, Args[1..$]) 
+            && is(typeof(Args[0]) : size_t)))
 {
-    static if(Sizes.length > 0)
-        alias TypeTuple!(sliceBits!(Top - Sizes[0], Top)
-            , GetBitSlicing!(Top - Sizes[0], Sizes[1..$])) GetBitSlicing;
+    static if(is(typeof(Args[0]) : size_t))
+    {
+        enum maxIndex = Args[0];
+        enum hasBoundsCheck = true;
+        alias Prefix = Args[1..$];
+    }
+    else
+    {
+        enum hasBoundsCheck = false;
+        alias Prefix = Args;
+    }
+
+    private this()(typeof(_table) table)
+    {
+        _table = table;
+    }
+
+    // only for constant Tries constructed from precompiled tables
+    private this()(const(size_t)[] offsets, const(size_t)[] sizes, 
+        const(size_t)[] data) const
+    {
+        _table = typeof(_table)(offsets, sizes, data);
+    }
+
+    inout(TypeOfBitPacked!Value) opIndex(Key key) inout
+    {
+        static if(hasBoundsCheck)
+            assert(mapTrieIndex!Prefix(key) < maxIndex);
+        size_t idx;
+        alias p = Prefix;
+        idx = cast(size_t)p[0](key);
+        foreach(i, v; p[0..$-1])
+            idx = cast(size_t)((_table.slice!i[idx]<<p[i+1].bitSize) + p[i+1](key));
+        auto val = _table.slice!(p.length-1)[idx];
+        return val;
+    }
+
+    @property size_t bytes(size_t n=size_t.max)() const
+    {
+        return _table.bytes!n;
+    }
+
+    @property size_t pages(size_t n)() const
+    {
+        return (bytes!n+2^^(Prefix[n].bitSize-1))
+                /2^^Prefix[n].bitSize;
+    }
+
+    void store(OutRange)(scope OutRange sink) const
+        if(isOutputRange!(OutRange, char))
+    {
+        _table.store(sink);
+    }
+
+private:
+    MultiArray!(idxTypes!(Key, fullBitSize!(Prefix), Prefix[0..$]), Value) _table;
+}
+
+// create a tuple of 'sliceBits' that slice the 'top' of bits into pieces of sizes 'sizes'
+// left-to-right, the most significant bits first
+template GetBitSlicing(size_t top, sizes...)
+{
+    static if(sizes.length > 0)
+        alias TypeTuple!(sliceBits!(top - sizes[0], top)
+            , GetBitSlicing!(top - sizes[0], sizes[1..$])) GetBitSlicing;
     else
         alias TypeTuple!()  GetBitSlicing;
 }
 
 /**
-    Wrapper for generic Trie template to simplify mapping unicode codepoints
-    to bool. As the name suggests it could be treated as a set of characters
-    packed into multi-stage table to provide fast lookup.
+    Check if $(D Prefix) is a valid set of predicates 
+    for $(D Trie) template having $(D Key) as the type of keys.
+*/
+template isValidPrefixForTrie(Key, Prefix...)
+{
+    enum isValidPrefixForTrie = true; //TODO: tighten the screws
+}
+
+/**
+    Check if $(D Args) is a set of maximum key value followed by valid predicates 
+    for $(D Trie) template having $(D Key) as the type of keys.
+*/
+template isValidArgsForTrie(Key, Args...)
+{
+    static if(Args.length > 1)
+    {
+        enum isValidArgsForTrie = isValidPrefixForTrie!(Key, Args)
+            || (isValidPrefixForTrie!(Key, Args[1..$]) && is(typeof(Args[0]) : Key));
+    }
+    else
+        enum isValidArgsForTrie = isValidPrefixForTrie!Args;
+}
+
+@property size_t sumOfIntegerTuple(ints...)()
+{
+    size_t count=0;
+    foreach(v; ints)
+        count += v;
+    return count;
+}
+
+/**
+    A shorthand for creating a custom multi-level Trie from a $(D CodepointSet).
+    $(D sizes) are numbers of bits used per level, 
+    the most significant bits used first.    
+
+    Note: the sum of $(D sizes) must be equal 21.
+
+    See also even simpler $(LREF toTrie).
     
     Example:
-
     ---
     {
         import std.stdio;
         auto set = unicode("Number");
-        auto trie = CodepointSetTrie!(8, 5, 8)(set);
+        auto trie = codepointSetTrie!(8, 5, 8)(set);
+        writeln("Input characters to test:");
         foreach(line; stdin.byLine)
         {
             int count=0;
             foreach(dchar ch; line)
-                if(trie[ch])//is number
+                if(trie[ch])// is number
                     count++;
             writefln("Contains %d number characters.", count);
         }
     }
     ---
 */
-public template CodepointSetTrie(Sizes...)
+public template codepointSetTrie(sizes...)
+    if(sumOfIntegerTuple!sizes == 21)
 {
-    alias Trie!(bool, dchar, GetBitSlicing!(21, Sizes)) CodepointSetTrie;
+    auto codepointSetTrie(Set)(in Set set)
+        if(isCodepointSet!Set)
+    {
+        auto builder = TrieBuilder!(bool, dchar, lastDchar+1, GetBitSlicing!(21, sizes))(false);
+        foreach(ival; set.byInterval)
+            builder.putRange(ival[0], ival[1], true);
+        return builder.build();
+    }
+}
+
+/// Type of Trie generated by codepointSetTrie function.
+public template CodepointSetTrie(sizes...)
+    if(sumOfIntegerTuple!sizes == 21)
+{
+    alias Prefix = GetBitSlicing!(21, sizes);
+    alias CodepointSetTrie = typeof(TrieBuilder!(bool, dchar, lastDchar+1, Prefix)(false).build());
 }
 
 /**
-    A more general wrapper for generic Trie template. Specifically it's allows
-    creating mappings of codepoints to an arbritrary type.
-    Keep in mind that CodepointSets will naturally convert only to bool mappings.
+    A slightly more general tool for building fixed-stage $(D Trie)
+    for unicode data without having to use $(D TrieBuilder) directly.
+
+    Specifically unlike $(D codepointSetTrie) it's allows creating mappings of $(D dchar)
+    to an arbitrary type $(D T).
+
+    Note: overload taking $(D CodepointSet)s will naturally convert 
+    only to bool mapping $(D Trie)s.
 */
-public template CodepointTrie(T, Sizes...)
+public template codepointTrie(T, sizes...)
+    if(sumOfIntegerTuple!sizes == 21)
 {
-    alias Trie!(T, dchar, GetBitSlicing!(21, Sizes)) CodepointTrie;
+    alias Prefix = GetBitSlicing!(21, sizes);
+
+    static if(is(TypeOfBitPacked!T == bool))
+    {
+        auto codepointTrie(Set)(in Set set)
+            if(isCodepointSet!Set)
+        {
+            return codepointSetTrie(set);        
+        }
+    }
+
+    auto codepointTrie()(T[dchar] map, T defValue=T.init)
+    {
+        return buildTrie!(T, dchar, Prefix)(map, defValue);
+    }
+}
+
+/// Type of Trie generated by codepointTrie function.
+public template CodepointTrie(T, sizes...)
+    if(sumOfIntegerTuple!sizes == 21)
+{
+    alias Prefix = GetBitSlicing!(21, sizes);
+    alias CodepointTrie = typeof(TrieBuilder!(T, dchar, lastDchar+1, Prefix)(T.init).build());
+}
+
+// @@@BUG multiSort can's access private symbols from uni
+public template cmpK0(alias Pred)
+{
+    static bool cmpK0(Value, Key)
+        (Tuple!(Value, Key) a, Tuple!(Value, Key) b)
+    {
+        return Pred(a[1]) < Pred(b[1]);
+    }
+}
+
+/**
+    The most general utility for construction of $(D Trie)s 
+    short of using $(D TrieBuilder) directly.
+
+    Provides a number of convenience overloads.
+    $(D Args) is tuple of maximum key value followed by 
+    predicates to construct index from key.
+
+    Alternatively if the first argument is not a value convertible to $(D Key) 
+    then whole tuple of $(D Args) is treated as predicates 
+    and the maximum Key is deduced from predicates.
+*/
+public template buildTrie(Value, Key, Args...)
+    if(isValidArgsForTrie!(Key, Args))
+{
+    static if(is(typeof(Args[0]) : Key)) //prefix starts with upper bound on Key
+    {
+        alias Prefix = Args[1..$];
+    }
+    else
+        alias Prefix = Args;
+    
+    alias getIndex = mapTrieIndex!(Prefix);
+
+    // for multi-sort
+    template GetComparators(size_t n)
+    {
+        static if(n > 0)
+            alias GetComparators = 
+                TypeTuple!(GetComparators!(n-1), cmpK0!(Prefix[n-1]));
+        else
+            alias GetComparators = TypeTuple!();
+    }
+
+    /**
+        Build $(D Trie) from a range of a Key-Value pairs,
+        assuming it is sorted by Key as defined by the following lambda:
+        ------
+        (a, b) => mapTrieIndex!(Prefix)(a) < mapTrieIndex!(Prefix)(b)
+        ------
+        Exception is thrown if it's detected that the above order doesn't hold.
+
+        See also: std.algorithm.sort, std.range.SortedRange, std.algorithm.setUnion.
+    */
+    auto buildTrie(Range)(Range range, Value filler=Value.init)
+        if(isInputRange!Range && is(typeof(Range.init.front[0]) : Value) 
+            && is(typeof(Range.init.front[1]) : Key))
+    {
+        auto builder = TrieBuilder!(Value, Key, maxIndex, Prefix)(filler);
+        foreach(v; range)
+            builder.putValue(v[1], v[0]);
+        return builder.build();
+    }
+
+    /**
+        If $(D Value) is bool (or BitPacked!(bool, x)) then it's possible 
+        to build $(D Trie) from a range of open-right intervals of ($D Key)s.
+        The requirement  on the ordering of keys (and the behavior on the 
+        violation of it) is the same as for Key-Value range overload.
+
+        Intervals denote ranges of !$(D filler) i.e. the opposite of filler.
+        If no filler provided keys inside of the intervals map to true, 
+        and $(D filler) is false.
+    */
+    auto buildTrie(Range)(Range range, Value filler=Value.init)
+        if(is(TypeOfBitPacked!Value ==  bool) 
+            && isInputRange!Range && is(typeof(Range.init.front[0]) : Key) 
+            && is(typeof(Range.init.front[1]) : Key))
+    {
+        auto builder = TrieBuilder!(Value, Key, Prefix)(filler);
+        foreach(ival; range)
+            builder.putRange(ival[0], ival[1], !filler);
+        return builder.build();
+    }
+
+    /**
+        If $(D Value) is bool (or BitPacked!(bool, x)) then it's possible 
+        to build $(D Trie) simply from an input range of $(D Key)s.
+        The requirement  on the ordering of keys (and the behavior on the 
+        violation of it) is the same as for Key-Value range overload.
+
+        Keys found in range denote !$(D filler) i.e. the opposite of filler.
+        If no filler provided keys map to true, and $(D filler) is false.
+    */
+    auto buildTrie(Range)(Range range, Value filler=Value.init)
+        if(is(TypeOfBitPacked!Value ==  bool) 
+            && isInputRange!Range && is(typeof(Range.init.front) : Key))
+    {
+        auto builder = TrieBuilder!(Value, Key, Prefix)(filler);
+        foreach(v; range)
+            builder.putValue(v, !filler);
+        return builder.build();
+    }
+
+    /**
+        If $(D Key) is unsigned integer $(D Trie) could be constructed from array
+        of values where array index serves as key.
+    */
+    auto buildTrie()(Value[] array, Value filler=Value.init)
+        if(isUnsigned!Key)
+    {
+        auto builder = TrieBuilder!(Value, Key, Prefix)(filler);
+        foreach(idx, v; array)
+            builder.putValue(idx, v);
+        return builder.build();
+    }
+
+    /**
+        Builds $(D Trie) from associative array.
+    */
+    auto buildTrie(Key, Value)(Value[Key] map, Value filler)
+    {
+        auto range = array(zip(map.values, map.keys));
+        alias Comps = GetComparators!(Prefix.length);
+        multiSort!(Comps)(range);
+        auto builder = TrieBuilder!(Value, Key, Prefix)(filler);
+        foreach(v; range)
+            builder.putValue(v[1], v[0]);
+        return builder.build();
+    }
 }
 
 /++
-    Convinience function to construct optimal configurations for CodepointTrie 
+    Convenience function to construct optimal configurations for CodepointTrie 
     of 1, 2, 3 or 4 levels. 
 
     Level 1 indicates a plain bitset and uses the most space.
     Level 2 & 3 add 1 or 2 levels of indices that greately save on required
     space but typically a bit slower to lookup.
 +/
-public auto buildTrie(size_t level, Set)(in Set set)
+public auto toTrie(size_t level, Set)(in Set set)
     if(isCodepointSet!Set)
 {
     static if(level == 1)
-        return CodepointSetTrie!(21)(set);
+        return codepointSetTrie!(21)(set);
     else static if(level == 2)
-        return CodepointSetTrie!(10, 11)(set);
+        return codepointSetTrie!(10, 11)(set);
     else static if(level == 3)
-        return CodepointSetTrie!(8, 5, 8)(set);
+        return codepointSetTrie!(8, 5, 8)(set);
     else static if(level == 4)
-         return CodepointSetTrie!(6, 4, 4, 7)(set);
+         return codepointSetTrie!(6, 4, 4, 7)(set);
     else
-        static assert(false, "Sorry, buildTrie doesn't support level > 4, use CodepointSetTrie directly");
+        static assert(false, 
+            "Sorry, toTrie doesn't support levels > 4, use codepointSetTrie directly");
 }
 
 /++
-    Builds Trie with typically optimal space-time tradeoff and wraps into delegate of the form:
+    Builds $(D Trie) with typically optimal space-time trade-offs 
+    and wraps into a delegate of the form:
     delegate bool (dchar ch);
 
-    Effectively this creates a 'tester' object suitable for algorithms like std.algorithm.find
-    that take unary predicates.
+    Effectively this creates a 'tester' object suitable for algorithms like 
+    std.algorithm.find that take unary predicates.
 +/
-public auto buildLookup(Set)(in Set set)
+public auto toDelegate(Set)(in Set set)
     if(isCodepointSet!Set)
 {
-    auto t = buildTrie!2(set);// revise as small sets typically better packed with 2 level trie
+    //3 is very small and is almost as fast as 2-level (due to CPU caches?)
+    auto t = toTrie!3(set); 
     return (dchar ch) => t[ch];
 }
 
-//these two are up for redesign
-
-/*
-    Wrapping T by SetAsSlot indicates that T should be considered
-    as a set of values.
-    When SetAsSlot!T is used as $(D Value) type, $(D Trie) template will internally
-    translate assignments/tests to insert & 'in' operator repspectively.
+/**
+    Indicates this the value is confined to the range of [0, 2^^sz).
+    With this knowledge it can be packed more tightly when stored 
+    in certain data-structures like $(LREF Trie).
 */
-public struct SetAsSlot(T){}
-
- /*
-    Wrapping T by MapAsSlot indicates that T should be considered
-    as a map Key -> Value.
-    When MapAsSlot!T is used as $(D Value) type, $(D Trie) template will internally
-    translate assignments/tests to insert & 'in' operator repspectively.
-*/
-public struct MapAsSlot(T, Value, Key){}
-
-
-//indicate this the value is confined to the range of [0, 2^^sz)
-//thus can be packed more tightly in appropriate data-structures
 struct BitPacked(T, size_t sz) 
     if(isIntegral!T || is(T:dchar))
 {
@@ -2757,7 +2873,8 @@ template bitSizeOf(Args...)
 }
 
 /**
-
+    Tests if $(D T) is some instantiation of $(LREF BitPacked)!(U, x) 
+    and thus suitable for packing into x bits.
 */
 template isBitPacked(T)
 {
@@ -2767,6 +2884,10 @@ template isBitPacked(T)
         enum isBitPacked = false;
 }
 
+/**
+    Gives the type $(D U) from $(LREF BitPacked)!(U, x) 
+    or $(D T) itself for every other type.
+*/
 template TypeOfBitPacked(T)
 {
     static if(is(T dummy == BitPacked!(U, bits), U, size_t bits))    
@@ -2777,8 +2898,8 @@ template TypeOfBitPacked(T)
 
 /**
     Wrapper, used in definition of custom data structures from $(D Trie) template.
-    Use it on a unary lambda function to indicate that returned value always
-     fits within $(D bits) of bits.
+    Applying it to a unary lambda function indicates that the returned value always
+    fits within $(D bits) of bits.
 */
 public struct assumeSize(alias Fn, size_t bits)
 {
@@ -2804,7 +2925,7 @@ template sliceBitsImpl(size_t from, size_t to)
 
 /++
     A helper for defining lambda function that yields a slice 
-    of certain bits from integer value.
+    of certain bits from an unsigned integral value.
     The resulting lambda is wrapped in assumeSize and can be used directly 
     with $(D Trie) template.
 +/
@@ -2855,11 +2976,11 @@ unittest
         }
     }
     //@@@BUG link failure, lambdas not found by linker somehow (in case of trie2)
-    //alias assumeSize!(8, function (uint x) { return x&0xFF; }) lo8;
-    //alias assumeSize!(7, function (uint x) { return (x&0x7F00)>>8; }) next8;
+    // alias assumeSize!(8, function (uint x) { return x&0xFF; }) lo8;
+    // alias assumeSize!(7, function (uint x) { return (x&0x7F00)>>8; }) next8;
     alias CodepointSet Set;
     auto set = Set('A','Z','a','z');
-    auto trie = Trie!(bool, uint, lo8)(set, 256);//simple bool array
+    auto trie = buildTrie!(bool, uint, 256, lo8)(set.byInterval);// simple bool array
     for(int a='a'; a<'z';a++)
         assert(trie[a]);
     for(int a='A'; a<'Z';a++)
@@ -2872,7 +2993,7 @@ unittest
 
     auto redundant2 = Set(
         1, 18, 256+2, 256+111, 512+1, 512+18, 768+2, 768+111);
-    auto trie2 = Trie!(bool, uint, mlo8, lo8)(redundant2, 1024);
+    auto trie2 = buildTrie!(bool, uint, 1024, mlo8, lo8)(redundant2.byInterval);
     trieStats(trie2);
     foreach(e; redundant2.byChar)
         assert(trie2[e], text(cast(uint)e, " - ", trie2[e]));
@@ -2889,12 +3010,10 @@ unittest
       );
 
     enum max3 = 256;
-    //sliceBits
-    auto trie3 = Trie!(bool, uint
-                       , sliceBits!(6,8)
-                       , sliceBits!(4,6)
-                       , sliceBits!(0,4)
-                       )(redundant3, max3);
+    // sliceBits
+    auto trie3 = buildTrie!(bool, uint, max3, 
+            sliceBits!(6,8), sliceBits!(4,6), sliceBits!(0,4)
+        )(redundant3.byInterval);
     trieStats(trie3);
     foreach(i; 0..max3)
         assert(trie3[i] == (i in redundant3), text(cast(uint)i));
@@ -2904,28 +3023,28 @@ unittest
             1000, 2000, 3000, 4000, 5000, 6000
         );
     enum max4 = 2^^16;
-    auto trie4 = Trie!(bool, size_t
-                       , sliceBits!(13, 16)
-                       , sliceBits!(9, 13)
-                       , sliceBits!(6, 9) 
-                       , sliceBits!(0, 6)
-                       )(redundant4, max4);
+    auto trie4 = buildTrie!(bool, size_t, max4,
+            sliceBits!(13, 16), sliceBits!(9, 13), sliceBits!(6, 9) , sliceBits!(0, 6)
+        )(redundant4.byInterval);
     foreach(i; 0..max4){        
         if(i in redundant4)
             assert(trie4[i], text(cast(uint)i));
     }
     trieStats(trie4);
 
-    string[] redundantS = ["tea", "tackle", "teenage", "start", "stray"];
-    auto strie = Trie!(bool, string, useItemAt!(0, char))(redundantS);
-    //using first char only
+    alias mapToS = mapTrieIndex!(useItemAt!(0, char));
+    string[] redundantS = ["tea", "start", "orange"];
+    redundantS.sort!((a,b) => mapToS(a) < mapToS(b));
+    auto strie = buildTrie!(bool, string, useItemAt!(0, char))(redundantS);
+    // using first char only
+    assert(redundantS == ["orange", "start", "tea"]);
     assert(strie["test"], text(strie["test"]));
     assert(!strie["aea"]);
     assert(strie["s"]);
 
-    //a bit size test
+    // a bit size test
     auto a = array(map!(x => to!ubyte(x))(iota(0, 256)));
-    auto bt = Trie!(bool, ubyte, sliceBits!(7, 8), sliceBits!(5, 7), sliceBits!(0, 5))(a);
+    auto bt = buildTrie!(bool, ubyte, sliceBits!(7, 8), sliceBits!(5, 7), sliceBits!(0, 5))(a);
     trieStats(bt);
     foreach(i; 0..256)
         assert(bt[cast(ubyte)i]);
@@ -2955,22 +3074,24 @@ template fullBitSize(Prefix...)
 template idxTypes(Key, size_t fullBits, Prefix...)
 {
     static if(Prefix.length == 1)
-    {//the last level is value level, so no index once reduced to 1-level
+    {// the last level is value level, so no index once reduced to 1-level
         alias TypeTuple!() idxTypes;
     }
     else
     {
-        //Important note on bit packing
-        //Each level has to hold enough of bits to address the next one    
-        //The bottom level is known to hold full bit width
-        //thus it's size in pages is full_bit_width - size_of_last_prefix
-        //Recourse on this notion
+        // Important note on bit packing
+        // Each level has to hold enough of bits to address the next one    
+        // The bottom level is known to hold full bit width
+        // thus it's size in pages is full_bit_width - size_of_last_prefix
+        // Recourse on this notion
         alias TypeTuple!(
             idxTypes!(Key, fullBits - bitSizeOf!(Prefix[$-1]), Prefix[0..$-1]),
             BitPacked!(typeof(Prefix[$-2](Key.init)), fullBits - bitSizeOf!(Prefix[$-1]))
         ) idxTypes;
     }
 }
+
+//============================================================================
 
 int comparePropertyName(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
 {
@@ -3004,12 +3125,12 @@ bool propertyNameLess(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
 }
 
 //============================================================================
-//Utilities for compression of unicode character sets
-
+// Utilities for compression of Unicode codepoint sets
+//============================================================================
 
 void compressTo(uint val, ref ubyte[] arr) pure nothrow
 {
-    //not optimized as usually done 1 time (and not public interface)
+    // not optimized as usually done 1 time (and not public interface)
     if(val < 128)
         arr ~= cast(ubyte)val;
     else if(val < (1<<13))
@@ -3029,7 +3150,7 @@ void compressTo(uint val, ref ubyte[] arr) pure nothrow
 uint decompressFrom(const(ubyte)[] arr, ref size_t idx) pure
 {
     uint first = arr[idx++];
-    if(!(first & 0x80)) //no top bit -> [0..127]
+    if(!(first & 0x80)) // no top bit -> [0..127]
         return first;
     uint extra = ((first>>5) & 1) + 1; // [1, 2]
     uint val = (first & 0x1F);
@@ -3046,12 +3167,12 @@ public ubyte[] compressIntervals(Range)(Range intervals)
 {
     ubyte[] storage;
     uint base = 0;
-    //RLE encode
+    // RLE encode
     foreach(val; intervals)
     {        
         compressTo(val[0]-base, storage);
         base = val[0];
-        if(val[1] != lastDchar+1) //till the end of the domain so don't store it
+        if(val[1] != lastDchar+1) // till the end of the domain so don't store it
         {
             compressTo(val[1]-base, storage);
             base = val[1];
@@ -3066,7 +3187,7 @@ unittest
     ubyte[] enc = [cast(ubyte)80, 47, 1, (0b1_00<<5) | (1<<2), 0];
     assert(compressIntervals(run) == enc);
     auto run2 = [tuple(0, (1<<20)+512+1), tuple((1<<20)+512+4, lastDchar+1)];
-    ubyte[] enc2 = [cast(ubyte)0, (0b1_01<<5) | (1<<4), 2, 1, 3]; //odd length-ed
+    ubyte[] enc2 = [cast(ubyte)0, (0b1_01<<5) | (1<<4), 2, 1, 3]; // odd length-ed
     assert(compressIntervals(run2) == enc2);
     size_t  idx = 0;
     assert(decompressFrom(enc, idx) == 80);
@@ -3080,8 +3201,8 @@ unittest
     assert(equal(decompressIntervals(compressIntervals(run2)), run2));
 }
 
-///Creates a range of $(D CodepointInterval) that lazily decodes compressed data.
-//TODO: make it package
+/// Creates a range of $(D CodepointInterval) that lazily decodes compressed data.
+// TODO: make it package when pushed to std.
 public auto decompressIntervals(const(ubyte)[] data)
 {
     return DecompressedIntervals(data);
@@ -3114,7 +3235,7 @@ struct DecompressedIntervals
         }
         uint base = _front[1];                
         _front[0] = base + decompressFrom(_stream, _idx);
-        if(_idx == _stream.length)//odd length ---> till the end
+        if(_idx == _stream.length)// odd length ---> till the end
             _front[1] = lastDchar+1;
         else
         {
@@ -3131,14 +3252,14 @@ struct DecompressedIntervals
     DecompressedIntervals save() const { return this; } 
 }
 
-
+//============================================================================
 
 version(std_uni_bootstrap){}
 
 else
 {
 
-//helper for static codepoint set tables
+// helper for static codepoint set tables
 ptrdiff_t findUnicodeSet(C)(in C[] name)
 {
     auto range = assumeSorted!((a,b) => propertyNameLess(a,b))(unicodeProps.map!"a.name");    
@@ -3151,7 +3272,7 @@ ptrdiff_t findUnicodeSet(C)(in C[] name)
     return -1;
 }
 
-//another one that loads it
+// another one that loads it
 bool loadUnicodeSet(Set, C)(in C[] name, ref Set dest)
 {
     auto idx = findUnicodeSet(name);
@@ -3164,10 +3285,11 @@ bool loadUnicodeSet(Set, C)(in C[] name, ref Set dest)
 }
 
 /**
-    A single entry point to lookup unicode character sets by name or alias of 
+    A single entry point to lookup Unicode codepoint sets by name or alias of 
     block, script or general category.
 
-    Uses well defined standrd rules including fuzzy matching of names, e.g.
+    It uses well defined standard rules of property name lookup.
+    This includes matching of names, e.g.
     White_Space, white-SpAce and whitespace are all considered equals 
     and yield the same set of white space characters.
 */
@@ -3181,6 +3303,7 @@ public struct unicode
         assert(ascii['A']);
         assert(ascii['~']);
         assert(!ascii['\u00e0']);
+        auto ascii = unicode.ascii; //also works
         ---
     */
     
@@ -3202,7 +3325,7 @@ public struct unicode
         return pickSet(name);       
     }
 
-    //CTFE-only, not optimized
+    // CTFE-only, not optimized
     private static bool findSetName(C)(in C[] name)
     {
         auto names = [ 
@@ -3230,8 +3353,8 @@ public struct unicode
         Set result;
         alias comparePropertyName ucmp;
 
-        //unicode property
-        //helper: direct access with a sanity check
+        // unicode property
+        // helper: direct access with a sanity check
         if(ucmp(name, "L") == 0 || ucmp(name, "Letter") == 0)
         {
             result |= asSet(unicodeLu);
@@ -3244,7 +3367,7 @@ public struct unicode
         {
             result |= asSet(unicodeLl);
             result |= asSet(unicodeLu);
-            result |= asSet(unicodeLt);//Title case
+            result |= asSet(unicodeLt);// Title case
         }
         else if(ucmp(name, "M") == 0 || ucmp(name, "Mark") == 0)
         {
@@ -3351,7 +3474,7 @@ unittest
     assert(unicode("In-Kharoshthi") == asSet(unicodeInKharoshthi));
 }
 
-enum EMPTY_CASE_TRIE = ushort.max;//from what gen_uni uses internally
+enum EMPTY_CASE_TRIE = ushort.max;// from what gen_uni uses internally
 
 enum hangul_L = `
     case '\u1100': .. case '\u115E':
@@ -3376,11 +3499,11 @@ enum hangul_T = `
     case '\u11A8':..case '\u11FF': case '\uD7CB':..case '\uD7FB':
 `;
 
-//control - '\r'
+// control - '\r'
 enum controlSwitch = `
     case '\u0000':..case '\u0008':case '\u000E':..case '\u001F':case '\u007F':..case '\u0084':case '\u0086':..case '\u009F': case '\u0009':..case '\u000C': case '\u0085':
 `;
-//TODO: redo hangul stuff algorithmically in case of Graphemes too, kill unrolled switches
+// TODO: redo hangul stuff algorithmically in case of Graphemes too, kill unrolled switches
 
 private static bool isRegionalIndicator(dchar ch)
 {
@@ -3498,7 +3621,7 @@ template genericDecodeGrapheme(bool getValue)
         while(!range.empty)
         {
             ch = range.front;
-            //extend & spacing marks
+            // extend & spacing marks
             if(!graphemeExtend[ch] && !spacingMark[ch])
                 break;
             mixin(eat);
@@ -3513,11 +3636,11 @@ template genericDecodeGrapheme(bool getValue)
 unittest
 {
     assert(graphemeStride("  ", 1) == 1);
-    //for now tested separately see test_grapheme.d
+    // for now tested separately see test_grapheme.d
 }
 
 @trusted:
-public: //Public API continues
+public: // Public API continues
 
 /++
     Returns the length of grapheme cluster starting at $(D index).
@@ -3594,13 +3717,13 @@ public:
         return sliceOverIndexed(a, b, &this);
     }
 
-    ///ditto
+    /// ditto
     auto opSlice()
     {
         return sliceOverIndexed(0, length, &this);
     }
 
-    ///Grapheme cluster length in codepoints.
+    /// Grapheme cluster length in codepoints.
     @property size_t length() const 
     { 
         return isBig ? len_ : slen_ & 0x7F; 
@@ -3636,7 +3759,7 @@ public:
             static assert(false, "No operation "~op~" defined for Grapheme");
     }
 
-    ///Append all of codepoints from input range $(D inp) to this Grapheme.
+    /// Append all of codepoints from input range $(D inp) to this Grapheme.
     ref opOpAssign(string op, Input)(Input inp)
         if(isInputRange!Input)
     {
@@ -3669,7 +3792,7 @@ public:
     this(this)
     {
         if(isBig)
-        {//dup it
+        {// dup it
             auto raw_cap = 3*(cap_+1);
             auto p = cast(ubyte*)enforce(malloc(raw_cap));
             p[0..raw_cap] = ptr_[0..raw_cap];
@@ -3686,12 +3809,12 @@ public:
 
 private:
     enum small_bytes = ((ubyte*).sizeof+3*size_t.sizeof-1);
-    //out of the blue grow rate, needs testing 
+    // out of the blue grow rate, needs testing 
     //(though graphemes are typically small < 9)
     enum grow = 20;
     enum small_cap = small_bytes/3;
     enum small_flag = 0x80, small_mask = 0x7F;
-    //16 bytes in 32bits, should be enough for the majority of cases
+    // 16 bytes in 32bits, should be enough for the majority of cases
     union
     {
         struct
@@ -3714,7 +3837,7 @@ private:
         ubyte* p = cast(ubyte*)enforce(malloc(3*(grow+1)));
         for(int i=0; i<k; i++)
             write24(p, read24(small_.ptr, i), i);
-        //now we can overwrite small array data
+        // now we can overwrite small array data
         ptr_ = p;
         len_ = slen_;
         assert(grow > len_);
@@ -3730,7 +3853,7 @@ private:
 }
 
 unittest
-{ //not valid clusters (but it just a test)
+{ // not valid clusters (but it just a test)
     auto g  = Grapheme('a', 'b', 'c', 'd', 'e');
     assert(g[0] == 'a');
     assert(g[1] == 'b');
@@ -3788,15 +3911,15 @@ int sicmp(C1, C2)(in C1[] str1, in C2[] str2)
             continue;
         size_t idx = simpleCaseTrie[lhs];
         size_t idx2 = simpleCaseTrie[rhs];        
-        //simpleCaseTrie is packed index table
+        // simpleCaseTrie is packed index table
         if(idx != EMPTY_CASE_TRIE)
         {
             if(idx2 != EMPTY_CASE_TRIE)
-            {//both cased chars
-                //adjust idx --> start of bucket
+            {// both cased chars
+                // adjust idx --> start of bucket
                 idx = idx - stab[idx].n;
                 idx2 = idx2 - stab[idx2].n;
-                if(idx == idx2)//one bucket, equivalent chars
+                if(idx == idx2)// one bucket, equivalent chars
                     continue;
                 else//  not the same bucket
                     diff = stab[idx].ch - stab[idx2].ch;
@@ -3808,7 +3931,7 @@ int sicmp(C1, C2)(in C1[] str1, in C2[] str2)
         {
             diff = lhs - stab[idx2 - stab[idx2].n].ch;
         }
-        //one of chars is not cased at all
+        // one of chars is not cased at all
         return diff;
     }
     return ridx == str2.length ? 0 : -1;
@@ -3818,13 +3941,13 @@ private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
 {
     alias fullCaseTable ftab;
     size_t idx = fullCaseTrie[lhs];
-    //fullCaseTrie is packed index table
+    // fullCaseTrie is packed index table
     if(idx != EMPTY_CASE_TRIE)
     {
         size_t start = idx - ftab[idx].n;
         size_t end = ftab[idx].size + start;
         assert(ftab[start].entry_len == 1);
-        lhs = ftab[start].ch;//to use when diff is required
+        lhs = ftab[start].ch;// to use when diff is required
         for(idx=start; idx<end; idx++)
         {
             if(ftab[idx].entry_len == 1)
@@ -3833,7 +3956,7 @@ private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
                     return 0;
             }
             else 
-            {//OK it's a long chunk, like 'ss' for German
+            {// OK it's a long chunk, like 'ss' for German
                 dstring seq = ftab[idx].seq;
                 if(rhs == seq[0] 
                     && str.skipOver(seq[1..$]))
@@ -3873,7 +3996,7 @@ int icmp(C1, C2)(inout(C1)[] str1, inout(C2)[] str2)
             continue;
         else if(fullCasedCmp(rhs, lhs, str1) == 0)
             continue;
-        diff = lhs - rhs;//lhs & rhs are remapped to the start of bucket
+        diff = lhs - rhs;// lhs & rhs are remapped to the start of bucket
         return diff;
     }
 }
@@ -3894,7 +4017,7 @@ unittest
             assert(cfunc("Abc".to!S1, "aBc".to!S2) == 0);
             assert(cfunc("авГуст".to!S1, "АВгУСТ".to!S2) == 0);
         }
-        //check that the order is propely agonstic to the case
+        // check that the order is propely agonstic to the case
         auto strs = [ "Apple", "ORANGE",  "orAcle", "amp", "banana"];
         sort!((a,b) => cfunc(a,b) < 0)(strs);    
         assert(strs == ["amp", "Apple",  "banana", "orAcle", "ORANGE"]);        
@@ -3910,7 +4033,7 @@ ubyte combiningClass(dchar ch)
     return combiningClassTrie[ch];
 }
 
-///Unicode decomposition types.
+/// Unicode decomposition types.
 enum { Canonical="Canonical", Compatibility="Compatibility"};
 
 /++
@@ -3928,9 +4051,9 @@ public dchar compose(dchar first, dchar second)
     size_t packed = compositionJumpTrie[first];
     if(packed == ushort.max)
         return dchar.init;
-    //unpack offset and length
+    // unpack offset and length
     size_t idx = packed & composeIdxMask, cnt = packed >> composeCntShift;
-    //TODO: optimize this micro binary search (no more then 4-5 steps)
+    // TODO: optimize this micro binary search (no more then 4-5 steps)
     auto r = compositionTable[idx..idx+cnt].map!"a.rhs".assumeSorted;
     auto target = r.lowerBound(second).length;
     if(target == cnt)
@@ -3980,13 +4103,13 @@ public Grapheme decompose(string decompType=Canonical)(dchar ch)
         alias compatMapping mapping;
     }
     ushort idx = mapping[ch];
-    if(!idx) //not found, check hangul arithmetic decomposition
+    if(!idx) // not found, check hangul arithmetic decomposition
         return hangulDecompose(ch); 
     return Grapheme(table[idx]);
 }
 
 //----------------------------------------------------------------------------
-//Hangul specific composition/decomposition
+// Hangul specific composition/decomposition
 enum jamoSBase = 0xAC00;
 enum jamoLBase = 0x1100;
 enum jamoVBase = 0x1161;
@@ -3995,25 +4118,25 @@ enum jamoLCount = 19, jamoVCount = 21, jamoTCount = 28;
 enum jamoNCount = jamoVCount * jamoTCount;
 enum jamoSCount = jamoLCount * jamoNCount;
 
-//Tests if $(D ch) is a Hangul leading consonant jamo.
+// Tests if $(D ch) is a Hangul leading consonant jamo.
 bool isJamoL(dchar ch)
 {
-    //first cmp rejects ~ 1M codepoints above leading jamo range
+    // first cmp rejects ~ 1M codepoints above leading jamo range
     return ch < jamoLBase+jamoLCount && ch >= jamoLBase;
 }
 
-//Tests if $(D ch) is a Hangul vowel jamo.
+// Tests if $(D ch) is a Hangul vowel jamo.
 bool isJamoT(dchar ch)
 {
-    //first cmp rejects ~ 1M codepoints above trailing jamo range
-    //Note: ch == jamoTBase doesn't indicate trailing jamo (TIndex must be > 0)
+    // first cmp rejects ~ 1M codepoints above trailing jamo range
+    // Note: ch == jamoTBase doesn't indicate trailing jamo (TIndex must be > 0)
     return ch < jamoTBase+jamoTCount && ch > jamoTBase;
 }
 
-//Tests if $(D ch) is a Hangul trailnig consonant jamo.
+// Tests if $(D ch) is a Hangul trailnig consonant jamo.
 bool isJamoV(dchar ch)
 {
-    //first cmp rejects ~ 1M codepoints above vowel range
+    // first cmp rejects ~ 1M codepoints above vowel range
     return  ch < jamoVBase+jamoVCount && ch >= jamoVBase;
 }
 
@@ -4034,13 +4157,13 @@ Grapheme hangulDecompose(dchar ch)
 
     int partL = jamoLBase + idxL;
     int partV = jamoVBase + idxV;
-    if(idxT > 0) //there is a trailling consonant (T); <L,V,T> decomposition
+    if(idxT > 0) // there is a trailling consonant (T); <L,V,T> decomposition
         return Grapheme(partL, partV, jamoTBase + idxT);
     else // <L, V> decomposition
         return Grapheme(partL, partV);
 }
 
-//internal helper: compose hangul syllables leaving dchar.init in holes
+// internal helper: compose hangul syllables leaving dchar.init in holes
 void hangulRecompose(dchar[] seq)
 {
     for(size_t idx = 0; idx + 1 < seq.length; )
@@ -4112,7 +4235,7 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
                 foreach(dchar c; decompose!Canonical(ch)[])
                     decomposed ~= c;
             }
-            else //NFKD & NFKC
+            else // NFKD & NFKC
             {
                 foreach(dchar c; decompose!Compatibility(ch)[])
                     decomposed ~= c;
@@ -4154,7 +4277,7 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
                         break;
                     first = second;
                 }
-                //2nd pass for hangul syllables
+                // 2nd pass for hangul syllables
                 hangulRecompose(decomposed);
             }
         }
@@ -4165,13 +4288,13 @@ inout(C)[] normalize(string norm=NFC, C)(inout(C)[] input)
             auto clean = remove!("a == dchar.init", SwapStrategy.stable)(decomposed);
             app.put(decomposed[0 .. clean.length]);
         }
-        //reset variables
+        // reset variables
         decomposed.length = 0;
         decomposed.assumeSafeAppend();
         ccc.length = 0;
         ccc.assumeSafeAppend();
         input = input[anchors[1]..$];
-        //and move on
+        // and move on
         anchors = splitNormalized!norm(input);       
     }while(anchors[0] != input.length);
     app.put(input[0..anchors[0]]);
@@ -4185,14 +4308,14 @@ unittest
     assert(normalize!NFD("Äffin") == "A\u0308ffin");
 }
 
-//canonically recompose given slice of codepoints, works in-place and mutates data
+// canonically recompose given slice of codepoints, works in-place and mutates data
 private size_t recompose(size_t start, dchar[] input, ubyte[] ccc)
 {
     assert(input.length == ccc.length);
-    int accumCC = -1;//so that it's out of 0..255 range
+    int accumCC = -1;// so that it's out of 0..255 range
     bool foundSolidStarter = false;
-    //writefln("recomposing %( %04x %)", input);
-    //first one is always a starter thus we start at i == 1
+    // writefln("recomposing %( %04x %)", input);
+    // first one is always a starter thus we start at i == 1
     size_t i = start+1;
     for(; ; )
     {
@@ -4216,19 +4339,19 @@ private size_t recompose(size_t start, dchar[] input, ubyte[] ccc)
             if(comp != dchar.init)
             {                
                 input[start] = comp;
-                input[i] = dchar.init;//put a sentinel
-                //current was merged so its CCC shouldn't affect 
-                //composing with the next one 
+                input[i] = dchar.init;// put a sentinel
+                // current was merged so its CCC shouldn't affect 
+                // composing with the next one 
             }
             else {
-                //if it was a starter then accumCC is now 0, end of loop
+                // if it was a starter then accumCC is now 0, end of loop
                 accumCC = curCC;
                 if(accumCC == 0)
                     break;
             }
         }
         else{
-            //ditto here
+            // ditto here
             accumCC = curCC;
             if(accumCC == 0)
                 break;
@@ -4238,9 +4361,9 @@ private size_t recompose(size_t start, dchar[] input, ubyte[] ccc)
     return i;
 }
 
-//returns tuple of 2 indexes that delimit:
-//normalized text, piece that needs normalization and 
-//the rest of input starting with stable codepoint
+// returns tuple of 2 indexes that delimit:
+// normalized text, piece that needs normalization and 
+// the rest of input starting with stable codepoint
 private auto splitNormalized(string norm, C)(const(C)[] input)
 {
     auto result = input;
@@ -4272,10 +4395,10 @@ private auto splitNormalized(string norm, C)(const(C)[] input)
 private auto seekStable(string norm, C)(size_t idx, in C[] input)
 {
     auto br = input[0..idx];
-    size_t region_start = 0;//default
+    size_t region_start = 0;// default
     for(;;)
     {
-        if(br.empty)//start is 0
+        if(br.empty)// start is 0
             break;
         dchar ch = br.back;
         if(combiningClassTrie[ch] == 0 && allowedIn!norm(ch))
@@ -4286,7 +4409,7 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
         br.popFront();
     }
     ///@@@BUG@@@ can't use find: " find is a nested function and can't be used..."
-    size_t region_end=input.length;//end is $ by default
+    size_t region_end=input.length;// end is $ by default
     foreach(i, dchar ch; input[idx..$])
     {
         if(combiningClassTrie[ch] == 0 && allowedIn!norm(ch))
@@ -4295,17 +4418,17 @@ private auto seekStable(string norm, C)(size_t idx, in C[] input)
             break;
         }
     }
-    //writeln("Region to normalize: ", input[region_start..region_end]);
+    // writeln("Region to normalize: ", input[region_start..region_end]);
     return tuple(region_start, region_end);
 }
 
-///Checks if dchar $(D ch) is always allowed (Quick_Check=YES) in normalization form $(D norm).
+/// Checks if dchar $(D ch) is always allowed (Quick_Check=YES) in normalization form $(D norm).
 public bool allowedIn(string norm)(dchar ch)
 {
     return !notAllowedIn!norm(ch);
 }
 
-//not user friendly name but more direct 
+// not user friendly name but more direct 
 private bool notAllowedIn(string norm)(dchar ch)
 {
     static if(norm == NFC)
@@ -4324,8 +4447,8 @@ private bool notAllowedIn(string norm)(dchar ch)
 
 version(std_uni_bootstrap)
 {
-    //old version used for bootstrapping of gen_uni.d that generates 
-    //up to date optimal versions of all of isXXX functions
+    // old version used for bootstrapping of gen_uni.d that generates 
+    // up to date optimal versions of all of isXXX functions
     public bool isWhite(dchar c) 
     {
         return std.ascii.isWhite(c) ||
@@ -4346,7 +4469,7 @@ public:
   +/
 public bool isWhite(dchar c) 
 {
-    return isWhiteGen(c); //call pregenerated binary search
+    return isWhiteGen(c); // call pregenerated binary search
 }
 
 /++
@@ -4419,7 +4542,7 @@ deprecated dchar toUniLower(dchar c) //@safe pure nothrow
 +/
 dchar toLower(dchar c) // @safe pure nothrow
 {
-     //optimize ASCII case
+     // optimize ASCII case
     if(c < 'A')
         return c;
     if(c <= 'Z')
@@ -4434,7 +4557,7 @@ dchar toLower(dchar c) // @safe pure nothrow
             idx = idx - stab[idx].n;
             switch(sz){
             default:
-                assert(false);//no even buckets of size 5 currently
+                assert(false);// no even buckets of size 5 currently
             case 5:
                 if(stab[idx+4].isLower)
                     return stab[idx+4].ch;
@@ -4491,7 +4614,7 @@ deprecated dchar toUniUpper(dchar c) //@safe pure nothrow
 +/
 dchar toUpper(dchar c) //@safe pure nothrow
 {
-    //optimize ASCII case
+    // optimize ASCII case
     if(c < 'a')
         return c;
     if(c <= 'z')
@@ -4506,7 +4629,7 @@ dchar toUpper(dchar c) //@safe pure nothrow
             idx = idx - stab[idx].n;
             switch(sz){
             default:
-                assert(false);//no even buckets of size 5 currently
+                assert(false);// no even buckets of size 5 currently
             case 5:
                 if(stab[idx+4].isUpper)
                     return stab[idx+4].ch;
@@ -4762,8 +4885,8 @@ unittest
         assert(isFormat(ch));
 }
 
-//codepoints for private use, surrogates are not likely to change in near feature
-//if need be they can be generated from unicode data as well
+// codepoints for private use, surrogates are not likely to change in near feature
+// if need be they can be generated from unicode data as well
 
 /++
     Returns whether $(D c) is a Unicode Private Use character
@@ -4826,7 +4949,7 @@ unittest
 }
 
 private:
-//load static data from pre-generated tables into usable datastructures
+// load static data from pre-generated tables into usable datastructures
 
 auto asSet(const (ubyte)[] compressed)
 {
@@ -4854,7 +4977,7 @@ immutable nfkdQC = asTrie(nfkdQCTrieEntries);
 immutable graphemeExtend = asTrie(graphemeExtendTrieEntries); 
 immutable spacingMark = asTrie(mcTrieEntries);
 
-//TODO: move sets below to Tries
+// TODO: move sets below to Tries
 
 __gshared CodepointSet hangLV;
 __gshared CodepointSet hangLVT;
@@ -4880,4 +5003,4 @@ immutable lowerCaseTrie = asTrie(lowerCaseTrieEntries);
 immutable upperCaseTrie = asTrie(upperCaseTrieEntries);
 immutable compositionJumpTrie = asTrie(compositionJumpTrieEntries);
 
-}//version(!std_uni_bootstrap)
+}// version(!std_uni_bootstrap)

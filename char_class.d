@@ -61,14 +61,14 @@ void myTest(Result[] data)
             }
             bench!(clasifyCall!combiningClassOf)("combining class", x.name, x.data);
             
-            /*bench!(clasifyIndex!invAlpha)("inv-uint-alpha", x.name, x.data);
+            bench!(clasifyIndex!invAlpha)("inv-alpha", x.name, x.data);
             //writeln("CNT: ", lastCount);
-            bench!(clasifyIndex!invMark)("inv-uint-mark", x.name, x.data);
+            bench!(clasifyIndex!invMark)("inv-mark", x.name, x.data);
             //writeln("CNT: ", lastCount);
-            bench!(clasifyIndex!invNumber)("inv-uint-num", x.name, x.data);
+            bench!(clasifyIndex!invNumber)("inv-num", x.name, x.data);
             //writeln("CNT: ", lastCount);
-            bench!(clasifyIndex!invSymbol)("inv-uint-sym", x.name, x.data);
-            //writeln("CNT: ", lastCount);*/
+            bench!(clasifyIndex!invSymbol)("inv-sym", x.name, x.data);
+            //writeln("CNT: ", lastCount);
             foreach(idx, ref level; customTries)
             {
                 writeln("\nTries of level ", idx+1);
@@ -77,7 +77,6 @@ void myTest(Result[] data)
                 bench!(clasifyIndex!(level.triNumber))("trie-num", x.name, x.data);
                 bench!(clasifyIndex!(level.triSymbol))("trie-sym", x.name, x.data); 
             }
-
         }
     }    
 }
@@ -90,22 +89,24 @@ void main(string[] argv)
 version(std_uni){}
 else
 {
-    alias InversionList!(GcPolicy) InvList;
+    alias CodepointSet Set;
 
-    __gshared InvList invAlpha, invMark, invNumber, invSymbol;    
+    __gshared Set invAlpha, invMark, invNumber, invSymbol;    
     //1st is a simple array of packed bools thus is exceptionally fast at the cost of ~262Kb of RAM
-    alias MyTrie1 = CodepointSetTrie!(21);
-    alias MyTrie2 = CodepointSetTrie!(10, 11);
-    alias MyTrie3 = CodepointSetTrie!(8, 5, 8);
-    alias MyTrie4 = CodepointSetTrie!(7, 4, 4, 6);
+    alias MySpec1 = TypeTuple!(21);
+    alias MySpec2 = TypeTuple!(10, 11);
+    alias MySpec3 = TypeTuple!(8, 5, 8);
+    alias MySpec4 = TypeTuple!(7, 4, 4, 6);
     
-    struct Level(T){
-        __gshared T triAlpha, triMark, triNumber, triSymbol;
+    struct Level(spec...){
+        //to avoid possible TLS overhead, typically immutable is better
+        alias sizes = spec;
+        __gshared CodepointSetTrie!spec triAlpha, triMark, triNumber, triSymbol;        
     }
-    Level!(MyTrie1) levelOne;
-    Level!(MyTrie2) levelTwo;
-    Level!(MyTrie3) levelThree;
-    Level!(MyTrie4) levelFour;
+    Level!(MySpec1) levelOne;
+    Level!(MySpec2) levelTwo;
+    Level!(MySpec3) levelThree;
+    Level!(MySpec4) levelFour;
     alias customTries = TypeTuple!(levelOne, levelTwo, levelThree, levelFour);
 
     shared static this()
@@ -117,15 +118,15 @@ else
         invNumber = unicode("number");
         foreach(idx, ref level; customTries)
         {
-            alias T = typeof(level.triAlpha);
+            alias generate = codepointSetTrie!(level.sizes);
             writefln("Creating level %s of Tries.", idx+1);
-            level.triAlpha = T(invAlpha);
+            level.triAlpha = generate(invAlpha);
             writeln("Alpha:", level.triAlpha.bytes);
-            level.triMark = T(invMark);
+            level.triMark = generate(invMark);
             writeln("Mark:", level.triMark.bytes);
-            level.triNumber = T(invNumber);
+            level.triNumber = generate(invNumber);
             writeln("Number:", level.triNumber.bytes);
-            level.triSymbol = T(invSymbol);
+            level.triSymbol = generate(invSymbol);
             writeln("Symbol:", level.triSymbol.bytes);
         }
     }

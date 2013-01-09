@@ -609,8 +609,8 @@ void writeTries()
     }
 
     //these 2 only for verification of Trie code itself
-    auto st = CodepointTrie!(ushort, 12, 9)(simpleIndices, ushort.max);
-    auto ft = CodepointTrie!(ushort, 12, 9)(fullIndices, ushort.max);
+    auto st = codepointTrie!(ushort, 12, 9)(simpleIndices, ushort.max);
+    auto ft = codepointTrie!(ushort, 12, 9)(fullIndices, ushort.max);
 
     foreach(k, v; simpleIndices){
         assert(st[k] == simpleIndices[k]);
@@ -685,8 +685,8 @@ void writeDecomposition()
     assert(decompCompatTable.length < 2^^16);
 
     //these 2 are just a self-test for Trie template code
-    auto compatTrie = CodepointTrie!(ushort, 12, 9)(mappingCompat, 0);
-    auto canonTrie =  CodepointTrie!(ushort, 12, 9)(mappingCanon, 0);
+    auto compatTrie = codepointTrie!(ushort, 12, 9)(mappingCompat, 0);
+    auto canonTrie =  codepointTrie!(ushort, 12, 9)(mappingCanon, 0);
     
     foreach(k, v; fullCompat)
         assert(decompCompatTable[compatTrie[k]] == v);
@@ -760,7 +760,7 @@ void writeCompositionTable()
         old = r[cnt][0];
         r = r[cnt..$];
     }
-    auto triT = CodepointTrie!(ushort, 12, 9)(trimap, ushort.max);
+    auto triT = codepointTrie!(ushort, 12, 9)(trimap, ushort.max);
     auto dupletes = triples.map!(x => tuple(x[1], x[2])).array;
     foreach(dstring key, dchar val; composeTab)
     {
@@ -786,7 +786,7 @@ void writeCompositionTable()
 
 void writeCombining()
 {
-    auto ct = CodepointTrie!(ubyte, 7, 5, 9)(combiningMapping);
+    auto ct = codepointTrie!(ubyte, 7, 5, 9)(combiningMapping);
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
     {
         foreach(ch; clazz.byChar)
@@ -839,8 +839,7 @@ void printBest2Level(Set)( string name, in Set set)
     foreach(lvl_1; List)
     {
         enum lvl_2 = 21-lvl_1;       
-        alias CodepointSetTrie!(lvl_1, lvl_2) CurTrie;
-        CurTrie t = CurTrie(set);
+        auto t = codepointSetTrie!(lvl_1, lvl_2)(set);
         if(t.bytes < min)
         {
             min = t.bytes;
@@ -858,7 +857,7 @@ void printBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
     foreach(lvl_1; List)
     {
         enum lvl_2 = 21-lvl_1;       
-        alias CodepointTrie!(V, lvl_1, lvl_2) CurTrie;
+        alias codepointTrie!(V, lvl_1, lvl_2) CurTrie;
         CurTrie t = CurTrie(map, defValue);
         if(t.bytes < min)
         {
@@ -890,8 +889,7 @@ auto printBest3Level(Set)(string name, in Set set)
         static if(lvl_1 + lvl_2  <= 16)//so that 2nd stage fits in ushort
         {
             enum lvl_3 = 21-lvl_2-lvl_1;
-            alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3) CurTrie;
-            CurTrie t = CurTrie(set);
+            auto t = codepointSetTrie!(lvl_1, lvl_2, lvl_3)(set);
             if(t.bytes < min)
             {
                 min = t.bytes;
@@ -913,8 +911,7 @@ void printBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
         static if(lvl_1 + lvl_2  <= 16)// into ushort
         {
             enum lvl_3 = 21-lvl_2-lvl_1;
-            alias CodepointTrie!(V, lvl_1, lvl_2, lvl_3) CurTrie;
-            CurTrie t = CurTrie(map, defValue);
+            auto t = codepointTrie!(V, lvl_1, lvl_2, lvl_3) (map, defValue);
             if(t.bytes < min)
             {
                 min = t.bytes;
@@ -937,8 +934,7 @@ void printBest4Level(Set)(string name, in Set set)
         static if(lvl_1 + lvl_2 + lvl_3  <= 16)
         {
             enum lvl_4 = 21-lvl_3-lvl_2-lvl_1;
-            alias CodepointSetTrie!(lvl_1, lvl_2, lvl_3, lvl_4) CurTrie;
-            CurTrie t = CurTrie(set);
+            auto t = codepointSetTrie!(lvl_1, lvl_2, lvl_3, lvl_4)(set);
             if(t.bytes < min)
             {
                 min = t.bytes;
@@ -955,7 +951,7 @@ template createPrinter(Params...)
     {
         return { 
             writef("//%d bytes\nimmutable %sTrieEntries = TrieEntry!(%s", 
-                trie.bytes, name, typeof(T.init[0]).stringof);
+                trie.bytes, name, Unqual!(typeof(T.init[0])).stringof);
             foreach(lvl; Params[0..$])
                 writef(", %d", lvl);
             write(")(");
