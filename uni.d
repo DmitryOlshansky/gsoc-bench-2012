@@ -1101,12 +1101,128 @@ public template isIntegralPair(T, V=uint)
         && !is(typeof((T x){ V c = x[2]; }));
 }
 
-// bootstrap full set operations from 4 primitives:
-// addInterval, skipUpTo, dropUpTo & byInterval iteration
-mixin template BasicSetOps()
+
+/// The recommended default type for set of codepoints.
+public alias InversionList!GcPolicy CodepointSet;
+
+/**
+    The recommended type of $(XREF std._typecons, Tuple)
+    to represent [a, b) intervals of codepoints.
+*/
+public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
+
+/**
+    $(D InversionList) is a packed data structure for a set of codepoints.
+    Memory usage is 6 bytes per each contigous interval in a set.
+*/
+@trusted public struct InversionList(SP=GcPolicy)
 {
-@trusted:
-    alias typeof(this) This;
+public:
+    this(Set)(in Set set)
+        if(is(typeof(Set.init.isSet)))
+    {
+        uint[] arr;
+        foreach(v; set.byInterval)
+        {
+            arr ~= v.a;
+            arr ~= v.b;
+        }
+        data = Uint24Array!(SP)(arr);
+    }
+
+    this(Range)(Range intervals)
+        if(isInputRange!Range && isIntegralPair!(ElementType!Range))
+    {
+        auto flattened = roundRobin(intervals.save.map!"a[0]", intervals.save.map!"a[1]");
+        data = Uint24Array!(SP)(flattened);
+    }
+
+    this()(uint[] intervals...)
+    in
+    {
+        assert(intervals.length % 2 == 0, "Odd number of interval bounds [a, b)!");
+        for(uint i=1; i<intervals.length; i++)
+            assert(intervals[i-1] < intervals[i]);
+    }
+    body
+    {
+        data = Uint24Array!(SP)(intervals);
+    }
+
+    this(this)
+    {
+        // TODO: change to COW
+        data = data.dup;
+    }
+
+    /// Make a mutable copy of this set.
+    @property auto dup()const
+    {
+        InversionList s;
+        s.data = data.dup;
+        return s;
+    }
+
+    @property auto byInterval()const 
+    {        
+        static struct Intervals
+        {
+            @property auto front()const
+            {
+                
+                uint a = read24(slice.ptr, 0);
+                uint b = read24(slice.ptr, 1);
+                return CodepointInterval(a, b);
+            }
+
+            @property auto back()const
+            {
+                uint a = read24(slice.ptr, slice.length/3 - 2);
+                uint b = read24(slice.ptr, slice.length/3 - 1);
+                return CodepointInterval(a, b);
+            }
+
+            void popFront()
+            {
+                slice = slice[6..$];
+            }
+
+            void popBack()
+            {
+                slice = slice[0..$-6];
+            }
+
+            @property bool empty()const { return slice.empty; }
+
+            @property auto save(){ return this; }
+        private:
+            const(ubyte)[] slice;
+        }
+        return Intervals(data.data);
+    }
+
+    bool opIndex(uint val) const
+    {
+        // the <= ensures that searching in  interval of [a, b) for 'a' you get .length == 1
+        // return assumeSorted!((a,b) => a<=b)(data[]).lowerBound(val).length & 1;
+        return sharSwitchLowerBound!"a<=b"(data[], val) & 1;
+    }
+
+    /// Number of characters in this set
+    @property size_t length() const
+    {
+        size_t sum = 0;
+        foreach(iv; byInterval)
+        {
+            sum += iv.b - iv.a;
+        }
+        return sum;
+    }
+
+// bootstrap full set operations from 4 primitives (suitable as a template mixin):
+// addInterval, skipUpTo, dropUpTo & byInterval iteration
+//============================================================================
+public:
     /**
         $(P Sets support natural syntax for set algebra, namely:)
         $(BOOKTABLE
@@ -1234,7 +1350,8 @@ mixin template BasicSetOps()
         $(P Obtain textual representation of this set in from of [a..b) intervals
         and feed it to $(D sink). )
         $(P Used by various standard formatting facilities such as
-         $(XREF std._format, formattedWrite), $(D write), $(D writef) and others.
+         $(XREF std._format, formattedWrite), $(D write), $(D writef), 
+         $(XREF std._conv, to) and others.
         )
     */
     void toString(scope void delegate (const(char)[]) sink)
@@ -1252,6 +1369,7 @@ mixin template BasicSetOps()
         return this;
     }
     enum isSet = true;
+
 private:
 
     ref intersect(U)(in U rhs)
@@ -1277,8 +1395,7 @@ private:
     }
 
     ref sub()(dchar ch)
-    {
-        // workaround a BUG, somehow overload below doesn't survive if base class has sub(dchar)
+    {        
         return subChar(ch);
     }
 
@@ -1306,128 +1423,9 @@ private:
         }
         return this;
     }
-
-}
-
-
-
-/// The recommended default type for set of codepoints.
-public alias InversionList!GcPolicy CodepointSet;
-
-/**
-    The recommended type of $(XREF std._typecons, Tuple)
-    to represent [a, b) intervals of codepoints.
-*/
-public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
-
-/**
-    $(D InversionList) is a packed data structure for a set of codepoints.
-    Memory usage is 6 bytes per each contigous interval in a set.
-*/
-@trusted public struct InversionList(SP=GcPolicy)
-{
+//end of mixin-able part
+//============================================================================
 public:
-    this(Set)(in Set set)
-        if(is(typeof(Set.init.isSet)))
-    {
-        uint[] arr;
-        foreach(v; set.byInterval)
-        {
-            arr ~= v.a;
-            arr ~= v.b;
-        }
-        data = Uint24Array!(SP)(arr);
-    }
-
-    this(Range)(Range intervals)
-        if(isInputRange!Range && isIntegralPair!(ElementType!Range))
-    {
-        auto flattened = roundRobin(intervals.save.map!"a[0]", intervals.save.map!"a[1]");
-        data = Uint24Array!(SP)(flattened);
-    }
-
-    this()(uint[] intervals...)
-    in
-    {
-        assert(intervals.length % 2 == 0, "Odd number of interval bounds [a, b)!");
-        for(uint i=1; i<intervals.length; i++)
-            assert(intervals[i-1] < intervals[i]);
-    }
-    body
-    {
-        data = Uint24Array!(SP)(intervals);
-    }
-
-    this(this)
-    {
-        // TODO: change to COW
-        data = data.dup;
-    }
-
-    /// Make a mutable copy of this set.
-    @property auto dup()const
-    {
-        InversionList s;
-        s.data = data.dup;
-        return s;
-    }
-
-    @property auto byInterval()const 
-    {        
-        static struct Intervals
-        {
-            @property auto front()const
-            {
-                
-                uint a = read24(slice.ptr, 0);
-                uint b = read24(slice.ptr, 1);
-                return CodepointInterval(a, b);
-            }
-
-            @property auto back()const
-            {
-                uint a = read24(slice.ptr, slice.length/3 - 2);
-                uint b = read24(slice.ptr, slice.length/3 - 1);
-                return CodepointInterval(a, b);
-            }
-
-            void popFront()
-            {
-                slice = slice[6..$];
-            }
-
-            void popBack()
-            {
-                slice = slice[0..$-6];
-            }
-
-            @property bool empty()const { return slice.empty; }
-
-            @property auto save(){ return this; }
-        private:
-            const(ubyte)[] slice;
-        }
-        return Intervals(data.data);
-    }
-
-    bool opIndex(uint val) const
-    {
-        // the <= ensures that searching in  interval of [a, b) for 'a' you get .length == 1
-        // return assumeSorted!((a,b) => a<=b)(data[]).lowerBound(val).length & 1;
-        return sharSwitchLowerBound!"a<=b"(data[], val) & 1;
-    }
-
-    /// Number of characters in this set
-    @property size_t length() const
-    {
-        size_t sum = 0;
-        foreach(iv; byInterval)
-        {
-            sum += iv.b - iv.a;
-        }
-        return sum;
-    }
-
     /// Do an in-place inversion of set.  See also '!' unary operator.
     ref invert()
     {
@@ -1447,8 +1445,8 @@ public:
     /**
         Generates string with D source code of function that tests if the codepoint
         belongs to this set or not. The result is to be used with string mixin.
-        The inteded usage area is agressive optimization via meta programming 
-        in parsers generators and the like.
+        The intended usage area is aggressive optimization via meta programming 
+        in parser generators and the like.
 
         Note: to be used with care for relatively small or regular sets. It
         could be end up being slower then just using multi-staged tables.
@@ -1480,7 +1478,6 @@ public:
                 return false;
             }
         }
-        ---
         ---
     */    
     string toSourceCode(string funcName="")
@@ -1575,12 +1572,12 @@ public:
         return code;
     }
 
+    /// True if this set doesn't contain any codepoints.
     @property bool empty() const
     {
         return data.length == 0;
     }
 
-    mixin BasicSetOps;
 private:
     alias typeof(this) This;
     alias size_t Marker;
@@ -2335,7 +2332,6 @@ private:
         }
         while(numVals);
     }
-
 
     // this can re-use the current page if duplicate or allocate a new one
     // it also makes sure that previous levels point to the correct page in this level
