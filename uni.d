@@ -98,7 +98,6 @@ else
 {
     import unicode_tables; // generated file
 }
-
 import std.stdio;
 
 // update to reflect all major CPUs supporting unaligned reads
@@ -1195,7 +1194,7 @@ mixin template BasicSetOps()
     {
         static struct CharRange
         {
-            this(in This set)
+            this(in ref This set)
             {
                 r = set.byInterval;
                 if(!r.empty)                    
@@ -1374,11 +1373,12 @@ public:
     }
 
     @property auto byInterval()const 
-    {
+    {        
         static struct Intervals
         {
             @property auto front()const
             {
+                
                 uint a = read24(slice.ptr, 0);
                 uint b = read24(slice.ptr, 1);
                 return CodepointInterval(a, b);
@@ -2157,7 +2157,7 @@ unittest// vs single dchar
 unittest// iteration & opIndex
 {
     import std.typecons;
-    foreach(CodeList; AllSets)
+    foreach(CodeList; TypeTuple!(InversionList!(ReallocPolicy)))
     {
         auto arr = "ABCDEFGHIJKLMabcdefghijklm"d;
         auto a = CodeList('A','N','a', 'n');
@@ -2166,8 +2166,9 @@ unittest// iteration & opIndex
             ), text(a.byInterval));
         assert(equal(retro(a.byInterval), 
                 [tuple(cast(uint)'a', cast(uint)'n'), tuple(cast(uint)'A', cast(uint)'N')]
-            ), text(retro(a.byInterval)));
-        assert(equal(a.byChar, arr), text(a.byChar));
+            ), text(retro(a.byInterval)));        
+        auto achr = a.byChar;
+        assert(equal(achr, arr), text(a.byChar));
         foreach(ch; a.byChar)
             assert(a[ch]);
         auto x = CodeList(100, 500, 600, 900, 1200, 1500);
