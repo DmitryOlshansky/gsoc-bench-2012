@@ -78,7 +78,7 @@
     void main()
     {
         // initialize codepoint sets using regex notation
-        //$(D set) contains codepoints from both scripts.
+        // set contains codepoints from both scripts.
         auto set = unicode("Cyrillic") | unicode("Armenian");
         auto ascii = unicode("ASCII");
         auto currency = unicode("Currency_Symbol");
@@ -98,9 +98,9 @@
         assert(b['¥']); 
 
         // building fast lookup tables, these guarantee O(1) complexity
-        // 1-level Trie lookup table
+        // 1-level Trie lookup table essentially a huge bit-set ~262Kb
         auto oneTrie = toTrie!1(b);
-        // 2-level more compact but typically slightly slower
+        // 2-level far more compact but typically slightly slower
         auto twoTrie = toTrie!2(b);
         // 3-level even smaller, and a bit slower yet
         auto threeTrie = toTrie!3(b);
@@ -3999,8 +3999,8 @@ unittest
 /++
     A structure designed to effectively pack codepoints of a grapheme cluster. 
     $(D Grapheme) has value smemantics so 2 copies of $(D Grapheme) 
-    always refer to distinct objects. In most actual scenarios (D Grapheme) 
-    fits on stack and avoids memory allocation overhead for all but very long clusters.
+    always refer to distinct objects. In most actual scenarios $(D Grapheme) 
+    fits on stack and avoids memory allocation overhead for all but quite long clusters.
 +/
 struct Grapheme
 {
@@ -4851,9 +4851,27 @@ bool isLower(dchar c) //@safe pure nothrow
     if(std.ascii.isASCII(c))
         return std.ascii.isLower(c);
 
-    return upperCaseTrie[c];
+    return lowerCaseTrie[c];
 }
 
+unittest
+{
+    foreach(v; 0..0x80)
+        assert(std.ascii.isLower(v) == isLower(v));
+    assert(isLower('я'));
+    assert(isLower('й'));
+    assert(!isLower('Ж'));
+    //Greek HETA
+    assert(!isLower('\u0370'));
+    assert(isLower('\u0371'));
+    assert(!isLower('\u039C')); //capital MU
+    assert(isLower('\u03B2')); //beta
+    //from extended greek
+    assert(!isLower('\u1F18'));
+    assert(isLower('\u1F00'));
+    foreach(v; unicode.lowerCase.byChar)
+        assert(isLower(v) && !isUpper(v));
+}
 
 /++
    $(RED Deprecated. It will be removed in August 2012. Please use
@@ -4874,9 +4892,26 @@ bool isUpper(dchar c) //@safe pure nothrow
     if(std.ascii.isASCII(c))
         return std.ascii.isUpper(c);
 
-    return lowerCaseTrie[c];
+    return upperCaseTrie[c];
 }
 
+unittest
+{
+    foreach(v; 0..0x80)
+        assert(std.ascii.isLower(v) == isLower(v));
+    assert(!isUpper('й'));
+    assert(isUpper('Ж'));
+    //Greek HETA
+    assert(isUpper('\u0370'));
+    assert(!isUpper('\u0371'));
+    assert(isUpper('\u039C')); //capital MU
+    assert(!isUpper('\u03B2')); //beta
+    //from extended greek
+    assert(!isUpper('\u1F00'));
+    assert(isUpper('\u1F18'));
+    foreach(v; unicode.upperCase.byChar)
+        assert(isUpper(v) && !isLower(v));
+}
 
 /++
    $(RED Deprecated. It will be removed in August 2012. Please use
@@ -4943,11 +4978,16 @@ dchar toLower(dchar c) // @safe pure nothrow
 
 unittest
 {
+    import std.string : format;
     foreach(ch; 0..0x80)
         assert(std.ascii.toLower(ch) == toLower(ch));
     assert(toLower('Я') == 'я');
     assert(toLower('Δ') == 'δ');
-
+    foreach(ch; unicode.upperCase.byChar)
+    {
+        dchar low = ch.toLower;
+        assert(low == ch || isLower(low), format("%s -> %s", ch, low));
+    }
 }
 
 /++
@@ -5013,6 +5053,20 @@ dchar toUpper(dchar c) //@safe pure nothrow
     return c;
 }
 
+unittest
+{
+    import std.string : format;
+    foreach(ch; 0..0x80)
+        assert(std.ascii.toUpper(ch) == toUpper(ch));
+    assert(toUpper('я') == 'Я');
+    assert(toUpper('δ') == 'Δ');
+    foreach(ch; unicode.lowerCase.byChar)
+    {
+        dchar up = ch.toUpper;
+        assert(up == ch || isUpper(up), format("%s -> %s", ch, up));
+    }
+}
+
 
 /++
    $(RED Deprecated. It will be removed in August 2012. Please use
@@ -5027,14 +5081,6 @@ deprecated bool isUniAlpha(dchar c) //@safe pure nothrow
     return isAlpha(c);
 }
 
-unittest
-{
-    foreach(ch; 0..0x80)
-        assert(std.ascii.toUpper(ch) == toUpper(ch));
-    assert(toUpper('я') == 'Я');
-    assert(toUpper('δ') == 'Δ');
-
-}
 
 /++
     Returns whether $(D c) is a Unicode alphabetic character
