@@ -3,11 +3,75 @@
 /++
     Implementation of fundamental data structures and algorithms for Unicode.
 
-    All functions in this module operate on Unicode characters and/or sets of characters. 
-    For functions which operate on ASCII characters and ignore Unicode
-    characters, see $(LINK2 std_ascii.html, std.ascii).
+    $(P All functions in this module operate on Unicode codepoints and/or 
+    sets of codepoints. For functions which operate on ASCII characters 
+    and ignore Unicode codepoints, see $(LINK2 std_ascii.html, std.ascii).
+    )
 
-    (a short introduction to come)
+    $(P The term 'character' (as visually perceived symbol) strictly 
+    speaking applies to $(LREF Grapheme) cluster. However 'character' was in
+    widespread use prior to the advent of Unicode and thus it shall not be used 
+    without explicit context (like ASCII character) to avoid confusion. 
+    )
+
+    $(P This module focuses on the core needs of developing Unicode-aware 
+    applications. To that effect it provides the following optimized primitives: 
+    )
+
+    $(LI codepoint classification by category and common properties
+        $(LREF isAlpha), $(LREF isWhite) and others.
+    )
+    $(LI
+        Case-insensitive string comparison ($(LREF sicmp), $(LREF icmp))
+    )
+    $(LI
+        Converting text to any of the four normalization forms via $(LREF normalize)
+    )
+    $(LI 
+        Decoding ($(LREF decodeGrapheme))  and iteration ($(LREF graphemeStride))
+        on user-perceived character level that is by $(LREF Grapheme)s.
+    )
+    $(LI 
+        Decomposing and composing of individual codepoint(s) according to canonical 
+        or compatibility rules, see $(LREF compose) and $(LREF decompose), 
+        including the specific version for Hangul syllables $(LREF composeJamo).
+    )
+
+    $(P It's recognized that an application may need further enhancements 
+    and extensions. It could be the need for less commonly known algorithms 
+    or tailoring the existing ones for regional-specific needs. To help users 
+    with building any extra functionality beyond the core primitives
+    the module provides: 
+    )
+    $(LI
+        A type for easy manipulation of sets of codepoints $(LREF CodepointSet).
+        Besides the typical set algebra it provides an unusual feature: 
+        a D source code generator to detect the codepoint in this set. 
+        This is a boon for meta-programming parser frameworks,
+        and is used internally to power classification in small 
+        sets like $(LREF isWhite).
+    )
+    $(LI
+        A way to construct optimal packed multi-stage tables also known as a 
+        special case of $(LUCKY Trie).
+        $(LREF codepointTrie), $(LREF codepointSetTrie) construct the mapping 
+        of codepoints to values. The end result is fast and predictable $(BIGOH 1) 
+        lookup that powers functions like $(LREF isAlpha), $(LREF combiningClass)
+        but for custom mapping.
+    )
+    $(LI 
+        Generally useful building blocks for customized normalization:
+        $(LREF combiningClass) for querying canonical combining class
+        and $(LREF allowedIn) for testing Quick_Check.YES 
+        property of a given normalization form.
+    )
+    $(LI 
+        Access to the commonly used predefined sets of codepoints. The commonly 
+        defined one can be observed in the CLDR utility, on page
+        $(WEB www.unicode.org/cldr/utility/properties.jsp, property index).
+        supported ones include Script, Block and General Category.
+        See $(LREF unicode) for easy and compile-time checked queries.
+    )
 
     Synopsis:
     ---
@@ -71,7 +135,9 @@
     References:
         $(WEB www.digitalmars.com/d/ascii-table.html, ASCII Table),
         $(WEB en.wikipedia.org/wiki/Unicode, Wikipedia),
-        $(WEB www.unicode.org, The Unicode Consortium)
+        $(WEB www.unicode.org, The Unicode Consortium),
+        $(WEB www.unicode.org/reports/tr15/, Unicode normalization forms), 
+        $(WEB www.unicode.org/reports/tr29/, Unicode text segmentation)
 
     Trademarks:
         Unicode(tm) is a trademark of Unicode, Inc.
@@ -110,13 +176,14 @@ enum dchar lineSep = '\u2028'; /// UTF line separator
 enum dchar paraSep = '\u2029'; /// UTF paragraph separator
 
 // test the intro example
-/*unittest
+unittest
 {
     // initialize codepoint sets using regex notation
     //$(D set) contains codepoints from both scripts.
     auto set = unicode("Cyrillic") | unicode("Armenian");
     auto ascii = unicode("ASCII");
-    auto currency = unicode("Currency_Symbol");
+    //the next one is the same as above but checked at compile-time
+    auto currency = unicode.Currency_Symbol;
 
     // easy set ops
     auto a = set & ascii;
@@ -165,7 +232,7 @@ enum dchar paraSep = '\u2029'; /// UTF paragraph separator
     // to NFKD, compatibility decomposition useful for fuzzy matching/searching
     assert(normalize!NFKD("2¹⁰") == "210");
 
-}*/
+}
 
 // debug = std_uni;
 
@@ -1147,19 +1214,50 @@ public template isIntegralPair(T, V=uint)
 }
 
 
-/// The recommended default type for set of codepoints.
+/**
+    The recommended default type for set of codepoints.
+    For details, see the current implementation: $(LREF InversionList).
+*/
 public alias InversionList!GcPolicy CodepointSet;
 
 /**
     The recommended type of $(XREF std._typecons, Tuple)
-    to represent [a, b) intervals of codepoints.
+    to represent [a, b) intervals of codepoints. 
+    Any interval type should pass $(LREF isIntegralPair) trait.
 */
 public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
 
 /**
-    $(D InversionList) is a packed interval-based data structure
-    for a set of codepoints.
-    Memory usage is 6 bytes per each contiguous interval in a set.
+    $(P $(D InversionList) is a packed interval-based data structure
+    that represents a set of codepoints. 
+    )
+    
+    $(P Sets are value types (just like $(D int) is) thus they 
+        are never aliased.
+    )
+        Example:
+        ---
+        auto a = CodepointSet('a', 'z'+1);
+        auto b = CodepointSet('A', 'Z'+1);
+        auto c = a;
+        a = a | b;
+        assert(a == CodepointSet('A', 'Z'+1, 'a', 'z'+1));
+        assert(a != c);
+        ---
+    $(P See also $(LREF unicode) for simpler construction of sets
+        out of predefined ones.
+    )
+
+    $(P Memory usage is 6 bytes per each contiguous interval in a set. 
+    The value semantics are achieved by using COW technique  
+    and thus it's $(RED not) safe to cast this type to shared.
+    )
+
+    $(P Note: it's not recommended to rely on the template parameters
+    or the exact type of a codepoint set. They are going to change in the future.
+    Use $(LREF isCodepointSet) with templates or just stick with the default 
+    alias $(LREF CodepointSet) throughout the whole code base.
+    )
 */
 @trusted public struct InversionList(SP=GcPolicy)
 {
@@ -2689,11 +2787,14 @@ public:
 }
 
 /**
-    A generic Trie data-structure for a fixed number of stages.
+    $(P A generic Trie data-structure for a fixed number of stages.
     The design goal is optimal speed with smallest footprint size.
+    )
+    $(P It's intentionally read-only and doesn't provide constructors.
+     To construct one use a special builder, 
+     see $(LREF TrieBuilder) and $(LREF buildTrie).
+    )
 
-    It's intentionally immutable only. To construct one use 
-    a special builder, see $(LREF TrieBuilder) and $(LREF buildTrie).
 */
 @trusted public struct Trie(Value, Key, Args...)
     if(isValidPrefixForTrie!(Key, Args)
@@ -2724,6 +2825,7 @@ public:
         _table = typeof(_table)(offsets, sizes, data);
     }
 
+    /// Lookup the $(D key) in this trie.
     inout(TypeOfBitPacked!Value) opIndex(Key key) inout
     {
         static if(hasBoundsCheck)
@@ -3761,13 +3863,13 @@ template genericDecodeGrapheme(bool getValue)
                     state = CR;
                 else if(isRegionalIndicator(ch))
                     state = RI;             
-                else if(hangL[ch])
+                else if(isHangL(ch))
                     state = L;
-                else if(hangLV[ch] || hangV[ch])
+                else if(hangLV[ch] || isHangV(ch))
                     state = V;
                 else if(hangLVT[ch])
                     state = LVT;
-                else if(hangT[ch])
+                else if(isHangT(ch))
                     state = LVT;
                 else
                 {
@@ -3792,9 +3894,9 @@ template genericDecodeGrapheme(bool getValue)
                     goto L_End_Extend;                
             break;
             case L:
-                if(hangL[ch])
+                if(isHangL(ch))
                     mixin(eat);
-                else if(hangV[ch] || hangLV[ch])
+                else if(isHangV(ch) || hangLV[ch])
                 {
                     state = V;
                     mixin(eat);
@@ -3808,9 +3910,9 @@ template genericDecodeGrapheme(bool getValue)
                     goto L_End_Extend;
             break;
             case V:
-                if(hangV[ch])
+                if(isHangV(ch))
                     mixin(eat);
-                else if(hangT[ch])
+                else if(isHangT(ch))
                 {
                     state = LVT;
                     mixin(eat);
@@ -3819,7 +3921,7 @@ template genericDecodeGrapheme(bool getValue)
                     goto L_End_Extend;
             break;
             case LVT:
-                if(hangT[ch])
+                if(isHangT(ch))
                 {
                     mixin(eat);
                 }
@@ -5239,17 +5341,11 @@ immutable spacingMark = asTrie(mcTrieEntries);
 
 __gshared CodepointSet hangLV;
 __gshared CodepointSet hangLVT;
-__gshared CodepointSet hangL;
-__gshared CodepointSet hangV;
-__gshared CodepointSet hangT;
 
 shared static this()
 {
     hangLV = asSet(unicodeLV);
     hangLVT = asSet(unicodeLVT);
-    hangL = asSet(unicodeL);
-    hangV = asSet(unicodeV);
-    hangT = asSet(unicodeT);
 }
 
 immutable combiningClassTrie = asTrie(combiningClassTrieEntries);
