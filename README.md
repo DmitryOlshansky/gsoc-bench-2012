@@ -2,7 +2,7 @@ gsoc-bench-2012
 ===============
 
 The implementation of GSOC 2012 proposal 
-for better unicode support in Phobos.
+for better Unicode support in Phobos.
 
 Originally it's a separate repo for benchmark(s)
 these get squashed to only one now:
