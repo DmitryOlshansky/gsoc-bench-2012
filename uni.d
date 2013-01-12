@@ -18,7 +18,7 @@
     applications. To that effect it provides the following optimized primitives: 
     )
 
-    $(LI codepoint classification by category and common properties
+    $(LI codepoint classification by category and common properties:
         $(LREF isAlpha), $(LREF isWhite) and others.
     )
     $(LI
@@ -34,7 +34,8 @@
     $(LI 
         Decomposing and composing of individual codepoint(s) according to canonical 
         or compatibility rules, see $(LREF compose) and $(LREF decompose), 
-        including the specific version for Hangul syllables $(LREF composeJamo).
+        including the specific version for Hangul syllables $(LREF composeJamo)
+        and $(LREF hangulDecompose).
     )
 
     $(P It's recognized that an application may need further enhancements 
@@ -164,7 +165,6 @@ else
 {
     import unicode_tables; // generated file
 }
-import std.stdio;
 
 // update to reflect all major CPUs supporting unaligned reads
 version(X86)
@@ -1221,7 +1221,7 @@ public template isIntegralPair(T, V=uint)
 public alias InversionList!GcPolicy CodepointSet;
 
 /**
-    The recommended type of $(XREF std._typecons, Tuple)
+    The recommended type of $(XREF _typecons, Tuple)
     to represent [a, b) intervals of codepoints. 
     Any interval type should pass $(LREF isIntegralPair) trait.
 */
@@ -1361,13 +1361,13 @@ public:
 //============================================================================
 public:
     /**
-        $(P Sets support natural syntax for set algebra, namely:)
-        $(BOOKTABLE
+        $(P Sets support natural syntax for set algebra, namely: )
+        $(BOOKTABLE ,
             $(TR $(TH Operator) $(TH Math notation) $(TH Description) )
             $(TR $(TD &) $(TD a ∩ b) $(TD intersection) )
             $(TR $(TD |) $(TD a ∪ b) $(TD union) )
             $(TR $(TD -) $(TD a ∖ b) $(TD subtraction) )
-            $(TR $(TD ~) $(TD a ~ b) $(TD symmetric set difference i.e. (a ∪ b) \ (a ∩ b) ))
+            $(TR $(TD ~) $(TD a ~ b) $(TD symmetric set difference i.e. (a ∪ b) \ (a ∩ b)) )
         )
     */
     This opBinary(string op, U)(U rhs) 
@@ -1484,11 +1484,12 @@ public:
     }
 
     /**
-        $(P Obtain textual representation of this set in from of [a..b) intervals
-        and feed it to $(D sink). )
+        $(P Obtain textual representation of this set in from of 
+        open-right intervals and feed it to $(D sink). 
+        )
         $(P Used by various standard formatting facilities such as
-         $(XREF std._format, formattedWrite), $(D write), $(D writef), 
-         $(XREF std._conv, to) and others.
+         $(XREF _format, formattedWrite), $(XREF _stdio, write),
+         $(XREF _stdio, writef), $(XREF _conv, to) and others.
         )
     */
     void toString(scope void delegate (const(char)[]) sink)
@@ -1580,12 +1581,16 @@ public:
     }
 
     /**
-        Generates string with D source code of function that tests if the codepoint
+        Generates string with D source code of unary function with name of 
+        $(D funcName) taking a single $(D dchar) argument. If $(D funcName) is empty
+        the code is adjusted to be a lambda function.
+
+        The function generated tests if the codepoint passed
         belongs to this set or not. The result is to be used with string mixin.
         The intended usage area is aggressive optimization via meta programming 
         in parser generators and the like.
 
-        Note: to be used with care for relatively small or regular sets. It
+        Note: To be used with care for relatively small or regular sets. It
         could be end up being slower then just using multi-staged tables.
 
         Example:
@@ -2512,7 +2517,12 @@ template mapTrieIndex(Prefix...)
     }
 }
 
-///
+/**
+    $(D TrieBuilder) is a type used for incremental construction
+    of $(LREF Trie)s. 
+
+    See $(LREF buildTrie) for generic helpers built on top of it.
+*/
 @trusted struct TrieBuilder(Value, Key, Args...)
     if(isBitPackableType!Value && isValidArgsForTrie!(Key, Args))
 {
@@ -2747,7 +2757,12 @@ public:
             table.length!i = (1<<Prefix[i].bitSize);
     }
 
-    /// Puts 
+    /**
+        Put a value $(D v) into interval as 
+        mapped by keys from $(D a) to $(D b).
+        All slots prior to $(D a) are filled with 
+        the default filler.
+    */
     void putRange(Key a, Key b, Value v)
     {
         auto idxA = getIndex(a), idxB = getIndex(b);
@@ -2756,7 +2771,11 @@ public:
         putRangeAt(idxA, idxB, v);
     }
 
-    /// Puts 
+    /**
+        Put a value $(D v) into slot mapped by $(D key).
+        All slots prior to $(D key) are filled with the
+        default filler.
+    */
     void putValue(Key key, Value v)
     {
         auto idx = getIndex(key);
@@ -3024,7 +3043,7 @@ public template cmpK0(alias Pred)
     predicates to construct index from key.
 
     Alternatively if the first argument is not a value convertible to $(D Key) 
-    then whole tuple of $(D Args) is treated as predicates 
+    then the whole tuple of $(D Args) is treated as predicates 
     and the maximum Key is deduced from predicates.
 */
 public template buildTrie(Value, Key, Args...)
@@ -3057,7 +3076,12 @@ public template buildTrie(Value, Key, Args...)
         ------
         Exception is thrown if it's detected that the above order doesn't hold.
 
-        See also: std.algorithm.sort, std.range.SortedRange, std.algorithm.setUnion.
+        In other words $(LREF mapTrieIndex) should be a 
+        monotonically increasing function that maps $(D Key) to an integer.
+
+        See also: $(XREF _algorithm, sort), 
+        $(XREF _range, SortedRange),
+        $(XREF _algorithm, setUnion).
     */
     auto buildTrie(Range)(Range range, Value filler=Value.init)
         if(isInputRange!Range && is(typeof(Range.init.front[0]) : Value) 
@@ -3537,7 +3561,7 @@ unittest
     assert(equal(decompressIntervals(compressIntervals(run2)), run2));
 }
 
-/// Creates a range of $(D CodepointInterval) that lazily decodes compressed data.
+// Creates a range of $(D CodepointInterval) that lazily decodes compressed data.
 // TODO: make it package when pushed to std.
 public auto decompressIntervals(const(ubyte)[] data)
 {
@@ -3652,8 +3676,8 @@ public struct unicode
     }
     
     /**
-        The same lookup but performed at run-time suitable for cases 
-        where $(D name) is not known beforehand.
+        The same lookup but performed at run-time, provided for cases 
+        where $(D name) is not known beforehand. 
     */
     static auto opCall(C)(in C[] name)
         if(is(C : dchar))
@@ -4216,13 +4240,16 @@ unittest
 }
 
 /++
-    Does basic case-insensitive comparison of strings $(D str1) and $(D str2).
+    $(P Does basic case-insensitive comparison of strings $(D str1) and $(D str2).
+    This function uses simpler comparison rule thus achieving better performance 
+    then $(LREF icmp). However keep in mind the warning below.)
 
-    Warning: this function only handles 1:1 codepoint mapping
-    and thus is not sufficent for certain alphabets 
+    Warning: 
+    This function only handles 1:1 codepoint mapping
+    and thus is not sufficient for certain alphabets 
     like German, Greek and few others.
 +/
-int sicmp(C1, C2)(in C1[] str1, in C2[] str2)
+int sicmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
 {
     alias simpleCaseTable stab;
     size_t ridx=0;
@@ -4295,12 +4322,14 @@ private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
 }
 
 /++
-    Does case insensitive comparison of $(D str1) and $(D str2).
-    Follows rules of full casefolding mapping. 
+    $(P Does case insensitive comparison of $(D str1) and $(D str2).
+    Follows the rules of full casefolding mapping. 
     This includes matching as equal german ß with "ss" and 
-    other 1:M codepoints relations unlike $(D sicmp).
+    other 1:M codepoints relations unlike $(LREF sicmp)
+    at the cost of being slightly slower. 
+    )
 +/
-int icmp(C1, C2)(inout(C1)[] str1, inout(C2)[] str2)
+int icmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
 {
     
     for(;;)
@@ -4489,7 +4518,10 @@ int hangulSyllableIndex(dchar ch)
     return idxS >= 0 && idxS < jamoSCount ? idxS : -1;
 }
 
-//
+/**
+    Decomposes a Hangul syllable. If ($D ch) is not a composed syllable
+    then this function returns $(LREF Grapheme) containing only $(D ch) as is. 
+*/
 Grapheme hangulDecompose(dchar ch)
 {
     int idxS = cast(int)ch - jamoSBase;
@@ -4561,13 +4593,17 @@ enum NormalizationForm {
     NFKD
 }
 
-/**
-    Shorthand aliases from values indicating normalization forms.
-*/
+
 enum { 
+    /**
+        Shorthand aliases from values indicating normalization forms.
+    */
     NFC = NormalizationForm.NFC, 
+    ///ditto
     NFD = NormalizationForm.NFD, 
+    ///ditto
     NFKC = NormalizationForm.NFKC,
+    ///ditto
     NFKD = NormalizationForm.NFKD
 };
 
