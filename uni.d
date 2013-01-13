@@ -338,7 +338,7 @@ struct MultiArray(Types...)
         storage = data;
     }
 
-    @property auto slice(size_t n)()inout
+    @property auto slice(size_t n)()inout pure nothrow
     {
         auto ptr = raw_ptr!n;        
         size_t len = spaceFor!(bitSizeOf!(Types[n]))(sz[n]);
@@ -562,7 +562,7 @@ unittest
     }
 }
 
-size_t spaceFor(size_t _bits)(size_t new_len)
+size_t spaceFor(size_t _bits)(size_t new_len) pure nothrow
 {
     enum bits = _bits == 1 ? 1 : ceilPowerOf2(_bits);// see PackedArrayView
     static if(bits > 8*size_t.sizeof)
@@ -594,8 +594,9 @@ template PackedArrayView(T)
 // data is packed only by power of two sized packs per word,
 // thus avoiding mul/div overhead at the cost of ultimate packing
 // this construct doesn't own memory, only provides access, see MultiArray for usage
-struct PackedArrayViewImpl(T, size_t bits)
+@trusted struct PackedArrayViewImpl(T, size_t bits)
 {
+pure nothrow:
     static assert(isPowerOf2(bits));
     import core.bitop;      
 
@@ -638,7 +639,8 @@ struct PackedArrayViewImpl(T, size_t bits)
         T opIndex(size_t n) inout
         in
         {
-            assert(n/factor < original.length, text(n/factor, " vs ", original.length));
+            //@@BUG text is impure: text(n/factor, " vs ", original.length)
+            assert(n/factor < original.length);
         }
         body
         {                     
@@ -872,7 +874,7 @@ unittest
     assert(nullSlice.empty);
 }
 
-private auto packedArrayView(T)(inout(size_t)[] arr)inout
+private auto packedArrayView(T)(inout(size_t)[] arr)inout @trusted pure nothrow
 {    
     return inout(PackedArrayView!T)(arr);
 }
@@ -911,7 +913,7 @@ string genUnrolledSwitchSearch(size_t size)
     return code;
 }
 
-bool isPowerOf2(size_t sz)
+bool isPowerOf2(size_t sz) @safe pure nothrow
 {
     return (sz & (sz-1)) == 0;
 }
@@ -949,13 +951,13 @@ size_t switchUniformLowerBound(alias pred, Range, T)(Range range, T needle)
 }
    
 //
-size_t floorPowerOf2(size_t arg)
+size_t floorPowerOf2(size_t arg) @safe pure nothrow
 {
     assert(arg > 1); // else bsr is undefined
     return 1<<bsr(arg-1);
 }
 
-size_t ceilPowerOf2(size_t arg)
+size_t ceilPowerOf2(size_t arg) @safe pure nothrow
 {
     assert(arg > 1); // else bsr is undefined
     return 1<<bsr(arg-1)+1;
@@ -2844,8 +2846,23 @@ public:
         _table = typeof(_table)(offsets, sizes, data);
     }
 
-    /// Lookup the $(D key) in this trie.
-    inout(TypeOfBitPacked!Value) opIndex(Key key) inout
+    /**
+        $(P Lookup the $(D key) in this $(D Trie). )
+
+        $(P The lookup always succeeds if key fits the domain 
+        provided during construction. The whole domain defined 
+        is covered so instead of not found condition 
+        the sentinel (filler) value could be used. )
+
+        $(P See $(LREF buildTrie), $(LREF TrieBuilder) for how to 
+        define a domain of $(D Trie) keys and the sentinel value. )
+
+        Note:
+        Domain range-checking is only enabled in debug builds
+        and results in assertion failure.
+    */
+    //templated to auto-detect pure, @safe and nothrow
+    TypeOfBitPacked!Value opIndex()(Key key) const
     {
         static if(hasBoundsCheck)
             assert(mapTrieIndex!Prefix(key) < maxIndex);
@@ -3264,7 +3281,8 @@ template TypeOfBitPacked(T)
 public struct assumeSize(alias Fn, size_t bits)
 {
     enum bitSize = bits;
-    static auto ref opCall(T)(auto ref T arg) {
+    static auto ref opCall(T)(auto ref T arg)
+    {
         return Fn(arg);
     }
 }
@@ -3295,7 +3313,7 @@ public template sliceBits(size_t from, size_t to)
 }
 
 uint low_8(uint x) { return x&0xFF; }
-uint midlow_8(uint x){ return (x&0xFF00)>>8; }
+@safe pure nothrow uint midlow_8(uint x){ return (x&0xFF00)>>8; }
 alias assumeSize!(low_8, 8) lo8;
 alias assumeSize!(midlow_8, 8) mlo8;
 
@@ -4380,7 +4398,15 @@ unittest
 }
 
 /++
-    Returns the canonical combining class of $(D ch).
+    Returns the combining class of $(D ch).
+    
+    $(P The combining class is a numerical value used by the 
+    Unicode Canonical Ordering Algorithm to determine which sequences 
+    of combining marks are to be considered canonically equivalent and
+    which are not. )
+
+    $(P Canonical equivalence is the criterion used to determine whether two 
+    character sequences are considered identical for interpretation. )
 +/
 ubyte combiningClass(dchar ch)
 {
@@ -4868,13 +4894,8 @@ public bool isWhite(dchar c)
     return isWhiteGen(c); // call pregenerated binary search
 }
 
-/++
-   $(RED Deprecated. It will be removed in August 2012. Please use
-   $(D isLower) instead.)
-
-    Return whether $(D c) is a Unicode lowercase character.
-  +/
-deprecated bool isUniLower(dchar c) //@safe pure nothrow
+deprecated ("Please use std.uni.isLower instead")
+bool isUniLower(dchar c) //@safe pure nothrow
 {
     return isLower(c);
 }
@@ -4909,13 +4930,9 @@ unittest
         assert(isLower(v) && !isUpper(v));
 }
 
-/++
-   $(RED Deprecated. It will be removed in August 2012. Please use
-   $(D isUpper) instead.)
 
-    Return whether $(D c) is a Unicode uppercase character.
-+/
-deprecated bool isUniUpper(dchar c) //@safe pure nothrow
+deprecated ("Please use std.uni.isUpper instead")
+bool isUniUpper(dchar c) //@safe pure nothrow
 {
     return isUpper(c);
 }
@@ -4949,23 +4966,15 @@ unittest
         assert(isUpper(v) && !isLower(v));
 }
 
-/++
-   $(RED Deprecated. It will be removed in August 2012. Please use
-   $(D toLower) instead.)
 
-    If $(D c) is a Unicode uppercase character, then its lowercase equivalent
-    is returned. Otherwise $(D c) is returned.
-     
-    Warning: certain alphabets like German, Greek have no 1:1
-    upper-lower mapping. Use overload of toLower which takes full string instead.
-+/
-deprecated dchar toUniLower(dchar c) //@safe pure nothrow
+deprecated ("Please use std.uni.toLower instead")
+dchar toUniLower(dchar c) //@safe pure nothrow
 {
     return toLower(c);
 }
 
 /++
-    If $(D c) is a Unicode uppercase character, then its lowercase equivalent
+    If $(D c) is a Unicode uppercase codepoint, then its lowercase equivalent
     is returned. Otherwise $(D c) is returned.
     
     Warning: certain alphabets like German, Greek have no 1:1
@@ -5026,17 +5035,8 @@ unittest
     }
 }
 
-/++
-   $(RED Deprecated. It will be removed in August 2012. Please use
-   $(D toUpper) instead.)
-
-    If $(D c) is a Unicode lowercase character, then its uppercase equivalent
-    is returned. Otherwise $(D c) is returned.
-     
-    Warning: certain alphabets like German, Greek have no 1:1
-    upper-lower mapping. Use overload of toUpper which takes full string instead.
-+/
-deprecated dchar toUniUpper(dchar c) //@safe pure nothrow
+deprecated("Please use std.uni.toUpper instead")
+dchar toUniUpper(dchar c) //@safe pure nothrow
 {
     return toUpper(c);
 }
@@ -5045,7 +5045,8 @@ deprecated dchar toUniUpper(dchar c) //@safe pure nothrow
     If $(D c) is a Unicode lowercase character, then its uppercase equivalent
     is returned. Otherwise $(D c) is returned.
      
-    Warning: certain alphabets like German, Greek have no 1:1
+    Warning: 
+    Certain alphabets like German, Greek have no 1:1
     upper-lower mapping. Use overload of toUpper which takes full string instead.
 +/
 dchar toUpper(dchar c) //@safe pure nothrow
@@ -5103,16 +5104,8 @@ unittest
     }
 }
 
-
-/++
-   $(RED Deprecated. It will be removed in August 2012. Please use
-   $(D isAlpha) instead.)
-
-    Returns whether $(D c) is a Unicode alphabetic character
-    (general Unicode category: Alphabetic).
-
-  +/
-deprecated bool isUniAlpha(dchar c) //@safe pure nothrow
+deprecated("Please use std.uni.isAlpha instead.")
+bool isUniAlpha(dchar c) //@safe pure nothrow
 {
     return isAlpha(c);
 }
@@ -5121,9 +5114,8 @@ deprecated bool isUniAlpha(dchar c) //@safe pure nothrow
 /++
     Returns whether $(D c) is a Unicode alphabetic character
     (general Unicode category: Alphabetic).
-
-  +/
-bool isAlpha(dchar c) /*@safe pure nothrow*/
++/
+bool isAlpha(dchar c) @safe pure nothrow
 {    
     // optimization
     if(c < 0xAA)
@@ -5155,10 +5147,7 @@ unittest
 /++
     Returns whether $(D c) is a Unicode mark
     (general Unicode category: Mn, Me, Mc).
-
-  +/
-
-
++/
 @trusted
 bool isMark(dchar c) //@safe pure nothrow
 {
@@ -5174,13 +5163,10 @@ unittest
         assert((ch in mark) == isMark(ch)); 
 }
 
-
 /++
     Returns whether $(D c) is a Unicode numerical character
     (general Unicode category: Nd, Nl, No).
-    
-  +/
-
++/
 bool isNumber(dchar c) //@safe pure nothrow
 {
     return numberTrie[c];
@@ -5199,7 +5185,6 @@ unittest
 /++
     Returns whether $(D c) is a Unicode punctuation character
     (general Unicode category: Pd, Ps, Pe, Pc, Po, Pi, Pf).
-
 +/
 bool isPunctuation(dchar c) //@safe pure nothrow
 {
@@ -5222,8 +5207,7 @@ unittest
 
 /++
     Returns whether $(D c) is a Unicode symbol character
-    (general Unicode category: Sm, Sc, Sk, So)
-    
+    (general Unicode category: Sm, Sc, Sk, So)   
 +/
 bool isSymbol(dchar c) //@safe pure nothrow
 {
@@ -5286,11 +5270,9 @@ unittest
 
 
 /++
-    Returns whether $(D c) is a Unicode control character
+    Returns whether $(D c) is a Unicode control codepoint
     (general Unicode category: Cc)
-
-  +/
-
++/
 bool isControl(dchar c) //@safe pure nothrow
 {
     return isControlGen(c);
@@ -5310,9 +5292,8 @@ unittest
 
 
 /++
-    Returns whether $(D c) is a Unicode formatting character
+    Returns whether $(D c) is a Unicode formatting codepoint
     (general Unicode category: Cf)
-
 +/
 bool isFormat(dchar c) //@safe pure nothrow
 {
@@ -5331,9 +5312,8 @@ unittest
 // if need be they can be generated from unicode data as well
 
 /++
-    Returns whether $(D c) is a Unicode Private Use character
+    Returns whether $(D c) is a Unicode Private Use codepoint
     (general Unicode category: Co)
- 
 +/
 bool isPrivateUse(dchar c) //@safe pure nothrow
 {
@@ -5342,11 +5322,9 @@ bool isPrivateUse(dchar c) //@safe pure nothrow
         || (0x10_0000 <= c && c <= 0x10_FFFD);
 }
 
-
 /++
-    Returns whether $(D c) is a Unicode surrogate character
+    Returns whether $(D c) is a Unicode surrogate codepoint
     (general Unicode category: Cs)
-
 +/
 bool isSurrogate(dchar c) //@safe pure nothrow
 {
@@ -5355,7 +5333,6 @@ bool isSurrogate(dchar c) //@safe pure nothrow
 
 /++
     Returns whether $(D c) is a Unicode high surrogate (lead surrogate).
-
 +/
 bool isSurrogateHi(dchar c) @safe pure nothrow
 {
@@ -5364,7 +5341,6 @@ bool isSurrogateHi(dchar c) @safe pure nothrow
 
 /++
     Returns whether $(D c) is a Unicode low surrogate (trail surrogate).
-
 +/
 bool isSurrogateLo(dchar c) @safe pure nothrow
 {
@@ -5374,9 +5350,7 @@ bool isSurrogateLo(dchar c) @safe pure nothrow
 /++
     Returns whether $(D c) is a Unicode non-character
     (general Unicode category: Cn)
- 
 +/
-
 bool isNonCharacter(dchar c) //@safe pure nothrow
 {
     return nonCharacterTrie[c]; 
