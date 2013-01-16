@@ -5070,7 +5070,7 @@ public:
     (general Unicode category: Part of C0(tab, vertical tab, form feed,
     carriage return, and linefeed characters), Zs, Zl, Zp, and NEL(U+0085))
   +/
-public bool isWhite(dchar c) 
+public bool isWhite(dchar c) @safe pure nothrow
 {
     return isWhiteGen(c); // call pregenerated binary search
 }
@@ -5149,7 +5149,7 @@ unittest
 
 
 deprecated ("Please use std.uni.toLower instead")
-dchar toUniLower(dchar c) //@safe pure nothrow
+dchar toUniLower(dchar c) @safe pure nothrow
 {
     return toLower(c);
 }
@@ -5161,42 +5161,42 @@ dchar toUniLower(dchar c) //@safe pure nothrow
     Warning: certain alphabets like German, Greek have no 1:1
     upper-lower mapping. Use overload of toLower which takes full string instead.
 +/
-dchar toLower(dchar c) // @safe pure nothrow
+dchar toLower(dchar c) @safe pure nothrow
 {
      // optimize ASCII case
-    if(c < 'A')
-        return c;
-    if(c <= 'Z')
-        c += 32;
-    else
+    if(c < 0xAA)
     {
-        size_t idx = simpleCaseTrie[c];
-        alias simpleCaseTable stab;
-        if(idx != EMPTY_CASE_TRIE)
-        {
-            size_t sz = stab[idx].size;
-            idx = idx - stab[idx].n;
-            switch(sz){
-            default:
-                assert(false);// no even buckets of size 5 currently
-            case 5:
-                if(stab[idx+4].isLower)
-                    return stab[idx+4].ch;
-                goto case;
-            case 4:
-                if(stab[idx+3].isLower)
-                    return stab[idx+3].ch;
-                goto case;
-            case 3:
-                if(stab[idx+2].isLower)
-                    return stab[idx+2].ch;
-                goto case;
-            case 2:
-                if(stab[idx+1].isLower)
-                    return stab[idx+1].ch;
-                if(stab[idx].isLower)
-                    return stab[idx].ch;
-            }
+        if(c < 'A')
+            return c;
+        if(c <= 'Z')
+            return c + 32;
+    }    
+    size_t idx = simpleCaseTrie[c];
+    alias simpleCaseTable stab;
+    if(idx != EMPTY_CASE_TRIE)
+    {
+        size_t sz = stab[idx].size;
+        idx = idx - stab[idx].n;
+        switch(sz){
+        default:
+            assert(false);// no even buckets of size 5 currently
+        case 5:
+            if(stab[idx+4].isLower)
+                return stab[idx+4].ch;
+            goto case;
+        case 4:
+            if(stab[idx+3].isLower)
+                return stab[idx+3].ch;
+            goto case;
+        case 3:
+            if(stab[idx+2].isLower)
+                return stab[idx+2].ch;
+            goto case;
+        case 2:
+            if(stab[idx+1].isLower)
+                return stab[idx+1].ch;
+            if(stab[idx].isLower)
+                return stab[idx].ch;
         }
     }
     return c;
@@ -5217,7 +5217,7 @@ unittest
 }
 
 deprecated("Please use std.uni.toUpper instead")
-dchar toUniUpper(dchar c) //@safe pure nothrow
+dchar toUniUpper(dchar c) @safe pure nothrow
 {
     return toUpper(c);
 }
@@ -5230,42 +5230,42 @@ dchar toUniUpper(dchar c) //@safe pure nothrow
     Certain alphabets like German, Greek have no 1:1
     upper-lower mapping. Use overload of toUpper which takes full string instead.
 +/
-dchar toUpper(dchar c) //@safe pure nothrow
+dchar toUpper(dchar c) @safe pure nothrow
 {
     // optimize ASCII case
-    if(c < 'a')
-        return c;
-    if(c <= 'z')
-        c -= 32;
-    else
+    if(c < 0xAA)
     {
-        size_t idx = simpleCaseTrie[c];
-        alias simpleCaseTable stab;
-        if(idx != EMPTY_CASE_TRIE)
-        {
-            size_t sz = stab[idx].size;
-            idx = idx - stab[idx].n;
-            switch(sz){
-            default:
-                assert(false);// no even buckets of size 5 currently
-            case 5:
-                if(stab[idx+4].isUpper)
-                    return stab[idx+4].ch;
-                goto case;
-            case 4:
-                if(stab[idx+3].isUpper)
-                    return stab[idx+3].ch;
-                goto case;
-            case 3:
-                if(stab[idx+2].isUpper)
-                    return stab[idx+2].ch;
-                goto case;
-            case 2:
-                if(stab[idx+1].isUpper)
-                    return stab[idx+1].ch;
-                if(stab[idx].isUpper)
-                    return stab[idx].ch;
-            }
+        if(c < 'a')
+            return c;
+        if(c <= 'z')
+            return c - 32;
+    }
+    size_t idx = simpleCaseTrie[c];
+    alias simpleCaseTable stab;
+    if(idx != EMPTY_CASE_TRIE)
+    {
+        size_t sz = stab[idx].size;
+        idx = idx - stab[idx].n;
+        switch(sz){
+        default:
+            assert(false);// no even buckets of size 5 currently
+        case 5:
+            if(stab[idx+4].isUpper)
+                return stab[idx+4].ch;
+            goto case;
+        case 4:
+            if(stab[idx+3].isUpper)
+                return stab[idx+3].ch;
+            goto case;
+        case 3:
+            if(stab[idx+2].isUpper)
+                return stab[idx+2].ch;
+            goto case;
+        case 2:
+            if(stab[idx+1].isUpper)
+                return stab[idx+1].ch;
+            if(stab[idx].isUpper)
+                return stab[idx].ch;
         }
     }
     return c;
@@ -5290,7 +5290,6 @@ bool isUniAlpha(dchar c) @safe pure nothrow
 {
     return isAlpha(c);
 }
-
 
 /++
     Returns whether $(D c) is a Unicode alphabetic character
@@ -5412,7 +5411,7 @@ unittest
     Note: This doesn't include '\n', '\r', \t' and other non-space characters.
     For commonly used less strict semantics see $(LREF isWhite).
 +/
-bool isSpace(dchar c) //@safe pure nothrow
+bool isSpace(dchar c) @safe pure nothrow
 {
     return isSpaceGen(c);
 }
@@ -5476,7 +5475,7 @@ unittest
     Returns whether $(D c) is a Unicode formatting character
     (general Unicode category: Cf).
 +/
-bool isFormat(dchar c) //@safe pure nothrow
+bool isFormat(dchar c) @safe pure nothrow
 {
     return isFormatGen(c);
 }

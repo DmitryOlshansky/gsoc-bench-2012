@@ -12,15 +12,15 @@ struct SimpleCaseEntry
 {
     uint ch;
     ubyte n, bucket;// n - number in bucket
-    @property ubyte size() const
+    @property ubyte size() const @safe pure nothrow
     {
         return bucket & 0x3F;
     }
-    @property auto isLower() const
+    @property auto isLower() const @safe pure nothrow
     {
         return bucket & 0x40;
     }
-    @property auto isUpper() const
+    @property auto isUpper() const @safe pure nothrow
     {
         return bucket & 0x80;
     }
@@ -47,7 +47,7 @@ struct FullCaseEntry
     ubyte n, size;// n number in batch, size - size of batch
     ubyte entry_len;// ==1 read ch, >1 - seq
 
-    @property auto value()const
+    @property auto value() const  @trusted pure nothrow
     { 
         return entry_len == 1 ? (&ch)[0..1] : cast(dstring)seq;
     }
@@ -5564,7 +5564,8 @@ immutable compositionTable = [CompEntry(0x00338, 0x0226e),CompEntry(0x00338, 0x0
 
     }
 }
-bool isFormatGen(dchar ch)
+
+bool isFormatGen(dchar ch) @safe pure nothrow
 {
     if(ch < 8298)
     {
@@ -5628,7 +5629,7 @@ bool isFormatGen(dchar ch)
     }
 }
 
-bool isControlGen(dchar ch)
+bool isControlGen(dchar ch) @safe pure nothrow
 {
     if(ch < 32) return true;
     if(ch < 127) return false;
@@ -5636,7 +5637,7 @@ bool isControlGen(dchar ch)
     return false;
 }
 
-bool isSpaceGen(dchar ch)
+bool isSpaceGen(dchar ch) @safe pure nothrow
 {
     if(ch < 160)
     {
@@ -5671,7 +5672,7 @@ bool isSpaceGen(dchar ch)
     }
 }
 
-bool isWhiteGen(dchar ch)
+bool isWhiteGen(dchar ch) @safe pure nothrow
 {
     if(ch < 133)
     {
@@ -5717,7 +5718,7 @@ bool isWhiteGen(dchar ch)
     }
 }
 
-bool isHangL(dchar ch)
+bool isHangL(dchar ch) @safe pure nothrow
 {
     if(ch < 4352) return false;
     if(ch < 4448) return true;
@@ -5726,7 +5727,7 @@ bool isHangL(dchar ch)
     return false;
 }
 
-bool isHangV(dchar ch)
+bool isHangV(dchar ch) @safe pure nothrow
 {
     if(ch < 4448) return false;
     if(ch < 4520) return true;
@@ -5735,7 +5736,7 @@ bool isHangV(dchar ch)
     return false;
 }
 
-bool isHangT(dchar ch)
+bool isHangT(dchar ch) @safe pure nothrow
 {
     if(ch < 4520) return false;
     if(ch < 4608) return true;
