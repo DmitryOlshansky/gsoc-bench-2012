@@ -151,10 +151,11 @@
     8-bit code units in the UTF-8 (($D char)), 
     16-bit code units in the UTF-16 ($(D wchar)),
     and 32-bit code units in the UTF-32 ($(D dchar)).
-    $(I Note that UTF-32 code unit ($(D dchar)) holds the actual code point value.)
+    $(I Note that in UTF-32, a code unit is a code point 
+    and is represented by the D $(D dchar) type.)
     )
     $(P $(I Abstract character.) A unit of information used for the organization, 
-    control, or representation of textual data. Also known as simply $(I character).
+    control, or representation of textual data.
     Note that:
         $(UL 
         $(LI When representing data, the nature of that data 
@@ -275,6 +276,7 @@ Macros:
 
 SECTION = <h3>$0</h3>
 HINTED = <abbr title="$+">$1</abbr>
+S_LINK = 
 +/
 module uni;
 
@@ -1742,7 +1744,7 @@ public:
         in parser generators and the like.
 
         Note: To be used with care for relatively small or regular sets. It
-        could be end up being slower then just using multi-staged tables.
+        could end up being slower then just using multi-staged tables.
 
         Example:
         ---
@@ -3387,14 +3389,15 @@ public auto toDelegate(Set)(Set set)
     $(P Opaque wrapper around unsigned built-in integers and 
     code unit (char/wchar/dchar) types.
     Parameter $(D sz) indicates that the value is confined 
-    to the range of [0, 2^^sz). With this knowledge it can be 
+    to the range of [0, 2^^sz$(RPAREN). With this knowledge it can be 
     packed more tightly when stored in certain 
     data-structures like $(LREF Trie). )
 
     Note:
-    $(P The $(D BitPacked!(T, sz) is implicitly convertible to $(D T)
-    but not vise-versa. Users have to ensure value fits in the range required 
-    and use the $(D cast) operator to perform conversion.)
+    $(P The $(D BitPacked!(T, sz)) is implicitly convertible to $(D T)
+    but not vise-versa. Users have to ensure the value fits in 
+    the range required and use the $(D cast) 
+    operator to perform the conversion.)
 */
 struct BitPacked(T, size_t sz) 
     if(isIntegral!T || is(T:dchar))
@@ -5453,7 +5456,7 @@ unittest
     Returns whether $(D c) is a Unicode control character
     (general Unicode category: Cc).
 +/
-bool isControl(dchar c) //@safe pure nothrow
+bool isControl(dchar c) @safe pure nothrow
 {
     return isControlGen(c);
 }
