@@ -165,7 +165,7 @@ void main(string[] argv)
         downloadIfNotCached(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
         downloadIfNotCached(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
         downloadIfNotCached(prefix~unicodeDataSrc, unicodeDataSrc);
-
+        
         loadBlocks(blocksSrc);
         loadProperties(propListSrc);
         loadProperties(corePropSrc);
@@ -176,10 +176,9 @@ void main(string[] argv)
         loadDecompositions(unicodeDataSrc);
         loadExclusions(compositionExclusionsSrc);        
         loadCaseFolding(caseFoldingSrc);
-        
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
-
+        
         writeProperties();
         writeTries();
         writeCombining();
@@ -325,6 +324,7 @@ void loadProperties(string inp)
     auto acceptProp = (string name) => countUntil(blacklist, name) < 0  && !name.startsWith("Changes");
     auto r = regex(`^(?:(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*([a-zA-Z_0-9]*)\s*#|# [a-zA-Z_0-9]+=([a-zA-Z_0-9]+))`);
     string aliasStr;
+    auto set = CodepointSet.init;  //workaround @@@BUG 6178
     scanUniData!((m){
         auto name = to!string(m.captures[4]);
         if(!acceptProp(name)) 
@@ -338,8 +338,7 @@ void loadProperties(string inp)
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
             if(name !in props)
-            {
-                auto set = CodepointSet.init;                
+            {         
                 props[name] = set;
             }
             props[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
@@ -355,7 +354,6 @@ void loadProperties(string inp)
             uint x = parse!uint(sx, 16);
             if(name !in props)
             {
-                auto set = CodepointSet.init;
                 props[name] = set;
             }
             props[name] |= x;
@@ -372,6 +370,7 @@ void loadNormalization(string inp)
 {
     auto r = regex(`^(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*(NFK?[CD]_QC)\s*;\s*([NM])|#\s*[a-zA-Z_0-9]+=([a-zA-Z_0-9]+)`);
     string aliasStr;
+    CodepointSet set; //workaround @@@BUG 6178
     scanUniData!((m){        
         auto name = to!string(m.captures[4]) ~ to!string(m.captures[5]);
         /*if(!m.captures[6].empty)
@@ -383,8 +382,7 @@ void loadNormalization(string inp)
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
             if(name !in normalization)
-            {
-                auto set = CodepointSet.init;
+            {                
                 normalization[name] = set;
             }
             normalization[name].add(a,b+1);
@@ -395,7 +393,6 @@ void loadNormalization(string inp)
             uint x = parse!uint(sx, 16);
             if(name !in normalization)
             {
-                auto set = CodepointSet.init;
                 normalization[name] = set;
             }
             normalization[name] |= x;
