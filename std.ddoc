@@ -287,6 +287,7 @@ D = <span class="d_inlinecode">$0</span>
 BIGOH = <b><i>&Omicron;</i>(</b>$(D $0)<b><i>)</i></b>
 GLOSSARY = $(LINK2 ../glossary.html#$0, $0)
 
+SECTION = <h3>$@</h3>
 DDOC_PSYMBOL = <a name="$0"></a><span class="ddoc_psymbol">$0</span>
 DDOC_DECL  = <dt class="d_decl">$0</dt>
 XREF = <a href="std_$1.html#$2">$(D std.$1.$2)</a>

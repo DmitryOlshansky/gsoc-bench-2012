@@ -53,15 +53,15 @@ struct SimpleCaseEntry
 {
     uint ch;
     ubyte n, bucket;// n - number in bucket
-    @property ubyte size() const
+    @property ubyte size() const @safe pure nothrow
     {
         return bucket & 0x3F;
     }
-    @property auto isLower() const
+    @property auto isLower() const @safe pure nothrow
     {
         return bucket & 0x40;
     }
-    @property auto isUpper() const
+    @property auto isUpper() const @safe pure nothrow
     {
         return bucket & 0x80;
     }
@@ -88,7 +88,7 @@ struct FullCaseEntry
     ubyte n, size;// n number in batch, size - size of batch
     ubyte entry_len;// ==1 read ch, >1 - seq
 
-    @property auto value()const
+    @property auto value() const  @trusted pure nothrow
     { 
         return entry_len == 1 ? (&ch)[0..1] : cast(dstring)seq;
     }
@@ -185,7 +185,7 @@ void main(string[] argv)
         writeCombining();
         writeDecomposition();
         writeCompositionTable();
-        writeFunctions();       
+        writeFunctions();
     }
     catch(Exception e)
     {
@@ -313,7 +313,10 @@ void loadBlocks(string f)
             auto s2 = m.captures[2];
             auto a1 = parse!uint(s1, 16);
             auto a2 = parse!uint(s2, 16);
-            props["In"~to!string(m.captures[3])] = CodepointSet(a1, a2+1);
+            //@@@BUG 6178 memory corruption with
+            //props["In"~to!string(m.captures[3])] = CodepointSet(a1, a2+1);
+            auto set = CodepointSet(a1, a2+1);
+            props["In"~to!string(m.captures[3])] = set;
     })(f, r);
 }
 
@@ -334,8 +337,11 @@ void loadProperties(string inp)
             auto sb = m.captures[2];
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
-            if(name !in props)                
-                props[name] = CodepointSet.init;
+            if(name !in props)
+            {
+                auto set = CodepointSet.init;                
+                props[name] = set;
+            }
             props[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
             if(!aliasStr.empty)
             {
@@ -348,7 +354,10 @@ void loadProperties(string inp)
             auto sx = m.captures[3];
             uint x = parse!uint(sx, 16);
             if(name !in props)
-                props[name] = CodepointSet.init;
+            {
+                auto set = CodepointSet.init;
+                props[name] = set;
+            }
             props[name] |= x;
             if(!aliasStr.empty)
             {
@@ -363,7 +372,7 @@ void loadNormalization(string inp)
 {
     auto r = regex(`^(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*(NFK?[CD]_QC)\s*;\s*([NM])|#\s*[a-zA-Z_0-9]+=([a-zA-Z_0-9]+)`);
     string aliasStr;
-    scanUniData!((m){
+    scanUniData!((m){        
         auto name = to!string(m.captures[4]) ~ to!string(m.captures[5]);
         /*if(!m.captures[6].empty)
             aliasStr = to!string(m.captures[6]);
@@ -374,7 +383,10 @@ void loadNormalization(string inp)
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
             if(name !in normalization)
-                normalization[name] = CodepointSet.init;
+            {
+                auto set = CodepointSet.init;
+                normalization[name] = set;
+            }
             normalization[name].add(a,b+1);
         }
         else if(!m.captures[3].empty)
@@ -382,7 +394,10 @@ void loadNormalization(string inp)
             auto sx = m.captures[3];
             uint x = parse!uint(sx, 16);
             if(name !in normalization)
-                normalization[name] = CodepointSet.init;
+            {
+                auto set = CodepointSet.init;
+                normalization[name] = set;
+            }
             normalization[name] |= x;
         }
     })(inp, r);
@@ -472,7 +487,7 @@ void loadCombining(string inp)
     auto arr = combiningClass[1..255];
     foreach(i, clazz; arr)//0 is a default for all of 1M+ codepoints
     {
-        auto y = clazz.byChar;
+        auto y = clazz.byCodepoint;
         foreach(ch; y)
             combiningMapping[ch] = cast(ubyte)(i+1);
     }
@@ -786,7 +801,7 @@ void writeCombining()
     auto ct = codepointTrie!(ubyte, 7, 5, 9)(combiningMapping);
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
     {
-        foreach(ch; clazz.byChar)
+        foreach(ch; clazz.byCodepoint)
             assert(ct[ch] == i+1);
     }
     printBest3Level("combiningClass", combiningMapping);
@@ -827,7 +842,7 @@ bool propertyNameLess(Char)(const(Char)[] a, const(Char)[] b)
 
 //meta helpers to generate and pick the best trie by size & levels
 
-void printBest2Level(Set)( string name, in Set set)
+void printBest2Level(Set)( string name, Set set)
     if(isCodepointSet!Set)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
@@ -867,7 +882,8 @@ void printBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
 
 alias List_1 = TypeTuple!(4, 5, 6, 7, 8);
 
-auto printBest3Level(Set)(string name, in Set set)
+auto printBest3Level(Set)(string name, Set set)
+    if(isCodepointSet!Set)
 {
     // access speed trumps size, power of 2 is faster to access
     // e.g. 9, 5, 7 is far slower then 8, 5, 8 because of how bits breakdown:
@@ -919,7 +935,7 @@ void printBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
     print();
 }
 
-void printBest4Level(Set)(string name, in Set set)
+void printBest4Level(Set)(string name, Set set)
 {
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
     size_t min = size_t.max;
