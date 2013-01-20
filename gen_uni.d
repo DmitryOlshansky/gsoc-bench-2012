@@ -180,10 +180,14 @@ void main(string[] argv)
         loadCombining(combiningClassSrc);
         
         writeProperties();
+        writefln("
+static if(size_t.sizeof == %d) {", size_t.sizeof);        
         writeTries();
         writeCombining();
         writeDecomposition();
         writeCompositionTable();
+        writeln("
+}\n");
         writeFunctions();
     }
     catch(Exception e)
@@ -670,42 +674,56 @@ void writeDecomposition()
 {
     auto fullCanon = recursivelyDecompose(canonDecomp);
     auto fullCompat = recursivelyDecompose(compatDecomp);
-    auto decompCanonTable = assumeSorted(uniq(array(""d ~ fullCanon.values).sort()).array());
-    auto decompCompatTable = assumeSorted(uniq(array(""d ~ fullCompat.values).sort()).array());
-    
+    dstring decompCanonFlat = "\0"~array(fullCanon.values).sort.uniq.join("\0")~"\0";
+    dstring decompCompatFlat = "\0"~array(fullCompat.values).sort.uniq.join("\0")~"\0";
+    stderr.writeln("Canon flattened: ", decompCanonFlat.length);
+    stderr.writeln("Compat flattened: ", decompCompatFlat.length);
+   
     ushort[dchar] mappingCanon;
     ushort[dchar] mappingCompat;
     //0 serves as doesn't decompose value
     foreach(k, v; fullCanon)
     {
-        size_t idx = decompCanonTable.lowerBound(v).length;
-        assert(decompCanonTable[idx] == v);
-        assert(idx != 0);
+        size_t idx = decompCanonFlat.countUntil(v~"\0");          
+        enforce(idx != 0);
+        enforce(decompCanonFlat[idx..idx+v.length] == v);        
         mappingCanon[k] = cast(ushort)idx;
     }
     foreach(k, v; fullCompat)
     {
-        size_t idx = decompCompatTable.lowerBound(v).length;
-        assert(decompCompatTable[idx] == v);
-        assert(idx != 0);
+        size_t idx = decompCompatFlat.countUntil(v~"\0");
+        enforce(idx != 0);
+        enforce(decompCompatFlat[idx..idx+v.length] == v);        
         mappingCompat[k] = cast(ushort)idx;
     }
-    assert(decompCanonTable.length < 2^^16);
-    assert(decompCompatTable.length < 2^^16);
+    enforce(decompCanonFlat.length < 2^^16);
+    enforce(decompCompatFlat.length < 2^^16);
 
-    //these 2 are just a self-test for Trie template code
+    //these 2 are just self-test for Trie template code
     auto compatTrie = codepointTrie!(ushort, 12, 9)(mappingCompat, 0);
     auto canonTrie =  codepointTrie!(ushort, 12, 9)(mappingCanon, 0);
-    
+    import std.string;
     foreach(k, v; fullCompat)
-        assert(decompCompatTable[compatTrie[k]] == v);
+    {
+        auto idx = compatTrie[k];
+        enforce(idx == mappingCompat[k], "failed on compat");
+        size_t len = decompCompatFlat[idx..$].countUntil(0);
+        enforce(decompCompatFlat[idx..idx+len] == v, 
+            format("failed on compat: '%( 0x0%5x %)' not found", v));
+    }
     foreach(k, v; fullCanon)
-        assert(decompCanonTable[canonTrie[k]] == v);
+    {
+        auto idx = canonTrie[k];
+        enforce(idx == mappingCanon[k], "failed on canon");
+        size_t len = decompCanonFlat[idx..$].countUntil(0);
+        enforce(decompCanonFlat[idx..idx+len] == v,
+            format("failed on canon: '%( 0x%5x %)' not found", v));
+    }
 
     printBest3Level("compatMapping", mappingCompat, cast(ushort)0);
     printBest3Level("canonMapping", mappingCanon, cast(ushort)0);    
-    writeln("immutable decompCanonTable = ", decompCanonTable, ";");
-    writeln("immutable decompCompatTable = ", decompCompatTable, ";");
+    writefln("immutable dchar[] decompCanonTable = [%( 0x%x, %)];", decompCanonFlat);
+    writefln("immutable dchar[] decompCompatTable = [%( 0x%x, %)];", decompCompatFlat);
 }
 
 void writeFunctions()
@@ -781,8 +799,6 @@ void writeCompositionTable()
         // & starts with the right value
         assert(f.front[1] == val);
     }
-    //stderr.writeln("triT bytes: ", triT.bytes);
-    //stderr.writeln("duplets bytes: ", dupletes.length*dupletes[0].sizeof);
     writeln("enum composeIdxMask = (1<<11)-1, composeCntShift = 11;");
     write("immutable compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
     triT.store(stdout.lockingTextWriter());

@@ -4243,8 +4243,15 @@ unittest
 @trusted struct Grapheme
 {
 public:
-    this(C)(in C[] seq...)
+    this(C)(in C[] chars...)
         if(is(C : dchar))
+    {
+        this ~= chars;
+    }
+
+    this(Input)(Input seq)
+        if(!isDynamicArray!Input 
+            && isInputRange!Input && is(ElementType!Input : dchar))
     {
         this ~= seq;
     }
@@ -4327,7 +4334,7 @@ public:
 
     /// Append all of $(CODEPOINTS) from the input range $(D inp) to this Grapheme.
     ref opOpAssign(string op, Input)(Input inp)
-        if(isInputRange!Input)
+        if(isInputRange!Input && is(ElementType!Input : dchar))
     {
         static if(op == "~")
         {
@@ -4714,7 +4721,10 @@ public Grapheme decompose(UnicodeDecomposition decompType=Canonical)(dchar ch)
     ushort idx = mapping[ch];
     if(!idx) // not found, check hangul arithmetic decomposition
         return hangulDecompose(ch); 
-    return Grapheme(table[idx]);
+    auto decomp = table[idx..$].until(0);
+    import std.stdio;
+    writefln("%( 0x%05x %)", table[idx..min(idx+5, $)]);
+    return Grapheme(decomp);
 }
 
 //----------------------------------------------------------------------------
