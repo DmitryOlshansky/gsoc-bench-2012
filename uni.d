@@ -6,11 +6,12 @@
     $(P The $(D std.uni) module provides an implementation 
     of fundamental Unicode algorithms and data structures.)
 
-    $(P All primitives listed operate on Unicode characters and 
+    $(P All primitives listed operate on Unicode character and 
     sets of characters. For functions which operate on ASCII characters 
-    and ignore Unicode characters, see $(LINK2 std_ascii.html, std.ascii).
-    For definitions of Unicode character, code point and other terms 
-    used throughout this module see section $(B Terminology) below.
+    and ignore Unicode $(CHARACTER), see $(LINK2 std_ascii.html, std.ascii).
+    For definitions of Unicode $(CHARACTER), $(CODEPOINT) and other terms 
+    used throughout this module see the section $(S_LINK Terminology, terminology)
+    below.
     )
 
     $(P The focus of this module is the core needs of developing Unicode-aware 
@@ -38,16 +39,16 @@
     )
     )
     $(P It's recognized that an application may need further enhancements 
-    and extensions. It could be the need for less commonly known algorithms 
-    or tailoring existing ones for regional-specific needs. To help users 
-    with building any extra functionality beyond the core primitives
+    and extensions, such as less-commonly known algorithms, 
+    or tailoring existing ones for region-specific needs. To help users 
+    with building any extra functionality beyond the core primitives,
     the module provides: 
     )
     $(UL 
     $(LI
         A type for easy manipulation of sets of characters $(LREF CodepointSet).
         Besides the typical set algebra it provides an unusual feature: 
-        a D source code generator for detection of code points in this set.
+        a D source code generator for detection of $(CODEPOINTS) in this set.
         This is a boon for meta-programming parser frameworks,
         and is used internally to power classification in small 
         sets like $(LREF isWhite).
@@ -55,9 +56,10 @@
     $(LI
         A way to construct optimal packed multi-stage tables also known as a 
         special case of $(LUCKY Trie).
-        $(LREF codepointTrie), $(LREF codepointSetTrie) construct custom tries 
-        that map dchar to value. The end result is fast and predictable $(BIGOH 1) 
-        lookup that powers functions like $(LREF isAlpha), $(LREF combiningClass)
+        The functions $(LREF codepointTrie), $(LREF codepointSetTrie) 
+        construct custom tries that map dchar to value.
+        The end result is a fast and predictable $(BIGOH 1) lookup that powers 
+        functions like $(LREF isAlpha) and $(LREF combiningClass),
         but for user-defined data sets.
     )
     $(LI 
@@ -67,11 +69,11 @@
         property of a given normalization form.
     )
     $(LI 
-        Access to the commonly used predefined sets of code points. The commonly 
-        defined one can be observed in the CLDR utility, on page
+        Access to a large selection of commonly used sets of $(CODEPOINTS). 
+        The exact names can be observed in the CLDR utility, on page
         $(WEB www.unicode.org/cldr/utility/properties.jsp, property index).
-        supported ones include Script, Block and General Category.
-        See $(LREF unicode) for easy and compile-time checked queries.
+        Supported ones include Script, Block and General Category.
+        See $(LREF unicode) for easy and (optionally) compile-time checked queries.
     )
     )
     $(SECTION Synopsis)
@@ -141,11 +143,11 @@
     definition as found in The Unicode Standard Core Specification, 
     specifically the 3rd chapter.)
 
-    $(P $(I Code point.) Any value in the Unicode codespace; 
+    $(P $(DEF Code point) Any value in the Unicode codespace; 
     that is, the range of integers from 0 to 10FFFF (hex).
     Not all code points are assigned to encoded characters.
     )
-    $(P $(I Code unit.) The minimal bit combination that can represent 
+    $(P $(DEF Code unit) The minimal bit combination that can represent 
     a unit of encoded text for processing or interchange.  
     Depending on the encoding this could be:
     8-bit code units in the UTF-8 (($D char)), 
@@ -154,7 +156,7 @@
     $(I Note that in UTF-32, a code unit is a code point 
     and is represented by the D $(D dchar) type.)
     )
-    $(P $(I Abstract character.) A unit of information used for the organization, 
+    $(P $(DEF Abstract character) A unit of information used for the organization, 
     control, or representation of textual data.
     Note that:
         $(UL 
@@ -178,79 +180,83 @@
         )
     
     )
-    $(P $(I Glyph.) The actual, concrete image of a glyph representation 
+    $(P $(DEF Glyph) The actual, concrete image of a glyph representation 
     having been rasterized or otherwise imaged onto some display surface.)
-    $(P $(I Encoded character) : An association (or mapping) 
+    $(P $(DEF Encoded character) An association (or mapping) 
     between an abstract character and a code point.)    
-    $(P $(I Character.) Typically differs by context. 
+    $(P $(DEF Character) Typically differs by context. 
     For the purpose of this documentation 
     the term $(I character) implies $(I encoded character), 
     that is a code point having an assigned abstract character 
     (a symbolic meaning).)
     
-    avoided in this document as potentially confusing.)
-    
     $(SECTION Construction of lookup tables)
 
-    $(P Unicode standard describes a set of algorithms that all 
-    depend on having an ability to quickly lookup various properties 
-    of a code point. Given the the codespace of about 1 million code points,
-    it is not a trivial task to providing a space efficient solution for 
-    the whole multitude of properties.)
+    $(P The Unicode standard describes a set of algorithms that 
+    depend on having the ability to quickly look up various properties 
+    of a code point. Given the the codespace of about 1 million $(CODEPOINTS),
+    it is not a trivial task to provide a space-efficient solution for 
+    the multitude of properties.)
 
     $(P Common approaches such as hash-tables or binary search over
      sorted code point intervals (as in $(LREF InversionList)) are insufficient.
-     Hash-tables are having enormous memory footprint and binary search 
+     Hash-tables have enormous memory footprint and binary search 
      over intervals is not fast enough for some heavy-duty algorithms.      
      )
 
     $(P The recommended solution (see Unicode Implementation Guidelines) 
-    solution is using multi-stage tables that is a case of 
+    is using multi-stage tables that is an instance of 
     $(WEB http://en.wikipedia.org/wiki/Trie, Trie) with integer keys
-    and fixed number of stages. For the rest of the section 
-    it's called fixed trie. The following describes a particular implementation 
-    that is aimed for the speed of access at the expense of ideal size savings.
- 
+    and a fixed number of stages. For the reminder of the section 
+    it will be called a fixed trie. The following describes a particular 
+    implementation that is aimed for the speed of access at the expense 
+    of ideal size savings.
+    )
+
     $(P Taking 2-level Trie as an example the principle of operation is as follows.
-        Split number of bits in a key (code point, 21 bits) in 2 components 
-        (e.g. 15 and 8).  The first is the number of bits in the index of trie and 
-        the other is number of bits of the page of trie.
-        The layout of trie is then an array of size 2^^bits-of-index followed
-        an array of memory chunks of size 2^^bits-of-page/size-of-element. 
+        Split the number of bits in a key (code point, 21 bits) into 2 components 
+        (e.g. 15 and 8).  The first is the number of bits in the index of the trie
+         and the other is number of bits in each page of the trie.
+        The layout of the trie is then an array of size 2^^bits-of-index followed
+        an array of memory chunks of size 2^^bits-of-page/bits-per-element. 
     )
 
     $(P The number of pages is variable (but no less then 1) 
-        unlike the number of entries in the index. Slots of index 
-        all have to contain a number of page that is present. The lookup is then 
-        just a couple of operations - slice upper bits, lookup an index for these,
+        unlike the number of entries in the index. The slots of the index 
+        all have to contain a number of a page that is present. The lookup is then 
+        just a couple of operations - slice the upper bits, 
+        lookup an index for these, take a page at this index and use
+        the lower bits as an offset within this page.
 
-        The pseudo-code is:
+        Assuming that pages are laid out consequently 
+        in one array at $(D pages), the pseudo-code is:
     )
     ---        
     auto elemsPerPage = 2^^bits_per_page/Value.sizeOfInBits;
-    pagesStart[index[n>>bits_per_page]*elemsPerPage  +
-        [n & (elemsPerPage-1)];
+    pages[index[n>>bits_per_page]][n & (elemsPerPage-1)];
     ---
     $(P Where if the $(D elemsPerPage) is a power of 2 the whole process is 
-    a handful of simple instructions and 2 array reads. The more levels of trie 
-    are introduced by recursing on this notion - the index array is treated 
-    as values. The number of bits in index is then again split into 2 parts, with 
-    pages over 'current-index' and new 'upper-index'. )
+    a handful of simple instructions and 2 array reads. Subsequent levels 
+    of the trie are introduced by recursing on this notion - the index array
+    is treated as values. The number of bits in index is then again 
+    split into 2 parts, with pages over 'current-index' and the new 'upper-index'. 
+    )
 
-    $(P For completeness the level 1 trie is  simply an array.
-    Current implementation takes advantage of bit-packing values 
-    when the range is known to be limited in the advance (such as $(D bool)), 
-    see also $(LREF BitPacked) for enforcing it manually. 
+    $(P For completeness a level 1 trie is simply an array.
+    The current implementation takes advantage of bit-packing values 
+    when the range is known to be limited in advance (such as $(D bool)). 
+    See also $(LREF BitPacked) for enforcing it manually. 
     The major size advantage however comes from the fact 
-    that multiple identical pages on $(B every level) are merged by construction.
+    that multiple $(B identical pages on every level are merged) by construction.
     )
 
     $(P The process of construction of a trie is more involved and is hidden from 
-    the user in a form of convince functions: $(LREF codepointTrie), 
+    the user in a form of convenience functions: $(LREF codepointTrie), 
     $(LREF codepointSetTrie) and even more convenient $(LREF toTrie). 
     In general a set or built-in AA with $(D dchar) type 
     can be turned into a trie. The trie object in this module 
-    is an read-only (immutable), it's effectively frozen after construction.)
+    is read-only (immutable); it's effectively frozen after construction.
+    )
     
     References:
         $(WEB www.digitalmars.com/d/ascii-table.html, ASCII Table),
@@ -258,7 +264,7 @@
         $(WEB www.unicode.org, The Unicode Consortium),
         $(WEB www.unicode.org/reports/tr15/, Unicode normalization forms), 
         $(WEB www.unicode.org/reports/tr29/, Unicode text segmentation)
-        $(WEB http://www.unicode.org/uni2book/ch05.pdf, 
+        $(WEB www.unicode.org/uni2book/ch05.pdf, 
             Unicode Implementation Guidelines)
     Trademarks:
         Unicode(tm) is a trademark of Unicode, Inc.
@@ -274,9 +280,13 @@
 
 Macros:
 
-SECTION = <h3>$0</h3>
-HINTED = <abbr title="$+">$1</abbr>
-S_LINK = 
+SECTION = <h3><a id="$1">$0</a></h3>
+DEF = <div><a id="$1"><i>$0</i></a></div>
+S_LINK = <a href="#$1">$+</a>
+CODEPOINT = $(S_LINK Code point, code point)
+CODEPOINTS = $(S_LINK Code point, code points)
+CHARACTER = $(S_LINK Character, character)
+CHARACTERS = $(S_LINK Character, characters)
 +/
 module uni;
 
@@ -300,8 +310,8 @@ else version(X86_64)
 else
     enum hasUnalignedReads = false; //better be safe then sorry
 
-enum dchar lineSep = '\u2028'; /// UTF line separator code point. 
-enum dchar paraSep = '\u2029'; /// UTF paragraph separator code point.
+enum dchar lineSep = '\u2028'; /// UTF line separator $(CODEPOINT). 
+enum dchar paraSep = '\u2029'; /// UTF paragraph separator $(CODEPOINT).
 
 // test the intro example
 unittest
@@ -370,7 +380,7 @@ private:
 enum lastDchar = 0x10FFFF;
 
 auto force(T, F)(F from)
-    if(isIntegral!T && !is(T == F))
+    if(isIntegral!T && !is(T == F)) 
 {
     assert(from <= T.max && from >= T.min);
     return cast(T)from;
@@ -392,7 +402,8 @@ auto force(T, F)(F from)
 // cheap algorithm grease ;)
 auto adaptIntRange(T, F)(F[] src)
 {
-    static struct ConvertIntegers//@@@BUG when in the 9 hells will map be copyable again?!
+    //@@@BUG when in the 9 hells will map be copyable again?!
+    static struct ConvertIntegers
     {
         private F[] data;
 
@@ -418,7 +429,7 @@ auto adaptIntRange(T, F)(F[] src)
     return ConvertIntegers(src);
 }
 
-// repeat bit X times pattern in val assuming it's length is 'bits'
+// repeat X times the bit-pattern in val assuming it's length is 'bits'
 size_t replicateBits(size_t times, size_t bits)(size_t val)
 {
     static if(times == 1)
@@ -732,9 +743,10 @@ pure nothrow:
         original = arr;
     }
 
-    static if(factor == bytesPerWord// can pack by byte
+    static if(factor == bytesPerWord// can safely pack by byte
+         || factor == 1 //a whole word at a time
          || ((factor == bytesPerWord/2 || factor == bytesPerWord/4) 
-                && hasUnalignedReads))
+                && hasUnalignedReads)) //this needs unaligned reads
     {   
         static if(factor == bytesPerWord)
             alias U = ubyte;
@@ -797,10 +809,11 @@ pure nothrow:
         void opIndexAssign(TypeOfBitPacked!T val, size_t n)
         in
         {
+            //@@@ BUG text is not pure
+            /*text("mask: ",mask, " bits: ", bits
+                        , "value:", val, " > ", mask)*/
             static if(isIntegral!T)
-                assert(val <= mask, 
-                    text("mask: ",mask, " bits: ", bits
-                        , "value:", val, " > ", mask));
+                assert(val <= mask);
         }
         body
         {
@@ -1344,21 +1357,21 @@ public template isIntegralPair(T, V=uint)
 
 
 /**
-    The recommended default type for set of code points.
+    The recommended default type for set of $(CODEPOINTS).
     For details, see the current implementation: $(LREF InversionList).
 */
 public alias InversionList!GcPolicy CodepointSet;
 
 /**
     The recommended type of $(XREF _typecons, Tuple)
-    to represent [a, b) intervals of code points. As used in $(LREF InversionList).
+    to represent [a, b) intervals of $(CODEPOINTS). As used in $(LREF InversionList).
     Any interval type should pass $(LREF isIntegralPair) trait.
 */
 public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
 
 /**
     $(P 
-    $(D InversionList) is a set of code points
+    $(D InversionList) is a set of $(CODEPOINTS)
     represented as an array of open-right [a, b$(RPAREN) 
     intervals (see $(LREF CodepointInterval) above). 
     The name comes from the way the representation reads left to right.
@@ -1376,7 +1389,7 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
     then positive until 61, and so on.
     As seen this provides a space-efficient storage of highly redundant data 
     that comes in long runs. 
-    A description which Unicode code point properties fit nicely.
+    A description which Unicode $(CODEPOINT) properties fit nicely.
     )
     
     $(P Sets are value types (just like $(D int) is) thus they 
@@ -1402,7 +1415,7 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
 
     Note: 
     $(P It's not recommended to rely on the template parameters
-    or the exact type of a current code point in $(D std.uni). 
+    or the exact type of a current $(CODEPOINT) set in $(D std.uni). 
     The type and parameters may change when standard 
     allocators design is finalized.
     Use $(LREF isCodepointSet) with templates or just stick with the default 
@@ -1444,7 +1457,7 @@ public:
     }   
 
     /**
-        Get range that spans all of the code point intervals in this $(LREF InversionList).
+        Get range that spans all of the $(CODEPOINT) intervals in this $(LREF InversionList).
     */
     @property auto byInterval() 
     {        
@@ -1498,7 +1511,7 @@ public:
         return sharSwitchLowerBound!"a<=b"(data[], val) & 1;
     }
 
-    /// Number of code points in this set
+    /// Number of $(CODEPOINTS) in this set
     @property size_t length()
     {
         size_t sum = 0;
@@ -1595,7 +1608,7 @@ public:
             static assert(0, "no operator "~op~" defined for Set");
     }
 
-    /// Range that spans each code point in this set.
+    /// Range that spans each $(CODEPOINT) in this set.
     @property auto byCodepoint()
     {
         static struct CodepointRange
@@ -1738,7 +1751,7 @@ public:
         $(D funcName) taking a single $(D dchar) argument. If $(D funcName) is empty
         the code is adjusted to be a lambda function.
 
-        The function generated tests if the code point passed
+        The function generated tests if the $(CODEPOINT) passed
         belongs to this set or not. The result is to be used with string mixin.
         The intended usage area is aggressive optimization via meta programming 
         in parser generators and the like.
@@ -1868,7 +1881,7 @@ public:
         return code;
     }
 
-    /// True if this set doesn't contain any code points.
+    /// True if this set doesn't contain any $(CODEPOINTS).
     @property bool empty() const
     {
         return data.length == 0;
@@ -2061,7 +2074,7 @@ private:
 };
 
 // pedantic version for ctfe, and aligned-access only architectures
-@trusted uint safeRead24(const ubyte* ptr, size_t idx)
+@trusted uint safeRead24(const ubyte* ptr, size_t idx) pure nothrow
 {
     idx *= 3;
     version(LittleEndian)
@@ -2073,7 +2086,7 @@ private:
 }
 
 // ditto
-@trusted void safeWrite24(ubyte* ptr, uint val, size_t idx)
+@trusted void safeWrite24(ubyte* ptr, uint val, size_t idx) pure nothrow
 {
     idx *= 3;
     version(LittleEndian)
@@ -2091,7 +2104,7 @@ private:
 }
 
 // unaligned x86-like read/write functions
-@trusted uint unalignedRead24(const ubyte* ptr, size_t idx)
+@trusted uint unalignedRead24(const ubyte* ptr, size_t idx) pure nothrow
 {
     uint* src = cast(uint*)(ptr+3*idx);
     version(LittleEndian)
@@ -2101,7 +2114,7 @@ private:
 }
 
 // ditto
-@trusted void unalignedWrite24(ubyte* ptr, uint val, size_t idx)
+@trusted void unalignedWrite24(ubyte* ptr, uint val, size_t idx) pure nothrow
 {
     uint* dest = cast(uint*)(cast(ubyte*)ptr + 3*idx);
     version(LittleEndian)
@@ -2110,7 +2123,7 @@ private:
         *dest = (val<<8) | (*dest & 0xFF);
 }
 
-uint read24(const ubyte* ptr, size_t idx)
+uint read24(const ubyte* ptr, size_t idx) pure nothrow
 {
     static if(hasUnalignedReads)
         return __ctfe ? safeRead24(ptr, idx) : unalignedRead24(ptr, idx);
@@ -2118,7 +2131,7 @@ uint read24(const ubyte* ptr, size_t idx)
         return safeRead24(ptr, idx);
 }
 
-void write24(ubyte* ptr, uint val, size_t idx)
+void write24(ubyte* ptr, uint val, size_t idx) pure nothrow
 {
     static if(hasUnalignedReads)
         return __ctfe ? safeWrite24(ptr, val, idx) : unalignedWrite24(ptr, val, idx);
@@ -3110,11 +3123,11 @@ template isValidArgsForTrie(Key, Args...)
 }
 
 /**
-    A shorthand for creating a custom multi-level Trie from a $(D CodepointSet).
-    $(D sizes) are numbers of bits used per level, 
-    the most significant bits used first.    
+    A shorthand for creating a custom multi-level fixed Trie 
+    from a $(D CodepointSet). $(D sizes) are numbers of bits per level, 
+    with the most significant bits used first.    
 
-    Note: the sum of $(D sizes) must be equal 21.
+    Note: The sum of $(D sizes) must be equal 21.
 
     See also even simpler $(LREF toTrie).
     
@@ -3158,13 +3171,13 @@ public template CodepointSetTrie(sizes...)
 }
 
 /**
-    A slightly more general tool for building fixed-stage $(D Trie)
-    for unicode data without having to use $(D TrieBuilder) directly.
+    A slightly more general tool for building fixed $(D Trie)
+    for the Unicode data.
 
-    Specifically unlike $(D codepointSetTrie) it's allows creating mappings of $(D dchar)
-    to an arbitrary type $(D T).
+    Specifically unlike $(D codepointSetTrie) it's allows creating mappings 
+    of $(D dchar) to an arbitrary type $(D T).
 
-    Note: overload taking $(D CodepointSet)s will naturally convert 
+    Note: Overload taking $(D CodepointSet)s will naturally convert 
     only to bool mapping $(D Trie)s.
 */
 public template codepointTrie(T, sizes...)
@@ -3334,15 +3347,14 @@ public template buildTrie(Value, Key, Args...)
 
 /++
     Convenience function to construct optimal configurations for 
-    packed Trie from any $(D set) of code points.
+    packed Trie from any $(D set) of $(CODEPOINTS).
     
-    $(D level) indicates number of Trie levels to use, 
-    allowed values are: 1, 2, 3 or 4. 
-
-    Levels represent different trade-offs speed-size wise.
+    The parameter $(D level) indicates the number of trie levels to use, 
+    allowed values are: 1, 2, 3 or 4. Levels represent different trade-offs 
+    speed-size wise.
     
-    Level 1 is fastest and the most memory hungry (a bit array).
-    Level 4 is the slowest and has the smallest footprint
+    $(P Level 1 is fastest and the most memory hungry (a bit array). )
+    $(P Level 4 is the slowest and has the smallest footprint. )
 
     Note:
     Level 4 stays very practical (being faster and more predictable)
@@ -3391,7 +3403,7 @@ public auto toDelegate(Set)(Set set)
     Parameter $(D sz) indicates that the value is confined 
     to the range of [0, 2^^sz$(RPAREN). With this knowledge it can be 
     packed more tightly when stored in certain 
-    data-structures like $(LREF Trie). )
+    data-structures like trie. )
 
     Note:
     $(P The $(D BitPacked!(T, sz)) is implicitly convertible to $(D T)
@@ -3409,8 +3421,8 @@ struct BitPacked(T, size_t sz)
 
 /*
     Depending on the form of the passed argument $(D bitSizeOf) returns 
-    the amount of bits required  to represent a given type 
-    or of a return type of a function.
+    the amount of bits required to represent a given type 
+    or a return type of a given functor.
 */
 template bitSizeOf(Args...)
     if(Args.length == 1)
@@ -3844,13 +3856,13 @@ bool loadUnicodeSet(Set, C)(in C[] name, ref Set dest)
 }
 
 /**
-    A single entry point to lookup Unicode code point sets by name or alias of 
+    A single entry point to lookup Unicode $(CODEPOINT) sets by name or alias of 
     block, script or general category.
 
     It uses well defined standard rules of property name lookup.
     This includes matching of names, e.g.
     White_Space, white-SpAce and whitespace are all considered equals 
-    and yield the same set of white space characters.
+    and yield the same set of white space $(CHARACTERS).
 */
 public struct unicode
 {
@@ -4194,7 +4206,8 @@ size_t graphemeStride(C)(in C[] input, size_t index)
 
 /++
     Read and return one full grapheme cluster from an input range of dchar $(D inp). 
-    Note: this function modifies $(D inp) and thus $(D inp) 
+    Note: 
+    This function modifies $(D inp) and thus $(D inp) 
     must be an L-value.
 +/
 Grapheme decodeGrapheme(Input)(ref Input inp)
@@ -4220,14 +4233,14 @@ unittest
 }
 
 /++
-    $(P A structure designed to effectively pack code points of a grapheme cluster.)
+    $(P A structure designed to effectively pack $(CODEPOINTS) of a grapheme cluster.)
 
     $(P $(D Grapheme) has value semantics so 2 copies of $(D Grapheme) 
     always refer to distinct objects. In the most actual scenarios $(D Grapheme) 
     fits on stack and avoids memory allocation overhead for all but quite 
     long clusters. )
 +/
-struct Grapheme
+@trusted struct Grapheme
 {
 public:
     this(C)(in C[] seq...)
@@ -4236,45 +4249,53 @@ public:
         this ~= seq;
     }
 
-    /// Get code point at given index in this cluster.
-    dchar opIndex(size_t index) const
+    /// Gets a $(CODEPOINT) at the given index in this cluster.
+    dchar opIndex(size_t index) const  pure nothrow
     {
         return read24(isBig ? ptr_ : small_.ptr, index);
     }
 
     /++
-        Write code point at given index of this cluster.
+        Write $(CODEPOINT) $(D ch) at given index of this cluster.
 
-        Warning: use of this facility may invalidate grapheme cluster, see also $(D valid).
+        Warning:
+        Use of this facility may invalidate grapheme cluster, 
+        see also $(D valid).
      +/
-    void opIndexAssign(dchar ch, size_t index)
+    void opIndexAssign(dchar ch, size_t index)  pure nothrow
     {
         write24(isBig ? ptr_ : small_.ptr, ch, index);
     }
 
     /++
-        Random-access range over Grapheme's code points.
+        Random-access range over Grapheme's $(CHARACTERS).
 
-        Warning: Invalidates when this Grapheme leaves the scope.
+        Warning: Invalidates when this Grapheme leaves the scope, 
+        attempts to use it would lead.
     +/
-    auto opSlice(size_t a, size_t b)
+    @system auto opSlice(size_t a, size_t b) pure nothrow
     {
         return sliceOverIndexed(a, b, &this);
     }
 
     /// ditto
-    auto opSlice()
+    @system auto opSlice() pure nothrow
     {
         return sliceOverIndexed(0, length, &this);
     }
 
-    /// Grapheme cluster length in code points.
-    @property size_t length() const 
+    /// Grapheme cluster length in $(CODEPOINTS).
+    @property size_t length() const  pure nothrow
     { 
         return isBig ? len_ : slen_ & 0x7F; 
     }
 
-    /// Append $(D ch) to this grapheme.
+    /++
+        Append $(CODEPOINT) $(D ch) to this grapheme.
+        Warning: 
+        Use of this facility may invalidate grapheme cluster, 
+        see also $(D valid).
+    +/
     ref opOpAssign(string op)(dchar ch)
     {
         static if(op == "~")
@@ -4304,7 +4325,7 @@ public:
             static assert(false, "No operation "~op~" defined for Grapheme");
     }
 
-    /// Append all of code points from the input range $(D inp) to this Grapheme.
+    /// Append all of $(CODEPOINTS) from the input range $(D inp) to this Grapheme.
     ref opOpAssign(string op, Input)(Input inp)
         if(isInputRange!Input)
     {
@@ -4322,12 +4343,12 @@ public:
         True if this object contains valid extended grapheme cluster.
         Decoding primitives of this module always return valid $(D Grapheme).
 
-        Appending to and direct manipulation of grapheme's code points may 
+        Appending to and direct manipulation of grapheme's $(CODEPOINTS) may 
         render it no longer valid. Certain applications may chose to use 
-        Grapheme as a "small string" of code points and ignore this property
+        Grapheme as a "small string" of $(CODEPOINTS) and ignore this property
         entirely.
     +/
-    @property bool valid() /*const*/
+    @property bool valid()() /*const*/
     {
         auto r = this[];
         genericDecodeGrapheme!false(r);
@@ -4392,8 +4413,14 @@ private:
 
     void setBig(){ slen_ |= small_flag; }
 
-    @property size_t smallLength(){ return slen_ & small_mask; }
-    @property ubyte isBig() const { return slen_ & small_flag; }
+    @property size_t smallLength() pure nothrow
+    { 
+        return slen_ & small_mask; 
+    }
+    @property ubyte isBig() const  pure nothrow 
+    { 
+        return slen_ & small_flag; 
+    }
 }
 
 unittest
@@ -4446,7 +4473,7 @@ unittest
     then $(LREF icmp). However keep in mind the warning below.)
 
     Warning: 
-    This function only handles 1:1 code point mapping
+    This function only handles 1:1 $(CODEPOINT) mapping
     and thus is not sufficient for certain alphabets 
     like German, Greek and few others.
 +/
@@ -4526,7 +4553,7 @@ private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
     $(P Does case insensitive comparison of $(D str1) and $(D str2).
     Follows the rules of full case-folding mapping.
     This includes matching as equal german ß with "ss" and 
-    other 1:M code point mappings unlike $(LREF sicmp).
+    other 1:M $(CODEPOINT) mappings unlike $(LREF sicmp).
     The cost of $(D icmp) being pedantically correct is 
     slightly worse performance. 
     )
@@ -4590,7 +4617,7 @@ unittest
     which are not. )
 
     $(P Canonical equivalence is the criterion used to determine whether two 
-    code point sequences are considered identical for interpretation. )
+    $(CODEPOINT) sequences are considered identical for interpretation. )
 +/
 ubyte combiningClass(dchar ch)
 {
@@ -4619,8 +4646,8 @@ enum {
 };
 
 /++
-    Try to canonically compose 2 characters.
-    Returns the composed character if they do compose and dchar.init otherwise.
+    Try to canonically compose 2 $(CHARACTERS).
+    Returns the composed $(CHARACTER) if they do compose and dchar.init otherwise.
 
     The assumption is that $(D first) comes before $(D second) in the original text, 
     usually meaning that the first is a starter.
@@ -4653,7 +4680,7 @@ public dchar compose(dchar first, dchar second)
     On success returns the composed LV or LVT hangul syllable.
 
     If any of $(D lead) and $(D vowel) are not a valid hangul jamo 
-    of the respective character class returns dchar.init.
+    of the respective $(CHARACTER) class returns dchar.init.
 +/
 public dchar composeJamo(dchar lead, dchar vowel, dchar trailing=dchar.init)
 {
@@ -4669,7 +4696,7 @@ public dchar composeJamo(dchar lead, dchar vowel, dchar trailing=dchar.init)
 }
 
 /++
-    Returns a full Canonical (by default) or Compatibility decomposition of character 
+    Returns a full Canonical (by default) or Compatibility decomposition of $(CHARACTER) 
     $(D ch). If no decomposition is available returns Grapheme with the $(D ch) itself.
 +/
 public Grapheme decompose(UnicodeDecomposition decompType=Canonical)(dchar ch)
@@ -5069,7 +5096,7 @@ else
 public:
 
 /++
-    Whether or not $(D c) is a Unicode whitespace character.
+    Whether or not $(D c) is a Unicode whitespace $(CHARACTER).
     (general Unicode category: Part of C0(tab, vertical tab, form feed,
     carriage return, and linefeed characters), Zs, Zl, Zp, and NEL(U+0085))
   +/
@@ -5085,7 +5112,7 @@ bool isUniLower(dchar c) @safe pure nothrow
 }
 
 /++
-    Return whether $(D c) is a Unicode lowercase character.
+    Return whether $(D c) is a Unicode lowercase $(CHARACTER).
 +/
 bool isLower(dchar c) @safe pure nothrow
 {
@@ -5122,7 +5149,7 @@ bool isUniUpper(dchar c) @safe pure nothrow
 }
 
 /++
-    Return whether $(D c) is a Unicode uppercase character.
+    Return whether $(D c) is a Unicode uppercase $(CHARACTER).
 +/
 bool isUpper(dchar c) @safe pure nothrow
 {
@@ -5158,7 +5185,7 @@ dchar toUniLower(dchar c) @safe pure nothrow
 }
 
 /++
-    If $(D c) is a Unicode uppercase character, then its lowercase equivalent
+    If $(D c) is a Unicode uppercase $(CHARACTER), then its lowercase equivalent
     is returned. Otherwise $(D c) is returned.
     
     Warning: certain alphabets like German, Greek have no 1:1
@@ -5226,7 +5253,7 @@ dchar toUniUpper(dchar c) @safe pure nothrow
 }
 
 /++
-    If $(D c) is a Unicode lowercase character, then its uppercase equivalent
+    If $(D c) is a Unicode lowercase $(CHARACTER), then its uppercase equivalent
     is returned. Otherwise $(D c) is returned.
      
     Warning: 
@@ -5295,7 +5322,7 @@ bool isUniAlpha(dchar c) @safe pure nothrow
 }
 
 /++
-    Returns whether $(D c) is a Unicode alphabetic character
+    Returns whether $(D c) is a Unicode alphabetic $(CHARACTER)
     (general Unicode category: Alphabetic).
 +/
 bool isAlpha(dchar c) @safe pure nothrow
@@ -5347,7 +5374,7 @@ unittest
 }
 
 /++
-    Returns whether $(D c) is a Unicode numerical character
+    Returns whether $(D c) is a Unicode numerical $(CHARACTER)
     (general Unicode category: Nd, Nl, No).
 +/
 bool isNumber(dchar c) @safe pure nothrow
@@ -5366,7 +5393,7 @@ unittest
 
 
 /++
-    Returns whether $(D c) is a Unicode punctuation character
+    Returns whether $(D c) is a Unicode punctuation $(CHARACTER)
     (general Unicode category: Pd, Ps, Pe, Pc, Po, Pi, Pf).
 +/
 bool isPunctuation(dchar c) @safe pure nothrow
@@ -5389,7 +5416,7 @@ unittest
 
 
 /++
-    Returns whether $(D c) is a Unicode symbol character
+    Returns whether $(D c) is a Unicode symbol $(CHARACTER)
     (general Unicode category: Sm, Sc, Sk, So).   
 +/
 bool isSymbol(dchar c) @safe pure nothrow
@@ -5409,9 +5436,9 @@ unittest
 }
 
 /++
-    Returns whether $(D c) is a Unicode space character
+    Returns whether $(D c) is a Unicode space $(CHARACTER)
     (general Unicode category: Zs)
-    Note: This doesn't include '\n', '\r', \t' and other non-space characters.
+    Note: This doesn't include '\n', '\r', \t' and other non-space $(CHARACTER).
     For commonly used less strict semantics see $(LREF isWhite).
 +/
 bool isSpace(dchar c) @safe pure nothrow
@@ -5431,7 +5458,7 @@ unittest
 
 
 /++
-    Returns whether $(D c) is a Unicode graphical character
+    Returns whether $(D c) is a Unicode graphical $(CHARACTER)
     (general Unicode category: L, M, N, P, S, Zs).
  
 +/
@@ -5453,7 +5480,7 @@ unittest
 
 
 /++
-    Returns whether $(D c) is a Unicode control character
+    Returns whether $(D c) is a Unicode control $(CHARACTER)
     (general Unicode category: Cc).
 +/
 bool isControl(dchar c) @safe pure nothrow
@@ -5475,7 +5502,7 @@ unittest
 
 
 /++
-    Returns whether $(D c) is a Unicode formatting character
+    Returns whether $(D c) is a Unicode formatting $(CHARACTER)
     (general Unicode category: Cf).
 +/
 bool isFormat(dchar c) @safe pure nothrow
@@ -5495,7 +5522,7 @@ unittest
 // if need be they can be generated from unicode data as well
 
 /++
-    Returns whether $(D c) is a Unicode Private Use code point
+    Returns whether $(D c) is a Unicode Private Use $(CODEPOINT)
     (general Unicode category: Co).
 +/
 bool isPrivateUse(dchar c) @safe pure nothrow
@@ -5506,7 +5533,7 @@ bool isPrivateUse(dchar c) @safe pure nothrow
 }
 
 /++
-    Returns whether $(D c) is a Unicode surrogate code point
+    Returns whether $(D c) is a Unicode surrogate $(CODEPOINT)
     (general Unicode category: Cs).
 +/
 bool isSurrogate(dchar c) @safe pure nothrow
@@ -5532,7 +5559,7 @@ bool isSurrogateLo(dchar c) @safe pure nothrow
 
 /++
     Returns whether $(D c) is a Unicode non-character i.e. 
-    a code point with no assigned abstract character.
+    a $(CODEPOINT) with no assigned abstract character.
     (general Unicode category: Cn)
 +/
 bool isNonCharacter(dchar c) @safe pure nothrow
