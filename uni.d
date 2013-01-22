@@ -2142,7 +2142,6 @@ void write24(ubyte* ptr, uint val, size_t idx) pure nothrow
 // Packed array of 24-bit integers, COW semantics.
 @trusted struct Uint24Array(SP=GcPolicy)
 {
-    import std.stdio;
     this(Range)(Range range)
         if(isInputRange!Range && hasLength!Range)
     {
@@ -4722,8 +4721,6 @@ public Grapheme decompose(UnicodeDecomposition decompType=Canonical)(dchar ch)
     if(!idx) // not found, check hangul arithmetic decomposition
         return hangulDecompose(ch); 
     auto decomp = table[idx..$].until(0);
-    import std.stdio;
-    writefln("%( 0x%05x %)", table[idx..min(idx+5, $)]);
     return Grapheme(decomp);
 }
 
