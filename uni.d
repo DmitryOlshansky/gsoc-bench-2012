@@ -1428,7 +1428,7 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
     intervals (see $(LREF CodepointInterval) above). 
     The name comes from the way the representation reads left to right.
     For instance a set of all values [10, 50$(RPAREN), [80, 90$(RPAREN), 
-    plus a singular 60 looks like this:
+    plus a singular value 60 looks like this:
     )
     ---
     10, 50, 60, 61, 80, 90
@@ -1437,11 +1437,13 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
     The way to read this is: start with negative meaning that all numbers 
     smaller the next one are not present in this set (and positive the contrary). 
     Then switch positive/negative after each number passed from left to right.
-    This way negative spans until 10, then positive until 50, then negative until 60, 
-    then positive until 61, and so on.
+    )
+    $(P This way negative spans until 10, then positive until 50, 
+    then negative until 60, then positive until 61, and so on.
     As seen this provides a space-efficient storage of highly redundant data 
-    that comes in long runs. 
-    A description which Unicode $(CODEPOINT) properties fit nicely.
+    that comes in long runs. A description which Unicode $(CHARACTER) 
+    properties fit nicely. The technique itself could be seen as a variation 
+    on $(LUCKY RLE encoding).
     )
     
     $(P Sets are value types (just like $(D int) is) thus they 
@@ -4838,15 +4840,15 @@ unittest
     assert(combiningClass('\u1939') == 222);
 }
 
-/// Unicode decomposition type.
+/// Unicode character decomposition type.
 enum UnicodeDecomposition {
     Canonical,
     Compatibility
 };
 
 /**
-    Shorthand aliases for decomposition type, passed as a
-    template paramter to $(LREF decompose).
+    Shorthand aliases for character decomposition type, passed as a
+    template parameter to $(LREF decompose).
 */
 enum { 
     Canonical = UnicodeDecomposition.Canonical,
@@ -4865,7 +4867,12 @@ enum {
 
     Example:
     ---
-
+    assert(compose('A','\u0308') == '\u00C4');
+    assert(compose('A', 'B') == dchar.init);
+    assert(compose('C', '\u0301') == '\u0106');
+    // note that the starter is the first one
+    // thus the following doesn't compose
+    assert(compose('\u0308', 'A') == dchar.init);
     ---
 +/
 public dchar compose(dchar first, dchar second)
@@ -4891,9 +4898,18 @@ public dchar compose(dchar first, dchar second)
     of $(CHARACTER) $(D ch). If no decomposition is available returns 
     Grapheme with the $(D ch) itself.
 
+    Note that this function also decomposes hangul syllables. 
+    See also $(LREF decomposeHangul) for a restricted version
+    that takes into account only hangul syllables  but  
+    no other decompositions.
+
     Example:
     ---
-    
+    import std.algorithm;
+    assert(decompose('Ĉ')[].equal("C\u0302"));
+    assert(decompose('D')[].equal("D"));
+    assert(decompose('\uD4DC')[].equal("\u1111\u1171\u11B7"));
+    assert(decompose!Compatibility('¹').equal("1"));
     ---
 +/
 public Grapheme decompose(UnicodeDecomposition decompType=Canonical)(dchar ch)
@@ -4913,6 +4929,23 @@ public Grapheme decompose(UnicodeDecomposition decompType=Canonical)(dchar ch)
         return decomposeHangul(ch); 
     auto decomp = table[idx..$].until(0);
     return Grapheme(decomp);
+}
+
+unittest
+{
+    //verify examples
+    assert(compose('A','\u0308') == '\u00C4');
+    assert(compose('A', 'B') == dchar.init);
+    assert(compose('C', '\u0301') == '\u0106');
+    // note that the starter is the first one
+    // thus the following doesn't compose
+    assert(compose('\u0308', 'A') == dchar.init);
+
+    import std.algorithm;
+    assert(decompose('Ĉ')[].equal("C\u0302"));
+    assert(decompose('D')[].equal("D"));
+    assert(decompose('\uD4DC')[].equal("\u1111\u1171\u11B7"));
+    assert(decompose!Compatibility('¹')[].equal("1"));
 }
 
 //----------------------------------------------------------------------------
@@ -4983,15 +5016,16 @@ void hangulRecompose(dchar[] seq)
 }
 
 //----------------------------------------------------------------------------
-
 public:
+
 /**
     Decomposes a Hangul syllable. If ($D ch) is not a composed syllable
     then this function returns $(LREF Grapheme) containing only $(D ch) as is. 
 
     Example:
     ---
-
+    import std.algorithm;
+    assert(decomposeHangul('\uD4DB')[].equal("\u1111\u1171\u11B6"));
     ---
 */
 Grapheme decomposeHangul(dchar ch)
@@ -5021,10 +5055,16 @@ Grapheme decomposeHangul(dchar ch)
 
     Example:
     ---
-
+    assert(composeJamo('\u1111', '\u1171', '\u11B6') == '\uD4DB');
+    // leaving out T-vowel, or passing any codepoint 
+    // that is not trailing consonant composes an LV-syllable
+    assert(composeJamo('\u1111', '\u1171') == '\uD4CC'); 
+    assert(composeJamo('\u1111', '\u1171', ' ') == '\uD4CC'); 
+    assert(composeJamo('\u1111', 'A') == dchar.init);
+    assert(composeJamo('A', '\u1171') == dchar.init);
     ---
 +/
-public dchar composeJamo(dchar lead, dchar vowel, dchar trailing=dchar.init)
+dchar composeJamo(dchar lead, dchar vowel, dchar trailing=dchar.init)
 {
     if(!isJamoL(lead))
         return dchar.init;
@@ -5037,7 +5077,8 @@ public dchar composeJamo(dchar lead, dchar vowel, dchar trailing=dchar.init)
     return isJamoT(trailing) ? syllable + (trailing - jamoTBase) : syllable;
 }
 
-unittest{
+unittest
+{
     void testDecomp(UnicodeDecomposition T)(dchar ch, string r)
     {
         assert(equal(decompose!T(ch)[], r), text(decompose(ch)[], " vs ", r));
@@ -5046,6 +5087,13 @@ unittest{
     testDecomp!Canonical('\uF907', "\u9F9C");
     testDecomp!Compatibility('\u33FF', "\u0067\u0061\u006C");
     testDecomp!Compatibility('\uA7F9', "\u0153");
+    //check examples
+    assert(decomposeHangul('\uD4DB')[].equal("\u1111\u1171\u11B6"));
+    assert(composeJamo('\u1111', '\u1171', '\u11B6') == '\uD4DB');
+    assert(composeJamo('\u1111', '\u1171') == '\uD4CC'); //leave out T-vowel
+    assert(composeJamo('\u1111', '\u1171', ' ') == '\uD4CC'); 
+    assert(composeJamo('\u1111', 'A') == dchar.init);
+    assert(composeJamo('A', '\u1171') == dchar.init);
 }
 
 /**
