@@ -181,14 +181,65 @@
     
     )
     $(P $(DEF Glyph) The actual, concrete image of a glyph representation 
-    having been rasterized or otherwise imaged onto some display surface.)
+    having been rasterized or otherwise imaged onto some display surface.
+    )
     $(P $(DEF Encoded character) An association (or mapping) 
-    between an abstract character and a code point.)    
+    between an abstract character and a code point.
+    )    
     $(P $(DEF Character) Typically differs by context. 
-    For the purpose of this documentation 
-    the term $(I character) implies $(I encoded character), 
-    that is a code point having an assigned abstract character 
-    (a symbolic meaning).)
+    For the purpose of this documentation the term $(I character)
+    implies $(I encoded character), that is a code point having 
+    an assigned abstract character (a symbolic meaning).
+    )    
+    $(P $(DEF Grapheme cluster) Defined as the text between 
+        grapheme boundaries  as specified by Unicode Standard Annex #29, 
+        $(WEB www.unicode.org/reports/tr29/, Unicode text segmentation).
+        Important general properties of a grapheme:
+        $(UL 
+            $(LI The grapheme cluster represents a horizontally segmentable 
+            unit of text, consisting of some grapheme base (which may 
+            consist of a Korean syllable) together with any number of 
+            nonspacing marks applied to it.
+            )
+            $(LI  A grapheme cluster typically starts with a grapheme base 
+            and then extends across any subsequent sequence of nonspacing marks. 
+            A grapheme cluster is most directly relevant to text rendering and 
+            processes such as cursor placement and text selection in editing, 
+            but may also be relevant to comparison and searching. 
+            )
+            $(LI For many processes, a grapheme cluster behaves as if it was a 
+            single character with the same properties as its grapheme base. 
+            Effectively, nonspacing marks apply $(I graphically) to the base, 
+            but do not change its properties.
+            )
+        )
+        $(P This module defines a number of primitives that work with graphemes:
+        $(LREF Grapheme), $(LREF decodeGrapheme) and $(LREF graphemeStride).
+        All of them are using $(I extended grapheme) boundaries 
+        as defined in the aforementioned standard annex.
+        )
+    )
+    $(P $(DEF Grapheme base) A character with the property
+     Grapheme_Base, or any standard Korean syllable block.
+    )
+    $(P $(DEF Combining character) A character with the General Category
+     of Combining Mark(M).
+        $(UL 
+            $(LI All characters with non-zero canonical combining class 
+            are combining characters, but the reverse is not the case:
+            there are combining characters with a zero combining class.
+            )
+            $(LI These characters are not normally used in isolation 
+            unless they are being described. They include such characters
+            as accents, diacritics, Hebrew points, Arabic vowel signs, 
+            and Indic matras.
+            )
+        )
+    )
+    $(P $(DEF Nonspacing mark) A combining character with the 
+        General Category of Nonspacing Mark (Mn) or Enclosing Mark (Me).
+    )
+    $(P $(DEF Spacing mark) A combining character that is not a nonspacing mark.)
     
     $(SECTION Construction of lookup tables)
 
@@ -287,6 +338,7 @@ CODEPOINT = $(S_LINK Code point, code point)
 CODEPOINTS = $(S_LINK Code point, code points)
 CHARACTER = $(S_LINK Character, character)
 CHARACTERS = $(S_LINK Character, characters)
+CLUSTER = $(S_LINK Grapheme cluster, grapheme cluster)
 +/
 module uni;
 
@@ -1611,7 +1663,7 @@ public:
     /// Range that spans each $(CODEPOINT) in this set.
     @property auto byCodepoint()
     {
-        static struct CodepointRange
+        @trusted static struct CodepointRange
         {
             this(This set)
             {
@@ -3663,7 +3715,7 @@ template idxTypes(Key, size_t fullBits, Prefix...)
 
 //============================================================================
 
-int comparePropertyName(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
+@safe int comparePropertyName(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
 {
     for(;;)
     {
@@ -3698,7 +3750,7 @@ bool propertyNameLess(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
 // Utilities for compression of Unicode code point sets
 //============================================================================
 
-void compressTo(uint val, ref ubyte[] arr) pure nothrow
+@safe void compressTo(uint val, ref ubyte[] arr) pure nothrow
 {
     // not optimized as usually done 1 time (and not public interface)
     if(val < 128)
@@ -3717,7 +3769,7 @@ void compressTo(uint val, ref ubyte[] arr) pure nothrow
     }
 }
 
-uint decompressFrom(const(ubyte)[] arr, ref size_t idx) pure
+@safe uint decompressFrom(const(ubyte)[] arr, ref size_t idx) pure
 {
     uint first = arr[idx++];
     if(!(first & 0x80)) // no top bit -> [0..127]
@@ -3773,12 +3825,12 @@ unittest
 
 // Creates a range of $(D CodepointInterval) that lazily decodes compressed data.
 // TODO: make it package when pushed to std.
-public auto decompressIntervals(const(ubyte)[] data)
+@safe public auto decompressIntervals(const(ubyte)[] data) 
 {
     return DecompressedIntervals(data);
 }
 
-struct DecompressedIntervals
+@safe struct DecompressedIntervals
 {
     const(ubyte)[] _stream;
     size_t _idx;
@@ -3830,7 +3882,7 @@ else
 {
 
 // helper for looking up code point sets
-ptrdiff_t findUnicodeSet(C)(in C[] name)
+@trusted ptrdiff_t findUnicodeSet(C)(in C[] name)
 {
     auto range = assumeSorted!((a,b) => propertyNameLess(a,b))(unicodeProps.map!"a.name");    
    
@@ -3863,7 +3915,7 @@ bool loadUnicodeSet(Set, C)(in C[] name, ref Set dest)
     White_Space, white-SpAce and whitespace are all considered equals 
     and yield the same set of white space $(CHARACTERS).
 */
-public struct unicode
+@safe public struct unicode
 {
     /**
         Performs the lookup with compile-time correctness checking.
@@ -3896,7 +3948,7 @@ public struct unicode
     }
 
     // CTFE-only, not optimized
-    private static bool findSetName(C)(in C[] name)
+    @safe private static bool findSetName(C)(in C[] name)
     {
         auto names = [ 
             "L", "Letters", 
@@ -3918,7 +3970,7 @@ public struct unicode
         return false;
     }
 
-    static auto pickSet(Set=CodepointSet, C)(in C[] name)
+    @trusted static auto pickSet(Set=CodepointSet, C)(in C[] name)
     {        
         Set result;
         alias comparePropertyName ucmp;
@@ -4232,12 +4284,34 @@ unittest
 }
 
 /++
-    $(P A structure designed to effectively pack $(CODEPOINTS) of a grapheme cluster.)
+    $(P A structure designed to effectively pack $(CHARACTERS) 
+    of a $(CLUSTER). 
+    )
 
-    $(P $(D Grapheme) has value semantics so 2 copies of $(D Grapheme) 
-    always refer to distinct objects. In the most actual scenarios $(D Grapheme) 
+    $(P $(D Grapheme) has value semantics so 2 copies of a $(D Grapheme) 
+    always refer to distinct objects. In the most actual scenarios a $(D Grapheme) 
     fits on stack and avoids memory allocation overhead for all but quite 
-    long clusters. )
+    long clusters. 
+    )
+
+    Example:
+    ---
+    import std.algorithm;
+    string bold = "ku\u0308hn";
+
+    // note that decodeGrapheme takes parameter by ref
+    // slicing a grapheme yields a range of dchar
+    assert(decodeGrapheme(bold)[].equal("k"));
+
+    // the next grapheme is 2 characters long
+    auto wideOne = decodeGrapheme(bold);
+    assert(wideOne.length == 2);
+    assert(wideOne[].equal("u\u0308"));
+        
+    // the usual range manipulation is possible
+    assert(wideOne[].filter!isMark.equal("\u0308"));
+    ---
+    $(P See also $(LREF decodeGrapheme), $(LREF graphemeStride). )
 +/
 @trusted struct Grapheme
 {
@@ -4258,6 +4332,7 @@ public:
     /// Gets a $(CODEPOINT) at the given index in this cluster.
     dchar opIndex(size_t index) const  pure nothrow
     {
+        assert(index < length);
         return read24(isBig ? ptr_ : small_.ptr, index);
     }
 
@@ -4267,9 +4342,32 @@ public:
         Warning:
         Use of this facility may invalidate grapheme cluster, 
         see also $(D valid).
-     +/
+
+        Example:
+        ---
+        import std.algorithm;
+        string bold = "ku\u0308hn";
+
+        // note that decodeGrapheme takes parameter by ref
+        auto first = decodeGrapheme(bold);
+        
+        assert(first.length == 1);
+        assert(first[0] == 'k');
+
+        // the next grapheme is 2 characters long
+        auto wideOne = decodeGrapheme(bold);
+        // slicing a grapheme yields a random-access range of dchar
+        assert(wideOne[].equal("u\u0308"));
+        assert(wideOne.length == 2);
+        static assert(isRandomAccessRange!(typeof(wideOne[])));
+        
+        // all of the usual range manipulation is possible
+        assert(wideOne[].filter!isMark.equal("\u0308"));
+        ---
+    +/
     void opIndexAssign(dchar ch, size_t index)  pure nothrow
     {
+        assert(index < length);
         write24(isBig ? ptr_ : small_.ptr, ch, index);
     }
 
@@ -4297,10 +4395,26 @@ public:
     }
 
     /++
-        Append $(CODEPOINT) $(D ch) to this grapheme.
+        Append $(CHARACTER) $(D ch) to this grapheme.
         Warning: 
         Use of this facility may invalidate grapheme cluster, 
         see also $(D valid).
+
+        Example:
+        ---
+        import std.algorithm;
+        auto g = Grapheme("A");
+        assert(g.valid);
+        g ~= '\u0301';
+        assert(g[].equal("A\u0301"));
+        assert(g.valid);
+        g ~= "B";
+        // not a valid grapheme cluster anymore
+        assert(!g.valid);
+        // still could be useful though
+        assert(g[].equal("A\u0301B"));
+        ---
+        See also $(LREF Grapheme.valid) below.
     +/
     ref opOpAssign(string op)(dchar ch)
     {
@@ -4331,7 +4445,7 @@ public:
             static assert(false, "No operation "~op~" defined for Grapheme");
     }
 
-    /// Append all of $(CODEPOINTS) from the input range $(D inp) to this Grapheme.
+    /// Append all of $(CHARACTERS) from the input range $(D inp) to this Grapheme.
     ref opOpAssign(string op, Input)(Input inp)
         if(isInputRange!Input && is(ElementType!Input : dchar))
     {
@@ -4349,10 +4463,10 @@ public:
         True if this object contains valid extended grapheme cluster.
         Decoding primitives of this module always return valid $(D Grapheme).
 
-        Appending to and direct manipulation of grapheme's $(CODEPOINTS) may 
+        Appending to and direct manipulation of grapheme's $(CHARACTERS) may 
         render it no longer valid. Certain applications may chose to use 
         Grapheme as a "small string" of $(CODEPOINTS) and ignore this property
-        entirely.
+        entirely.        
     +/
     @property bool valid()() /*const*/
     {
@@ -4381,8 +4495,8 @@ public:
 
 private:
     enum small_bytes = ((ubyte*).sizeof+3*size_t.sizeof-1);
-    // out of the blue grow rate, needs testing 
-    //(though graphemes are typically small < 9)
+    // "out of the blue" grow rate, needs testing 
+    // (though graphemes are typically small < 9)
     enum grow = 20;
     enum small_cap = small_bytes/3;
     enum small_flag = 0x80, small_mask = 0x7F;
@@ -4427,6 +4541,40 @@ private:
     { 
         return slen_ & small_flag; 
     }
+}
+
+//verify the example
+unittest 
+{
+    import std.algorithm;
+    string bold = "ku\u0308hn";
+
+    // note that decodeGrapheme takes parameter by ref
+    auto first = decodeGrapheme(bold);
+    
+    assert(first.length == 1);
+    assert(first[0] == 'k');
+
+    // the next grapheme is 2 characters long
+    auto wideOne = decodeGrapheme(bold);
+    // slicing a grapheme yields a random-access range of dchar
+    assert(wideOne[].equal("u\u0308"));
+    assert(wideOne.length == 2);
+    static assert(isRandomAccessRange!(typeof(wideOne[])));
+    
+    // all of the usual range manipulation is possible
+    assert(wideOne[].filter!isMark.equal("\u0308"));
+
+    auto g = Grapheme("A");
+    assert(g.valid);
+    g ~= '\u0301';
+    assert(g[].equal("A\u0301"));
+    assert(g.valid);
+    g ~= "B";
+    // not a valid grapheme cluster anymore
+    assert(!g.valid);
+    // still could be useful though
+    assert(g[].equal("A\u0301B"));
 }
 
 unittest
@@ -4482,10 +4630,24 @@ unittest
     This function only handles 1:1 $(CODEPOINT) mapping
     and thus is not sufficient for certain alphabets 
     like German, Greek and few others.
+
+    Example:
+    ---
+    assert(sicmp("Август", "авгусТ") == 0);
+    // Greek also works as if there is no 1:M mapping in sight
+    assert(sicmp("ΌΎ", "όύ") == 0);     
+    // things like the following won't get matched as equal
+    // Greek small letter iota with dialytika and tonos
+    assert(sicmp("ΐ", "\u03B9\u0308\u0301" != 0);    
+
+    // while icmp has no problem with that
+    assert(icmp("ΐ", "\u03B9\u0308\u0301" == 0); 
+    assert(icmp("ΌΎ", "όύ") == 0);    
+    ---
 +/
 int sicmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
 {
-    alias simpleCaseTable stab;
+    alias simpleCaseTable sTable;
     size_t ridx=0;
     foreach(dchar lhs; str1)
     {
@@ -4503,19 +4665,19 @@ int sicmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
             if(idx2 != EMPTY_CASE_TRIE)
             {// both cased chars
                 // adjust idx --> start of bucket
-                idx = idx - stab[idx].n;
-                idx2 = idx2 - stab[idx2].n;
+                idx = idx - sTable[idx].n;
+                idx2 = idx2 - sTable[idx2].n;
                 if(idx == idx2)// one bucket, equivalent chars
                     continue;
                 else//  not the same bucket
-                    diff = stab[idx].ch - stab[idx2].ch;
+                    diff = sTable[idx].ch - sTable[idx2].ch;
             }
             else
-                diff = stab[idx - stab[idx].n].ch - rhs;
+                diff = sTable[idx - sTable[idx].n].ch - rhs;
         }
         else if(idx2 != EMPTY_CASE_TRIE)
         {
-            diff = lhs - stab[idx2 - stab[idx2].n].ch;
+            diff = lhs - sTable[idx2 - sTable[idx2].n].ch;
         }
         // one of chars is not cased at all
         return diff;
@@ -4523,36 +4685,40 @@ int sicmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
     return ridx == str2.length ? 0 : -1;
 }
 
-private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
+private int fullCasedCmp(C)(dchar lhs, dchar rhs, ref const(C)[] rtail)
 {
-    alias fullCaseTable ftab;
+    alias fullCaseTable fTable;
     size_t idx = fullCaseTrie[lhs];
+    import std.stdio;
     // fullCaseTrie is packed index table
-    if(idx != EMPTY_CASE_TRIE)
+    if(idx == EMPTY_CASE_TRIE)
+        return lhs;
+    
+    size_t start = idx - fTable[idx].n;
+    size_t end = fTable[idx].size + start;
+    assert(fTable[start].entry_len == 1);
+    for(idx=start; idx<end; idx++)
     {
-        size_t start = idx - ftab[idx].n;
-        size_t end = ftab[idx].size + start;
-        assert(ftab[start].entry_len == 1);
-        lhs = ftab[start].ch;// to use when diff is required
-        for(idx=start; idx<end; idx++)
+        if(fTable[idx].entry_len == 1)
         {
-            if(ftab[idx].entry_len == 1)
+            if(fTable[idx].ch == rhs)
             {
-                if(ftab[idx].ch == rhs)
-                    return 0;
+                return 0;
             }
-            else 
-            {// OK it's a long chunk, like 'ss' for German
-                dstring seq = ftab[idx].seq;
-                if(rhs == seq[0] 
-                    && str.skipOver(seq[1..$]))
-                {
-                    return 0;
-                }
+        }
+        else 
+        {// OK it's a long chunk, like 'ss' for German
+            dstring seq = fTable[idx].seq;
+            if(rhs == seq[0] 
+                && rtail.skipOver(seq[1..$]))
+            {
+                // note that this path modifes rtail 
+                // iff we managed to get there
+                return 0;
             }
         }
     }
-    return 1;
+    return fTable[start].ch; // new remapped character for accurate diffs
 }
 
 /++
@@ -4563,6 +4729,12 @@ private int fullCasedCmp(C)(ref dchar lhs, ref dchar rhs, ref inout(C)[] str)
     The cost of $(D icmp) being pedantically correct is 
     slightly worse performance. 
     )
+
+    Example:
+    ---
+    assert(icmp("Rußland", "Russland") == 0);
+    assert(icmp("ᾩ -> \u1F70\u03B9", "\u1F61\u03B9 -> ᾲ") == 0);    
+    ---
 +/
 int icmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
 {
@@ -4577,15 +4749,20 @@ int icmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
         dchar rhs = str2.front;
         str1.popFront();
         str2.popFront();
-
         int diff = lhs - rhs;
         if(!diff)
             continue;
-        if(fullCasedCmp(lhs, rhs, str2) == 0)
+        //first try to match lhs to <rhs,right-tail> sequence
+        int cmpLR = fullCasedCmp(lhs, rhs, str2);
+        if(!cmpLR)
             continue;
-        else if(fullCasedCmp(rhs, lhs, str1) == 0)
+        //then rhs to <lhs,left-tail> sequence
+        int cmpRL = fullCasedCmp(rhs, lhs, str1);
+        if(!cmpRL)
             continue;
-        diff = lhs - rhs;// lhs & rhs are remapped to the start of bucket
+        // cmpXX contain remapped codepoints 
+        // to obtain stable ordering of icmp
+        diff = cmpLR - cmpRL;
         return diff;
     }
 }
@@ -4605,13 +4782,21 @@ unittest
             assert(cfunc("abc".to!S1, "abcd".to!S2) < 0);
             assert(cfunc("Abc".to!S1, "aBc".to!S2) == 0);
             assert(cfunc("авГуст".to!S1, "АВгУСТ".to!S2) == 0);
+            //Check example:
+            assert(cfunc("Август".to!S1, "авгусТ".to!S2) == 0);
+            assert(cfunc("ΌΎ".to!S1, "όύ".to!S2) == 0); 
         }
-        // check that the order is propely agonstic to the case
+        // check that the order is properly agnostic to the case
         auto strs = [ "Apple", "ORANGE",  "orAcle", "amp", "banana"];
         sort!((a,b) => cfunc(a,b) < 0)(strs);    
         assert(strs == ["amp", "Apple",  "banana", "orAcle", "ORANGE"]);        
     }
-    assert(icmp("ßa", "ssa") == 0);
+    assert(icmp("ßb", "ssa") > 0);
+    //Check example:
+    assert(icmp("Russland", "Rußland") == 0);
+    assert(icmp("ᾩ -> \u1F70\u03B9", "\u1F61\u03B9 -> ᾲ") == 0);
+    assert(icmp("ΐ"w, "\u03B9\u0308\u0301") == 0);
+    assert(sicmp("ΐ", "\u03B9\u0308\u0301") != 0);    
 }
 
 /++
@@ -4624,6 +4809,19 @@ unittest
 
     $(P Canonical equivalence is the criterion used to determine whether two 
     $(CODEPOINT) sequences are considered identical for interpretation. )
+
+    Example:
+    ---
+    //shorten the code
+    alias CC = combiningClass; 
+
+    // combining tilda
+    assert(CC('\u0303') == 230);
+    // combining ring below
+    assert(CC('\u0325') == 220);
+    // the simple consequence is that  "tilda" should be 
+    // placed after a "ring below" in a sequence
+    ---
 +/
 ubyte combiningClass(dchar ch)
 {
@@ -4640,12 +4838,16 @@ unittest
     assert(combiningClass('\u1939') == 222);
 }
 
+/// Unicode decomposition type.
 enum UnicodeDecomposition {
     Canonical,
     Compatibility
 };
 
-/// Unicode decomposition types.
+/**
+    Shorthand aliases for decomposition type, passed as a
+    template paramter to $(LREF decompose).
+*/
 enum { 
     Canonical = UnicodeDecomposition.Canonical,
     Compatibility = UnicodeDecomposition.Compatibility
@@ -4660,6 +4862,11 @@ enum {
 
     Note: Hangul syllables are not covered by this function. 
     See $(D composeJamo) below.
+
+    Example:
+    ---
+
+    ---
 +/
 public dchar compose(dchar first, dchar second)
 {
@@ -4680,30 +4887,14 @@ public dchar compose(dchar first, dchar second)
 }
 
 /++
-    Try to compose hangul syllable out of a leading consonant ($(D lead)), 
-    a $(D vowel) and optional $(D trailing) consonant jamos.
+    Returns a full Canonical (by default) or Compatibility decomposition 
+    of $(CHARACTER) $(D ch). If no decomposition is available returns 
+    Grapheme with the $(D ch) itself.
 
-    On success returns the composed LV or LVT hangul syllable.
-
-    If any of $(D lead) and $(D vowel) are not a valid hangul jamo 
-    of the respective $(CHARACTER) class returns dchar.init.
-+/
-public dchar composeJamo(dchar lead, dchar vowel, dchar trailing=dchar.init)
-{
-    if(!isJamoL(lead))
-        return dchar.init;
-    int indexL = lead - jamoLBase;    
-    if(!isJamoV(vowel)) 
-        return dchar.init;
-    int indexV = vowel - jamoVBase;    
-    int indexLV = indexL * jamoNCount + indexV * jamoTCount;
-    dchar syllable = jamoSBase + indexLV;
-    return isJamoT(trailing) ? syllable + (trailing - jamoTBase) : syllable;
-}
-
-/++
-    Returns a full Canonical (by default) or Compatibility decomposition of $(CHARACTER) 
-    $(D ch). If no decomposition is available returns Grapheme with the $(D ch) itself.
+    Example:
+    ---
+    
+    ---
 +/
 public Grapheme decompose(UnicodeDecomposition decompType=Canonical)(dchar ch)
 {
@@ -4719,7 +4910,7 @@ public Grapheme decompose(UnicodeDecomposition decompType=Canonical)(dchar ch)
     }
     ushort idx = mapping[ch];
     if(!idx) // not found, check hangul arithmetic decomposition
-        return hangulDecompose(ch); 
+        return decomposeHangul(ch); 
     auto decomp = table[idx..$].until(0);
     return Grapheme(decomp);
 }
@@ -4762,26 +4953,6 @@ int hangulSyllableIndex(dchar ch)
     return idxS >= 0 && idxS < jamoSCount ? idxS : -1;
 }
 
-/**
-    Decomposes a Hangul syllable. If ($D ch) is not a composed syllable
-    then this function returns $(LREF Grapheme) containing only $(D ch) as is. 
-*/
-Grapheme hangulDecompose(dchar ch)
-{
-    int idxS = cast(int)ch - jamoSBase;
-    if(idxS < 0 || idxS >= jamoSCount) return Grapheme(ch);
-    int idxL = idxS / jamoNCount;   
-    int idxV = (idxS % jamoNCount) / jamoTCount;
-    int idxT = idxS % jamoTCount;
-
-    int partL = jamoLBase + idxL;
-    int partV = jamoVBase + idxV;
-    if(idxT > 0) // there is a trailling consonant (T); <L,V,T> decomposition
-        return Grapheme(partL, partV, jamoTBase + idxT);
-    else // <L, V> decomposition
-        return Grapheme(partL, partV);
-}
-
 // internal helper: compose hangul syllables leaving dchar.init in holes
 void hangulRecompose(dchar[] seq)
 {
@@ -4814,6 +4985,57 @@ void hangulRecompose(dchar[] seq)
 //----------------------------------------------------------------------------
 
 public:
+/**
+    Decomposes a Hangul syllable. If ($D ch) is not a composed syllable
+    then this function returns $(LREF Grapheme) containing only $(D ch) as is. 
+
+    Example:
+    ---
+
+    ---
+*/
+Grapheme decomposeHangul(dchar ch)
+{
+    int idxS = cast(int)ch - jamoSBase;
+    if(idxS < 0 || idxS >= jamoSCount) return Grapheme(ch);
+    int idxL = idxS / jamoNCount;   
+    int idxV = (idxS % jamoNCount) / jamoTCount;
+    int idxT = idxS % jamoTCount;
+
+    int partL = jamoLBase + idxL;
+    int partV = jamoVBase + idxV;
+    if(idxT > 0) // there is a trailling consonant (T); <L,V,T> decomposition
+        return Grapheme(partL, partV, jamoTBase + idxT);
+    else // <L, V> decomposition
+        return Grapheme(partL, partV);
+}
+
+/++
+    Try to compose hangul syllable out of a leading consonant ($(D lead)), 
+    a $(D vowel) and optional $(D trailing) consonant jamos.
+
+    On success returns the composed LV or LVT hangul syllable.
+
+    If any of $(D lead) and $(D vowel) are not a valid hangul jamo 
+    of the respective $(CHARACTER) class returns dchar.init.
+
+    Example:
+    ---
+
+    ---
++/
+public dchar composeJamo(dchar lead, dchar vowel, dchar trailing=dchar.init)
+{
+    if(!isJamoL(lead))
+        return dchar.init;
+    int indexL = lead - jamoLBase;    
+    if(!isJamoV(vowel)) 
+        return dchar.init;
+    int indexV = vowel - jamoVBase;    
+    int indexLV = indexL * jamoNCount + indexV * jamoTCount;
+    dchar syllable = jamoSBase + indexLV;
+    return isJamoT(trailing) ? syllable + (trailing - jamoTBase) : syllable;
+}
 
 unittest{
     void testDecomp(UnicodeDecomposition T)(dchar ch, string r)
@@ -5062,7 +5284,18 @@ private auto seekStable(NormalizationForm norm, C)(size_t idx, in C[] input)
     return tuple(region_start, region_end);
 }
 
-/// Tests if dchar $(D ch) is always allowed (Quick_Check=YES) in normalization form $(D norm).
+/**
+    Tests if dchar $(D ch) is always allowed (Quick_Check=YES) in normalization
+    form $(D norm).
+    ---
+    //e.g. Cyrillic is always allowed, so is ASCII
+    assert(allowedIn!NFC('я'));
+    assert(allowedIn!NFD('я'));
+    assert(allowedIn!NFKC('я'));
+    assert(allowedIn!NFKD('я'));
+    assert(allowedIn!NFC('Z'));
+    ---    
+*/
 public bool allowedIn(NormalizationForm norm)(dchar ch)
 {
     return !notAllowedIn!norm(ch);
@@ -5083,13 +5316,22 @@ private bool notAllowedIn(NormalizationForm norm)(dchar ch)
         static assert("Unknown normalization form "~norm);
 }
 
+unittest
+{
+    assert(allowedIn!NFC('я'));
+    assert(allowedIn!NFD('я'));
+    assert(allowedIn!NFKC('я'));
+    assert(allowedIn!NFKD('я'));
+    assert(allowedIn!NFC('Z'));
+}
+
 }
 
 version(std_uni_bootstrap)
 {
     // old version used for bootstrapping of gen_uni.d that generates 
     // up to date optimal versions of all of isXXX functions
-    public bool isWhite(dchar c) 
+    @safe pure nothrow public bool isWhite(dchar c) 
     {
         return std.ascii.isWhite(c) ||
                c == lineSep || c == paraSep ||
@@ -5106,8 +5348,9 @@ public:
     Whether or not $(D c) is a Unicode whitespace $(CHARACTER).
     (general Unicode category: Part of C0(tab, vertical tab, form feed,
     carriage return, and linefeed characters), Zs, Zl, Zp, and NEL(U+0085))
-  +/
-public bool isWhite(dchar c) @safe pure nothrow
++/
+@safe pure nothrow 
+public bool isWhite(dchar c)
 {
     return isWhiteGen(c); // call pregenerated binary search
 }
@@ -5121,7 +5364,8 @@ bool isUniLower(dchar c) @safe pure nothrow
 /++
     Return whether $(D c) is a Unicode lowercase $(CHARACTER).
 +/
-bool isLower(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isLower(dchar c)
 {
     if(std.ascii.isASCII(c))
         return std.ascii.isLower(c);
@@ -5129,7 +5373,7 @@ bool isLower(dchar c) @safe pure nothrow
     return lowerCaseTrie[c];
 }
 
-unittest
+@safe unittest
 {
     foreach(v; 0..0x80)
         assert(std.ascii.isLower(v) == isLower(v));
@@ -5150,7 +5394,8 @@ unittest
 
 
 deprecated ("Please use std.uni.isUpper instead")
-bool isUniUpper(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isUniUpper(dchar c)
 {
     return isUpper(c);
 }
@@ -5158,7 +5403,8 @@ bool isUniUpper(dchar c) @safe pure nothrow
 /++
     Return whether $(D c) is a Unicode uppercase $(CHARACTER).
 +/
-bool isUpper(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isUpper(dchar c)
 {
     if(std.ascii.isASCII(c))
         return std.ascii.isUpper(c);
@@ -5166,7 +5412,7 @@ bool isUpper(dchar c) @safe pure nothrow
     return upperCaseTrie[c];
 }
 
-unittest
+@safe unittest
 {
     foreach(v; 0..0x80)
         assert(std.ascii.isLower(v) == isLower(v));
@@ -5186,7 +5432,8 @@ unittest
 
 
 deprecated ("Please use std.uni.toLower instead")
-dchar toUniLower(dchar c) @safe pure nothrow
+@safe pure nothrow
+dchar toUniLower(dchar c) 
 {
     return toLower(c);
 }
@@ -5198,7 +5445,8 @@ dchar toUniLower(dchar c) @safe pure nothrow
     Warning: certain alphabets like German, Greek have no 1:1
     upper-lower mapping. Use overload of toLower which takes full string instead.
 +/
-dchar toLower(dchar c) @safe pure nothrow
+@safe pure nothrow
+dchar toLower(dchar c)
 {
      // optimize ASCII case
     if(c < 0xAA)
@@ -5239,7 +5487,7 @@ dchar toLower(dchar c) @safe pure nothrow
     return c;
 }
 
-unittest
+@trusted unittest //@@@BUG std.format is not @safe
 {
     import std.string : format;
     foreach(ch; 0..0x80)
@@ -5254,7 +5502,8 @@ unittest
 }
 
 deprecated("Please use std.uni.toUpper instead")
-dchar toUniUpper(dchar c) @safe pure nothrow
+@safe pure nothrow
+dchar toUniUpper(dchar c)
 {
     return toUpper(c);
 }
@@ -5267,7 +5516,8 @@ dchar toUniUpper(dchar c) @safe pure nothrow
     Certain alphabets like German, Greek have no 1:1
     upper-lower mapping. Use overload of toUpper which takes full string instead.
 +/
-dchar toUpper(dchar c) @safe pure nothrow
+@safe pure nothrow
+dchar toUpper(dchar c)
 {
     // optimize ASCII case
     if(c < 0xAA)
@@ -5308,7 +5558,7 @@ dchar toUpper(dchar c) @safe pure nothrow
     return c;
 }
 
-unittest
+@trusted unittest
 {
     import std.string : format;
     foreach(ch; 0..0x80)
@@ -5323,7 +5573,8 @@ unittest
 }
 
 deprecated("Please use std.uni.isAlpha instead.")
-bool isUniAlpha(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isUniAlpha(dchar c)
 {
     return isAlpha(c);
 }
@@ -5332,7 +5583,8 @@ bool isUniAlpha(dchar c) @safe pure nothrow
     Returns whether $(D c) is a Unicode alphabetic $(CHARACTER)
     (general Unicode category: Alphabetic).
 +/
-bool isAlpha(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isAlpha(dchar c)
 {    
     // optimization
     if(c < 0xAA)
@@ -5351,7 +5603,7 @@ bool isAlpha(dchar c) @safe pure nothrow
     return alphaTrie[c];
 }
 
-unittest
+@safe unittest
 {
     auto alpha = unicode("Alphabetic");
     foreach(ch; alpha.byCodepoint)
@@ -5365,13 +5617,13 @@ unittest
     Returns whether $(D c) is a Unicode mark
     (general Unicode category: Mn, Me, Mc).
 +/
-@trusted
-bool isMark(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isMark(dchar c)
 {
     return markTrie[c];
 }
 
-unittest
+@safe unittest
 {
     auto mark = unicode("Mark");
     foreach(ch; mark.byCodepoint)
@@ -5384,12 +5636,13 @@ unittest
     Returns whether $(D c) is a Unicode numerical $(CHARACTER)
     (general Unicode category: Nd, Nl, No).
 +/
-bool isNumber(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isNumber(dchar c)
 {
     return numberTrie[c];
 }
 
-unittest
+@safe unittest
 {
     auto n = unicode("N");
     foreach(ch; n.byCodepoint)
@@ -5403,7 +5656,8 @@ unittest
     Returns whether $(D c) is a Unicode punctuation $(CHARACTER)
     (general Unicode category: Pd, Ps, Pe, Pc, Po, Pi, Pf).
 +/
-bool isPunctuation(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isPunctuation(dchar c)
 {
     return punctuationTrie[c];
 }
@@ -5421,12 +5675,12 @@ unittest
         assert(isPunctuation(ch));
 }
 
-
 /++
     Returns whether $(D c) is a Unicode symbol $(CHARACTER)
     (general Unicode category: Sm, Sc, Sk, So).   
 +/
-bool isSymbol(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isSymbol(dchar c)
 {
    return symbolTrie[c];
 }
@@ -5448,7 +5702,8 @@ unittest
     Note: This doesn't include '\n', '\r', \t' and other non-space $(CHARACTER).
     For commonly used less strict semantics see $(LREF isWhite).
 +/
-bool isSpace(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isSpace(dchar c)
 {
     return isSpaceGen(c);
 }
@@ -5469,7 +5724,8 @@ unittest
     (general Unicode category: L, M, N, P, S, Zs).
  
 +/
-bool isGraphical(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isGraphical(dchar c)
 {
     return graphicalTrie[c];
 }
@@ -5490,7 +5746,8 @@ unittest
     Returns whether $(D c) is a Unicode control $(CHARACTER)
     (general Unicode category: Cc).
 +/
-bool isControl(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isControl(dchar c)
 {
     return isControlGen(c);
 }
@@ -5512,7 +5769,8 @@ unittest
     Returns whether $(D c) is a Unicode formatting $(CHARACTER)
     (general Unicode category: Cf).
 +/
-bool isFormat(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isFormat(dchar c)
 {
     return isFormatGen(c);
 }
@@ -5532,7 +5790,8 @@ unittest
     Returns whether $(D c) is a Unicode Private Use $(CODEPOINT)
     (general Unicode category: Co).
 +/
-bool isPrivateUse(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isPrivateUse(dchar c)
 {
     return (0x00_E000 <= c && c <= 0x00_F8FF)
         || (0x0F_0000 <= c && c <= 0x0F_FFFD)
@@ -5543,7 +5802,8 @@ bool isPrivateUse(dchar c) @safe pure nothrow
     Returns whether $(D c) is a Unicode surrogate $(CODEPOINT)
     (general Unicode category: Cs).
 +/
-bool isSurrogate(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isSurrogate(dchar c)
 {
     return (0xD800 <= c && c <= 0xDFFF);
 }
@@ -5551,7 +5811,8 @@ bool isSurrogate(dchar c) @safe pure nothrow
 /++
     Returns whether $(D c) is a Unicode high surrogate (lead surrogate).
 +/
-bool isSurrogateHi(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isSurrogateHi(dchar c)
 {
     return (0xD800 <= c && c <= 0xDBFF);
 }
@@ -5559,7 +5820,8 @@ bool isSurrogateHi(dchar c) @safe pure nothrow
 /++
     Returns whether $(D c) is a Unicode low surrogate (trail surrogate).
 +/
-bool isSurrogateLo(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isSurrogateLo(dchar c)
 {
     return (0xDC00 <= c && c <= 0xDFFF);
 }
@@ -5569,7 +5831,8 @@ bool isSurrogateLo(dchar c) @safe pure nothrow
     a $(CODEPOINT) with no assigned abstract character.
     (general Unicode category: Cn)
 +/
-bool isNonCharacter(dchar c) @safe pure nothrow
+@safe pure nothrow
+bool isNonCharacter(dchar c)
 {
     return nonCharacterTrie[c]; 
 }
@@ -5584,7 +5847,8 @@ unittest
 private:
 // load static data from pre-generated tables into usable datastructures
 
-auto asSet(const (ubyte)[] compressed)
+
+@safe auto asSet(const (ubyte)[] compressed)
 {
     return CodepointSet(decompressIntervals(compressed));
 }
