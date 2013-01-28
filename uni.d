@@ -29,7 +29,7 @@
     )
     $(LI 
         Decoding ($(LREF decodeGrapheme))  and iteration ($(LREF graphemeStride))
-        on user-perceived character level that is by $(LREF Grapheme)s.
+        by user-perceived characters, that is by $(LREF Grapheme) clusters.
     )
     $(LI 
         Decomposing and composing of individual character(s) according to canonical 
@@ -241,6 +241,87 @@
     )
     $(P $(DEF Spacing mark) A combining character that is not a nonspacing mark.)
     
+    $(P $(DEF Canonical decomposition) 
+    The decomposition of a character or character sequence
+    that results from recursively applying the canonical 
+    mappings found in the Unicode Character Database 
+    and these described in Conjoining Jamo Behavior
+    (section 12 of 
+    $(WEB www.unicode.org/uni2book/ch03.pdf, Unicode Conformance)).
+    )
+
+    $(P $(DEF Compatibility decomposition)
+    The decomposition of a character or character sequence that results 
+    from recursively applying both the compatibility mappings and
+    the canonical mappings found in the Unicode Character Database, and those
+    described in Conjoining Jamo Behavior no characters 
+    can be further decomposed.
+    )
+
+    $(P $(DEF Canonical equivalent)
+    Two character sequences are said to be canonical equivalents if
+    their full canonical decompositions are identical.
+    )
+
+    $(P $(DEF Compatibility equivalent)
+    Two character sequences are said to be compatibility
+    equivalents if their full compatibility decompositions are identical.
+    )
+
+    $(P $(DEF Canonical composition)
+    The precise definition of the Canonical composition 
+    is the algorithm as specified in $(WEB www.unicode.org/uni2book/ch03.pdf, 
+    Unicode Conformance) section 11. 
+    Informally it's the process that does the reverse of the canonical
+    decomposition with the addition of certain rules 
+    that e.g. prevent legacy characters from appearing in the composed result.    
+    )
+
+    $(SECTION Normalization)
+    
+    $(P The concepts of $(S_LINK Canonical equivalent, canonical equivalent)
+     or $(S_LINK Compatibility equivalent, compatibility equivalent)
+    characters in the Unicode Standard make it necessary to have a full, formal 
+    definition of equivalence for Unicode strings.
+    String equivalence is determined by a process called normalization,
+    whereby strings are converted into forms which are compared 
+    directly for identity. This is the primary goal of the normalization process,
+    see the function $(LREF normalize) to convert into any of 
+    the four defined forms.
+    )
+
+    $(P A very important attribute of the Unicode Normalization Forms 
+    is that they must remain stable between versions of the Unicode Standard. 
+    A Unicode string normalized to a particular Unicode Normalization Form 
+    in one version of the standard is guaranteed to remain in that Normalization 
+    Form for implementations of future versions of the standard.
+    )
+
+    $(P The Unicode Standard specifies four normalization forms. 
+    Informally, two of these forms are defined by maximal decomposition 
+    of equivalent sequences, and two of these forms are defined 
+    by maximal $(I composition) of equivalent sequences.
+        $(UL 
+        $(LI Normalization Form D (NFD): The $(S_LINK Canonical decomposition,
+            canonical decomposition) of a character sequence.)
+        $(LI Normalization Form KD (NFKD): The $(S_LINK Compatibility decomposition,
+            compatibility decomposition) of a character sequence.)
+        $(LI Normalization Form C (NFC): The canonical composition of the 
+            $(S_LINK Canonical decomposition, canonical decomposition) 
+            of a coded character sequence.)
+        $(LI Normalization Form KC (NFKC): The canonical composition 
+        of the $(S_LINK Compatibility decomposition,
+            compatibility decomposition) of a character sequence)
+        )
+    )
+
+    $(P The choice of the normalization form depends on the particular use case. 
+    NFC is the best form for general text, since it's more compatible with 
+    strings converted from legacy encodings. NFKC is the preferred form for 
+    identifiers, especially where there are security concerns. NFD and NFKD 
+    are the most useful for internal processing.
+    )
+
     $(SECTION Construction of lookup tables)
 
     $(P The Unicode standard describes a set of algorithms that 
@@ -317,6 +398,8 @@
         $(WEB www.unicode.org/reports/tr29/, Unicode text segmentation)
         $(WEB www.unicode.org/uni2book/ch05.pdf, 
             Unicode Implementation Guidelines)
+        $(WEB www.unicode.org/uni2book/ch03.pdf, 
+            Unicode Conformance)
     Trademarks:
         Unicode(tm) is a trademark of Unicode, Inc.
 
@@ -1435,8 +1518,9 @@ public alias Tuple!(uint, "a", uint, "b") CodepointInterval;
     ---
     $(P
     The way to read this is: start with negative meaning that all numbers 
-    smaller the next one are not present in this set (and positive the contrary). 
-    Then switch positive/negative after each number passed from left to right.
+    smaller then the next one are not present in this set (and positive 
+    - the contrary). Then switch positive/negative after each 
+    number passed from left to right.
     )
     $(P This way negative spans until 10, then positive until 50, 
     then negative until 60, then positive until 61, and so on.
@@ -4347,24 +4431,10 @@ public:
 
         Example:
         ---
-        import std.algorithm;
-        string bold = "ku\u0308hn";
-
-        // note that decodeGrapheme takes parameter by ref
-        auto first = decodeGrapheme(bold);
-        
-        assert(first.length == 1);
-        assert(first[0] == 'k');
-
-        // the next grapheme is 2 characters long
-        auto wideOne = decodeGrapheme(bold);
-        // slicing a grapheme yields a random-access range of dchar
-        assert(wideOne[].equal("u\u0308"));
-        assert(wideOne.length == 2);
-        static assert(isRandomAccessRange!(typeof(wideOne[])));
-        
-        // all of the usual range manipulation is possible
-        assert(wideOne[].filter!isMark.equal("\u0308"));
+        auto g = Grapheme("A");
+        assert(g.valid);
+        g[0] = "\u0300";
+        assert(g.valid);
         ---
     +/
     void opIndexAssign(dchar ch, size_t index)  pure nothrow
@@ -4404,17 +4474,10 @@ public:
 
         Example:
         ---
-        import std.algorithm;
-        auto g = Grapheme("A");
+        auto g = Grapheme("A\u0302");
         assert(g.valid);
-        g ~= '\u0301';
-        assert(g[].equal("A\u0301"));
-        assert(g.valid);
-        g ~= "B";
-        // not a valid grapheme cluster anymore
+        g[1] = '~'; //ASCII tilda is not a combining mark
         assert(!g.valid);
-        // still could be useful though
-        assert(g[].equal("A\u0301B"));
         ---
         See also $(LREF Grapheme.valid) below.
     +/
@@ -4467,7 +4530,7 @@ public:
 
         Appending to and direct manipulation of grapheme's $(CHARACTERS) may 
         render it no longer valid. Certain applications may chose to use 
-        Grapheme as a "small string" of $(CODEPOINTS) and ignore this property
+        Grapheme as a "small string" of any $(CODEPOINTS) and ignore this property
         entirely.        
     +/
     @property bool valid()() /*const*/
@@ -4581,6 +4644,14 @@ unittest
 
 unittest
 {
+    auto g = Grapheme("A\u0302");
+    assert(g.valid);
+    g[1] = '~'; //ASCII tilda is not a combining mark
+    assert(!g.valid);
+}
+
+unittest
+{
     // not valid clusters (but it just a test)
     auto g  = Grapheme('a', 'b', 'c', 'd', 'e');
     assert(g[0] == 'a');
@@ -4636,7 +4707,7 @@ unittest
     Example:
     ---
     assert(sicmp("Август", "авгусТ") == 0);
-    // Greek also works as if there is no 1:M mapping in sight
+    // Greek also works as long as there is no 1:M mapping in sight
     assert(sicmp("ΌΎ", "όύ") == 0);     
     // things like the following won't get matched as equal
     // Greek small letter iota with dialytika and tonos
@@ -4894,11 +4965,15 @@ public dchar compose(dchar first, dchar second)
 }
 
 /++
-    Returns a full Canonical (by default) or Compatibility decomposition 
-    of $(CHARACTER) $(D ch). If no decomposition is available returns 
-    Grapheme with the $(D ch) itself.
+    Returns a full $(S_LINK Canonical decomposition, Canonical)
+    (by default) or $(S_LINK Compatibility decomposition, Compatibility)
+    decomposition of $(CHARACTER) $(D ch). 
+    If no decomposition is available returns a $(LREF Grapheme) 
+    with the $(D ch) itself.
 
-    Note that this function also decomposes hangul syllables. 
+    Note:
+    This function also decomposes hangul syllables 
+    as prescribed by the standard. 
     See also $(LREF decomposeHangul) for a restricted version
     that takes into account only hangul syllables  but  
     no other decompositions.
@@ -5122,9 +5197,20 @@ enum {
 };
 
 /++
-    Returns input string normalized to the chosen form. Form C is used by default. 
-    In case where the string in question is already normalized, 
+    Returns $(D input) string normalized to the chosen form. 
+    The Form C is used by default. 
+
+    For more information on normalization forms see 
+    the $(S_LINK Normalization, normalization section).
+
+    Note:
+    In cases where the string in question is already normalized, 
     it is returned unmodified and no memory allocation happens.
+
+    Example:
+    ---
+
+    ---
 +/
 inout(C)[] normalize(NormalizationForm norm=NFC, C)(inout(C)[] input)
 { 
