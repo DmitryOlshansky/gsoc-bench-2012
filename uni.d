@@ -82,7 +82,7 @@
     void main()
     {
         // initialize code point sets using script/block or property name
-        // set contains code points from both scripts.
+        // now 'set' contains code points from both scripts.
         auto set = unicode("Cyrillic") | unicode("Armenian");
         //same thing but simpler and checked at compile-time
         auto ascii = unicode.ASCII;
@@ -4089,9 +4089,12 @@ template idxTypes(Key, size_t fullBits, Prefix...)
 
 //============================================================================
 
-@safe int comparePropertyName(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
+@trusted int comparePropertyName(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
 {
-    for(;;)
+    alias low = std.ascii.toLower;
+    return cmp(a.map!(x => low(x)).filter!(x => !isWhite(x) && x != '-' && x != '_'),
+        b.map!(x => low(x)).filter!(x => !isWhite(x) && x != '-' && x != '_'));
+    /*for(;;)
     {
         while(!a.empty && (isWhite(a.front) || a.front == '-' || a.front =='_'))
         {
@@ -4112,7 +4115,7 @@ template idxTypes(Key, size_t fullBits, Prefix...)
             return -1;
         a.popFront();
         b.popFront();
-    }
+    }*/
 }
 
 bool propertyNameLess(Char1, Char2)(const(Char1)[] a, const(Char2)[] b)
@@ -4400,13 +4403,40 @@ else
     return findUnicodeSet!table(name) >= 0;            
 }
 
+template SetSearcher(alias table, string kind)
+{
+    /// Run-time checked search.
+    static auto opCall(C)(in C[] name)
+        if(is(C : dchar))
+    {
+        CodepointSet set;
+        if(loadUnicodeSet!table(name, set))
+            return set;
+        throw new Exception("No unicode set for "~kind~" by name "
+            ~name.to!string~" was found.");
+    }
+    /// Compile-time checked search.
+    static auto opDispatch(string name)()
+    {
+        static if(findSetName!table(name))
+        {
+            CodepointSet set;
+            loadUnicodeSet!table(name, set);
+            return set;
+        }
+        else
+            static assert(false, "No unicode set for "~kind~" by name "
+                ~name~" was found.");
+    }
+}
+
 /**
     A single entry point to lookup Unicode $(CODEPOINT) sets by name or alias of 
     block, script or general category.
 
     It uses well defined standard rules of property name lookup.
-    This includes matching of names, e.g.
-    White_Space, white-SpAce and whitespace are all considered equals 
+    This includes fuzzy matching of names, so that
+    'White_Space', 'white-SpAce' and 'whitespace' are all considered equal 
     and yield the same set of white space $(CHARACTERS).
 */
 @safe public struct unicode
@@ -4431,9 +4461,18 @@ else
         assert(ascii['A']);
         assert(ascii['~']);
         assert(!ascii['\u00e0']);
-        //also works, name matching is fuzzy
-        ascii = unicode.ascii;
-
+        //matching is case-insensitive
+        assert(ascii == unicode.ascII);
+        assert(!ascii['à']);
+        //underscores, '-' and whitespace in names are ignored too
+        auto latin = unicode.in_latin1_Supplement;
+        assert(latin['à']);
+        assert(!latin['$']); 
+        //BTW Latin 1 Supplement is a block, hence "In" prefix
+        assert(latin == unicode("In Latin 1 Supplement"));
+        import std.exception;
+        // run-time look up throws if no such set is found
+        assert(collectException(unicode("InCyrilliac")));
         ---
     */
     
@@ -4446,13 +4485,78 @@ else
     }
     
     /**
-        The same lookup but performed at run-time, provided for cases 
-        where $(D name) is not known beforehand. 
+        The same lookup across blocks, scripts or binary property
+        but performed at run-time.
+        This version is provided for cases where $(D name) 
+        is not known beforehand otherwise compile-time
+        checked $(LREF opDispatch) is typically a better choice.
     */
     static auto opCall(C)(in C[] name)
         if(is(C : dchar))
     {
         return loadAny(name);       
+    }
+
+    /**
+        Narrows down the search for sets of $(CODEPOINTS) to all Unicode blocks.
+
+        Note: 
+        Here block names are unambiguous as no scripts are searched 
+        and thus to search use simply $(D unicode.block.BlockName) notation. 
+
+        Example:
+        ---
+        // use .block for explicitness
+        assert(unicode.block.Greek_and_Coptic == unicode.InGreek_and_Coptic);        
+        ---
+    */
+    struct block
+    {
+        mixin SetSearcher!(blocksTab, "block");
+    }
+
+    /**
+        Narrows down the search for sets of $(CODEPOINTS) to all Unicode scripts.
+
+        Example:
+        ---
+        auto arabicScript = unicode.script.arabic;
+        auto arabicBlock = unicode.block.arabic;
+        // there is an intersection between script and block
+        assert(arabicBlock['؁']);
+        assert(arabicScript['؁']);
+        // but they are different
+        assert(arabicBlock != arabicScript);
+        assert(arabicBlock == unicode.inArabic);
+        assert(arabicScript == unicode.arabic);
+        ---
+    */
+    struct script
+    {
+        mixin SetSearcher!(scriptsTab, "script");
+    }
+
+    /**
+        Fetch a set of $(CODEPOINTS) that have the given hangul syllable type.
+
+        Other non-binary properties (once supported) are following the same 
+        notation: $(D unicode.propertyName.propertyValue) for compile-time 
+        checked access and $(D unicode.propertyName(propertyValue))
+        for run-time checked one.
+
+        Example:
+        ---
+        // L here is syllable type not Letter as in unicode.L short-cut
+        auto leadingVowel = unicode.hangulSyllableType("L");
+        //check that some leading vowels are present
+        foreach(vowel; '\u1110'..'\u115F')
+            assert(leadingVowel[vowel]);
+        assert(leadingVowel == unicode.hangulSyllableType.L);
+        ---
+    */
+    struct hangulSyllableType
+    {
+        mixin SetSearcher!(hangulTab, "hangul syllable type");
     }
 
 private:
@@ -4485,10 +4589,38 @@ unittest
     auto ascii = unicode.ASCII;
     assert(ascii['A']);
     assert(ascii['~']);
+    assert(!ascii['\u00e0']);
+    //matching is case-insensitive
+    assert(ascii == unicode.ascII);
     assert(!ascii['à']);
-    auto latin = unicode.inlatin1Supplement;
+    //underscores, '-' and whitespace in names are ignored too
+    auto latin = unicode.Inlatin1_Supplement;
     assert(latin['à']);
-    assert(!latin['$']);
+    assert(!latin['$']); 
+    //BTW Latin 1 Supplement is a block, hence "In" prefix
+    assert(latin == unicode("In Latin 1 Supplement"));  
+    import std.exception;
+    // R-T look up throws if no such set is found
+    assert(collectException(unicode("InCyrilliac")));
+
+    assert(unicode.block.Greek_and_Coptic == unicode.InGreek_and_Coptic);
+
+    // L here is explicitly syllable type not "Letter" as in unicode.L
+    auto leadingVowel = unicode.hangulSyllableType("L");
+    //check that some leading vowels are present
+    foreach(vowel; '\u1110'..'\u115F'+1)
+        assert(leadingVowel[vowel]);
+    assert(leadingVowel == unicode.hangulSyllableType.L);  
+
+    auto arabicScript = unicode.script.arabic;
+    auto arabicBlock = unicode.block.arabic;
+    // there is an intersection between script and block
+    assert(arabicBlock['؁']);
+    assert(arabicScript['؁']);
+    // but they are different
+    assert(arabicBlock != arabicScript);
+    assert(arabicBlock == unicode.inArabic);
+    assert(arabicScript == unicode.arabic);
 }
 
 unittest
