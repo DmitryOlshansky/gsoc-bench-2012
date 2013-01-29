@@ -13,9 +13,17 @@ import uni, std.stdio, std.traits, std.typetuple,
 import std.file:exists;
 static import std.ascii;
 
-//common binary propertiy sets and their aliases
-CodepointSet[string] props;
-string[string] aliases;
+//common binary property sets and their aliases
+struct PropertyTable
+{
+    CodepointSet[string] table;
+    string[string] aliases;
+}
+
+PropertyTable general;
+PropertyTable blocks;
+PropertyTable scripts;
+PropertyTable hangul;
 
 //quick NO/MAYBE charaсter sets
 CodepointSet[string] normalization;
@@ -166,12 +174,12 @@ void main(string[] argv)
         downloadIfNotCached(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
         downloadIfNotCached(prefix~unicodeDataSrc, unicodeDataSrc);
         
-        loadBlocks(blocksSrc);
-        loadProperties(propListSrc);
-        loadProperties(corePropSrc);
-        loadProperties(generalPropSrc);
-        loadProperties(scriptsSrc);
-        loadProperties(hangulSyllableSrc);
+        loadBlocks(blocksSrc, blocks);
+        loadProperties(propListSrc, general);
+        loadProperties(corePropSrc, general);
+        loadProperties(generalPropSrc, general);
+        loadProperties(scriptsSrc, scripts);
+        loadProperties(hangulSyllableSrc, hangul);
         
         loadDecompositions(unicodeDataSrc);
         loadExclusions(compositionExclusionsSrc);        
@@ -179,7 +187,19 @@ void main(string[] argv)
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
         
-        writeProperties();
+        static void writeTableOfSets(string prefix, 
+            string name, PropertyTable tab)
+        {
+            writeln();
+            writeSets(prefix, tab);
+            writeAliasTable(prefix, name, tab);   
+        }
+
+        writeTableOfSets("uniProp", "propsTab", general);
+        writeTableOfSets("block", "blocksTab", blocks);
+        writeTableOfSets("script", "scriptsTab", scripts);
+        writeTableOfSets("hangul", "hangulTab", hangul);
+
         writefln("
 static if(size_t.sizeof == %d) {", size_t.sizeof);        
         writeTries();
@@ -250,8 +270,8 @@ void loadCaseFolding(string f)
 
     //make some useful sets by hand
 
-    lowerCaseSet = props["Lowercase"];
-    upperCaseSet = props["Uppercase"];
+    lowerCaseSet = general.table["Lowercase"];
+    upperCaseSet = general.table["Uppercase"];
 
     write(mixedCCEntry);
         
@@ -308,7 +328,7 @@ void loadCaseFolding(string f)
 
 }
 
-void loadBlocks(string f)
+void loadBlocks(string f, ref PropertyTable target)
 {
     auto r = regex(`^([0-9A-F]+)\.\.([0-9A-F]+);\s*(.*)\s*$`);
     scanUniData!((m){
@@ -317,13 +337,13 @@ void loadBlocks(string f)
             auto a1 = parse!uint(s1, 16);
             auto a2 = parse!uint(s2, 16);
             //@@@BUG 6178 memory corruption with
-            //props["In"~to!string(m.captures[3])] = CodepointSet(a1, a2+1);
+            //target[to!string(m.captures[3])] = CodepointSet(a1, a2+1);
             auto set = CodepointSet(a1, a2+1);
-            props["In"~to!string(m.captures[3])] = set;
+            target.table[to!string(m.captures[3])] = set;
     })(f, r);
 }
 
-void loadProperties(string inp)
+void loadProperties(string inp, ref PropertyTable target)
 {
     auto acceptProp = (string name) => countUntil(blacklist, name) < 0  && !name.startsWith("Changes");
     auto r = regex(`^(?:(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*([a-zA-Z_0-9]*)\s*#|# [a-zA-Z_0-9]+=([a-zA-Z_0-9]+))`);
@@ -341,14 +361,14 @@ void loadProperties(string inp)
             auto sb = m.captures[2];
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
-            if(name !in props)
+            if(name !in target.table)
             {         
-                props[name] = set;
+                target.table[name] = set;
             }
-            props[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
+            target.table[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
             if(!aliasStr.empty)
             {
-                aliases[name] = aliasStr;
+                target.aliases[name] = aliasStr;
                 aliasStr = "";
             }
         }
@@ -356,14 +376,14 @@ void loadProperties(string inp)
         {
             auto sx = m.captures[3];
             uint x = parse!uint(sx, 16);
-            if(name !in props)
+            if(name !in target.table)
             {
-                props[name] = set;
+                target.table[name] = set;
             }
-            props[name] |= x;
+            target.table[name] |= x;
             if(!aliasStr.empty)
             {
-                aliases[name] = aliasStr;
+                target.aliases[name] = aliasStr;
                 aliasStr = "";
             }
         }
@@ -533,37 +553,36 @@ string uniformName(string s)
     return cast(string)app.data;
 }
 
-void printSetTable(SetHash)(SetHash hash)
+void writeSets(string prefix, PropertyTable src)
  {  
-    foreach(k, v; hash)
+    foreach(k, v; src.table)
     {
-        writef("immutable ubyte[] unicode%s = ", identName(k));
+        writef("immutable ubyte[] %s%s = ", prefix, identName(k));
         writeln(charsetString(v));
     }
 }
 
-
-void printPropertyTable(CodepointSet[string] hash, string tabname)
+void writeAliasTable(string prefix, string tabname, PropertyTable src)
 {
     string tname = "immutable(UnicodeProperty)";
     writef("\nimmutable %s[] %s = [\n", tname, tabname);
     string[] lines;
     string[] namesOnly;
     auto app = appender!(char[])();
-    auto keys = hash.keys;
+    auto keys = src.table.keys;
     foreach(k; keys)
     {
-        formattedWrite(app, "%s(\"%s\", unicode%s),\n"
-            , tname, k, identName(k));        
+        formattedWrite(app, "%s(\"%s\", %s%s),\n",
+            tname, k, prefix, identName(k));        
         lines ~= app.data.idup;
         namesOnly ~= uniformName(k);
         app.shrinkTo(0);
-        if(k in aliases)
+        if(k in src.aliases)
         {
-            formattedWrite(app, "%s(\"%s\", unicode%s),\n"
-                , tname, aliases[k], identName(k));
+            formattedWrite(app, "%s(\"%s\", %s%s),\n",
+                tname, src.aliases[k], prefix, identName(k));
             lines ~= app.data.idup;
-            namesOnly ~= uniformName(aliases[k]);
+            namesOnly ~= uniformName(src.aliases[k]);
             app.shrinkTo(0);
         }
     }
@@ -602,12 +621,6 @@ void writeEndPlatformDependent()
 }");
 }
 
-void writeProperties()
-{
-    printSetTable(props);    
-    printPropertyTable(props, "unicodeProps");
-}
-
 void writeTries()
 {        
     ushort[dchar] simpleIndices;
@@ -633,12 +646,13 @@ void writeTries()
         assert(ft[k] == fullIndices[k]);
     }
 
-    printBest3Level("lowerCase", lowerCaseSet);
-    printBest3Level("upperCase", upperCaseSet);
-    printBest3Level("simpleCase", simpleIndices, ushort.max);
-    printBest3Level("fullCase", fullIndices, ushort.max);
+    writeBest3Level("lowerCase", lowerCaseSet);
+    writeBest3Level("upperCase", upperCaseSet);
+    writeBest3Level("simpleCase", simpleIndices, ushort.max);
+    writeBest3Level("fullCase", fullIndices, ushort.max);
 
     //common isXXX properties
+    auto props = general.table;
     CodepointSet alpha = props["Alphabetic"]; //it includes some numbers, symbols & marks
     CodepointSet mark = props["Mn"] | props["Me"] | props["Mc"];
     CodepointSet number = props["Nd"] | props["Nl"] | props["No"];
@@ -652,22 +666,22 @@ void writeTries()
     CodepointSet nfdQC = normalization["NFD_QCN"];
     CodepointSet nfkcQC = normalization["NFKC_QCN"] | normalization["NFKC_QCM"];
     CodepointSet nfkdQC = normalization["NFKD_QCN"];
-    printBest3Level("alpha", alpha);
-    printBest3Level("mark", mark);
-    printBest3Level("number", number);
-    printBest3Level("punctuation", punctuation);
-    printBest3Level("symbol", symbol);
-    printBest3Level("graphical", graphical);
-    printBest4Level("nonCharacter", nonCharacter);
+    writeBest3Level("alpha", alpha);
+    writeBest3Level("mark", mark);
+    writeBest3Level("number", number);
+    writeBest3Level("punctuation", punctuation);
+    writeBest3Level("symbol", symbol);
+    writeBest3Level("graphical", graphical);
+    writeBest4Level("nonCharacter", nonCharacter);
 
-    printBest3Level("nfcQC", nfcQC);
-    printBest3Level("nfdQC", nfdQC);
-    printBest3Level("nfkcQC", nfkcQC);
-    printBest3Level("nfkdQC", nfkdQC);
+    writeBest3Level("nfcQC", nfcQC);
+    writeBest3Level("nfdQC", nfdQC);
+    writeBest3Level("nfkcQC", nfkcQC);
+    writeBest3Level("nfkdQC", nfkdQC);
 
     //few specifics for grapheme cluster breaking algorithm
-    printBest3Level("mc", props["Mc"]);
-    printBest3Level("graphemeExtend", props["Grapheme_Extend"]);
+    writeBest3Level("mc", props["Mc"]);
+    writeBest3Level("graphemeExtend", props["Grapheme_Extend"]);
 }
 
 void writeDecomposition()
@@ -720,23 +734,23 @@ void writeDecomposition()
             format("failed on canon: '%( 0x%5x %)' not found", v));
     }
 
-    printBest3Level("compatMapping", mappingCompat, cast(ushort)0);
-    printBest3Level("canonMapping", mappingCanon, cast(ushort)0);    
+    writeBest3Level("compatMapping", mappingCompat, cast(ushort)0);
+    writeBest3Level("canonMapping", mappingCanon, cast(ushort)0);    
     writefln("immutable dchar[] decompCanonTable = [%( 0x%x, %)];", decompCanonFlat);
     writefln("immutable dchar[] decompCompatTable = [%( 0x%x, %)];", decompCompatFlat);
 }
 
 void writeFunctions()
 {
-    auto format = props["Cf"];
-    auto space = props["Zs"];
-    auto control = props["Cc"];    
-    auto whitespace = props["White_Space"];
+    auto format = general.table["Cf"];
+    auto space = general.table["Zs"];
+    auto control = general.table["Cc"];    
+    auto whitespace = general.table["White_Space"];
 
     //hangul L, V, T
-    auto hangL = props["L"];
-    auto hangV = props["V"];
-    auto hangT = props["T"];
+    auto hangL = hangul.table["L"];
+    auto hangV = hangul.table["V"];
+    auto hangT = hangul.table["T"];
 
     writeln(format.toSourceCode("isFormatGen"));
     writeln(control.toSourceCode("isControlGen"));
@@ -817,7 +831,7 @@ void writeCombining()
         foreach(ch; clazz.byCodepoint)
             assert(ct[ch] == i+1);
     }
-    printBest3Level("combiningClass", combiningMapping);
+    writeBest3Level("combiningClass", combiningMapping);
 }
 
 //fussy compare for unicode property names as per UTS-18
@@ -855,12 +869,12 @@ bool propertyNameLess(Char)(const(Char)[] a, const(Char)[] b)
 
 //meta helpers to generate and pick the best trie by size & levels
 
-void printBest2Level(Set)( string name, Set set)
+void writeBest2Level(Set)( string name, Set set)
     if(isCodepointSet!Set)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     size_t min = size_t.max;
-    void delegate() print;    
+    void delegate() write;    
     foreach(lvl_1; List)
     {
         enum lvl_2 = 21-lvl_1;       
@@ -868,17 +882,17 @@ void printBest2Level(Set)( string name, Set set)
         if(t.bytes < min)
         {
             min = t.bytes;
-            print = createPrinter!(lvl_1, lvl_2)(name, t);
+            write = createPrinter!(lvl_1, lvl_2)(name, t);
         }
     }
-    print();
+    write();
 }
 
-void printBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
+void writeBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     size_t min = size_t.max;
-    void delegate() print;    
+    void delegate() write;    
     foreach(lvl_1; List)
     {
         enum lvl_2 = 21-lvl_1;       
@@ -887,15 +901,15 @@ void printBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
         if(t.bytes < min)
         {
             min = t.bytes;
-            print = createPrinter!(lvl_1, lvl_2)(name, t);
+            write = createPrinter!(lvl_1, lvl_2)(name, t);
         }
     }
-    print();
+    write();
 }
 
 alias List_1 = TypeTuple!(4, 5, 6, 7, 8);
 
-auto printBest3Level(Set)(string name, Set set)
+auto writeBest3Level(Set)(string name, Set set)
     if(isCodepointSet!Set)
 {
     // access speed trumps size, power of 2 is faster to access
@@ -905,7 +919,7 @@ auto printBest3Level(Set)(string name, Set set)
 
     // e.g. 8-5-8 is one of hand picked that is a very close match 
     // to the best packing
-    void delegate() print;
+    void delegate() write;
     
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
     size_t min = size_t.max;        
@@ -919,16 +933,16 @@ auto printBest3Level(Set)(string name, Set set)
             if(t.bytes < min)
             {
                 min = t.bytes;
-                print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
+                write = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
             }
         }
     }
-    print();
+    write();
 }
 
-void printBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
+void writeBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
 {
-    void delegate() print;
+    void delegate() write;
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
     size_t min = size_t.max;
     foreach(lvl_1; List_1)//to have the first stage index fit in byte
@@ -941,18 +955,18 @@ void printBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
             if(t.bytes < min)
             {
                 min = t.bytes;
-                print = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
+                write = createPrinter!(lvl_1, lvl_2, lvl_3)(name, t);
             }
         }
     }
-    print();
+    write();
 }
 
-void printBest4Level(Set)(string name, Set set)
+void writeBest4Level(Set)(string name, Set set)
 {
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
     size_t min = size_t.max;
-    void delegate() print;
+    void delegate() write;
     foreach(lvl_1; List_1)//to have the first stage index fit in byte
     foreach(lvl_2; List)
     foreach(lvl_3; List)
@@ -964,11 +978,11 @@ void printBest4Level(Set)(string name, Set set)
             if(t.bytes < min)
             {
                 min = t.bytes;
-                print = createPrinter!(lvl_1, lvl_2, lvl_3, lvl_4)(name, t);
+                write = createPrinter!(lvl_1, lvl_2, lvl_3, lvl_4)(name, t);
             }
         }
     }
-    print();
+    write();
 }
 
 template createPrinter(Params...)
