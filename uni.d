@@ -4,7 +4,9 @@
     $(SECTION Overview)
 
     $(P The $(D std.uni) module provides an implementation 
-    of fundamental Unicode algorithms and data structures.)
+    of fundamental Unicode algorithms and data structures.
+    This doesn't include UTF encoding and decoding primitives, 
+    see module std.utf for $(XREF _utf, decode) and $(XREF _utf, encode). )
 
     $(P All primitives listed operate on Unicode character and 
     sets of characters. For functions which operate on ASCII characters 
@@ -150,7 +152,7 @@
     $(P $(DEF Code unit) The minimal bit combination that can represent 
     a unit of encoded text for processing or interchange.  
     Depending on the encoding this could be:
-    8-bit code units in the UTF-8 (($D char)), 
+    8-bit code units in the UTF-8 ($(D char)), 
     16-bit code units in the UTF-16 ($(D wchar)),
     and 32-bit code units in the UTF-32 ($(D dchar)).
     $(I Note that in UTF-32, a code unit is a code point 
@@ -445,8 +447,8 @@ else version(X86_64)
 else
     enum hasUnalignedReads = false; //better be safe then sorry
 
-enum dchar lineSep = '\u2028'; /// UTF line separator $(CODEPOINT). 
-enum dchar paraSep = '\u2029'; /// UTF paragraph separator $(CODEPOINT).
+enum dchar lineSep = '\u2028'; /// Constant $(CODEPOINT) (0x2028) - line separator. 
+enum dchar paraSep = '\u2029'; /// Constant $(CODEPOINT) (0x2029) - paragraph separator.
 
 // test the intro example
 unittest
@@ -1150,7 +1152,7 @@ unittest
     assert(nullSlice.empty);
 }
 
-private auto packedArrayView(T)(inout(size_t)[] arr)inout @trusted pure nothrow
+private auto packedArrayView(T)(inout(size_t)[] arr) @trusted pure nothrow
 {    
     return inout(PackedArrayView!T)(arr);
 }
@@ -1583,7 +1585,7 @@ public:
         Construct a set from a range of sorted code point intervals.
     */
     this(Range)(Range intervals)
-        if(isInputRange!Range && isIntegralPair!(ElementType!Range))
+        if(isForwardRange!Range && isIntegralPair!(ElementType!Range))
     {
         auto flattened = roundRobin(intervals.save.map!"a[0]", intervals.save.map!"a[1]");
         data = Uint24Array!(SP)(flattened);
@@ -3841,7 +3843,7 @@ struct BitPacked(T, size_t sz)
 {
     enum bitSize = sz;
     T _value;
-    alias this = _value;
+    alias _value this;
 }
 
 /*
@@ -4207,7 +4209,7 @@ unittest
     return DecompressedIntervals(data);
 }
 
-@safe struct DecompressedIntervals
+@trusted struct DecompressedIntervals
 {
     const(ubyte)[] _stream;
     size_t _idx;
@@ -4243,18 +4245,19 @@ unittest
         }
     }
 
-    @property bool empty()
+    @property bool empty() const
     {
         return _idx == size_t.max;
     }
 
-    DecompressedIntervals save() const { return this; } 
+    @property DecompressedIntervals save() { return this; } 
 }
 
+static assert(isInputRange!DecompressedIntervals);
+static assert(isForwardRange!DecompressedIntervals);
 //============================================================================
 
 version(std_uni_bootstrap){}
-
 else
 {
 
@@ -5391,7 +5394,13 @@ unittest
 
 /// Unicode character decomposition type.
 enum UnicodeDecomposition {
-    Canonical,
+    /// Canonical decomposition. The result is canonically equivalent sequence.
+    Canonical, 
+    /**
+         Compatibility decomposition. The result is compatibility equivalent sequence.
+         Note: Compatibility decomposition is a $(B lossy) conversion, 
+         typically suitable only for fuzzy matching and internal processing.
+    */
     Compatibility
 };
 
@@ -5696,7 +5705,6 @@ enum {
     assert(normalize!NFC("ϓ") == "\u03D3");
     assert(normalize!NFD("ϓ") == "\u03D2\u0301");
     assert(normalize!NFKC("ϓ") == "\u038E");
-    assert(normalize!NFKC("ϓ") == "\u038E");
     assert(normalize!NFKD("ϓ") == "\u03A5\u0301");
     ---
 +/
@@ -5802,7 +5810,7 @@ unittest
     assert(normalize!NFC("ϓ") == "\u03D3");
     assert(normalize!NFD("ϓ") == "\u03D2\u0301");
     assert(normalize!NFKC("ϓ") == "\u038E");
-    assert(normalize!NFKC("ϓ") == "\u038E");
+    assert(normalize!NFKD("ϓ") == "\u03A5\u0301");
 }
 
 // canonically recompose given slice of code points, works in-place and mutates data
