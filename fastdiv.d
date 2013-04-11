@@ -119,7 +119,7 @@ void main(){
     writeln("Miliseconds to compute: ", sw.peek().msecs);
     foreach(divisor; TypeTuple!(3, 5, 7, 9, 11, 12))
     {
-        writefln("\nBenching div by %d", divisor);
+        writefln("\nBenching fast-div by %d", divisor);
         rem = 0; 
         quot = 0;
         sw.reset();
@@ -134,6 +134,7 @@ void main(){
         sw.stop();
         writeln("reminder: ", rem, " division: ", quot);
         writeln("Miliseconds to compute: ", sw.peek().msecs);
+        writefln("\nBenching div by %d", divisor);
         rem = 0; 
         quot = 0;
         sw.reset();

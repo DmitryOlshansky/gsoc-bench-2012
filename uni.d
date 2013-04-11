@@ -1432,7 +1432,7 @@ unittest
     static void destroy(T)(ref T[] arr)
     {
         if(arr.ptr)
-            free(arr);
+            free(arr.ptr);
         arr = null;
     }
 }
