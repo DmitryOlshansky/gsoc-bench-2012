@@ -71,10 +71,11 @@
         property of a given normalization form.
     )
     $(LI 
-        Access to a large selection of commonly used sets of $(CODEPOINTS). 
-        The exact names can be observed in the CLDR utility, on page
+        Access to a large selection of commonly used sets of $(CODEPOINTS).
+        $(S_LINK Unicode properties, Supported ones) include Script, 
+        Block and General Category. The exact contents of a set can be 
+        observed in the CLDR utility, on page
         $(WEB www.unicode.org/cldr/utility/properties.jsp, property index).
-        Supported ones include Script, Block and General Category.
         See $(LREF unicode) for easy and (optionally) compile-time checked queries.
     )
     )
@@ -392,6 +393,196 @@
     is read-only (immutable); it's effectively frozen after construction.
     )
     
+    $(SECTION Unicode properties)
+    
+    $(P Full list of Unicode properties accessible through $(LREF unicode) 
+    and specific helpers per category nested within. Consult the 
+    $(WEB www.unicode.org/cldr/utility/properties.jsp, CLDR utility)
+    when in doubt about the contents of a particular set.)
+
+    $(P General category sets listed below are only accessible with $(LREF unicode) 
+    shorthand accessor.)
+    $(BOOKTABLE $(B General category ),
+         $(TR $(TH Abb.) $(TH Long form) 
+            $(TH Abb.) $(TH Long form)$(TH Abb.) $(TH Long form))
+        $(TR $(TD L) $(TD Letter)  
+            $(TD Cn) $(TD Unassigned)  $(TD Po) $(TD Other_Punctuation))
+        $(TR $(TD Ll) $(TD Lowercase_Letter)    
+            $(TD Co) $(TD Private_Use) $(TD Ps) $(TD Open_Punctuation))
+        $(TR $(TD Lm) $(TD Modifier_Letter) 
+            $(TD Cs) $(TD Surrogate)   $(TD S) $(TD Symbol))
+        $(TR $(TD Lo) $(TD Other_Letter) 
+            $(TD N) $(TD Number)  $(TD Sc) $(TD Currency_Symbol))
+        $(TR $(TD Lt) $(TD Titlecase_Letter)  
+          $(TD Nd) $(TD Decimal_Number)  $(TD Sk) $(TD Modifier_Symbol))
+        $(TR $(TD Lu) $(TD Uppercase_Letter)  
+          $(TD Nl) $(TD Letter_Number)   $(TD Sm) $(TD Math_Symbol))
+        $(TR $(TD M) $(TD Mark)  
+          $(TD No) $(TD Other_Number)    $(TD So) $(TD Other_Symbol))
+        $(TR $(TD Mc) $(TD Spacing_Mark)  
+          $(TD P) $(TD Punctuation) $(TD Z) $(TD Separator))
+        $(TR $(TD Me) $(TD Enclosing_Mark) 
+          $(TD Pc) $(TD Connector_Punctuation)   $(TD Zl) $(TD Line_Separator))
+        $(TR $(TD Mn) $(TD Nonspacing_Mark) 
+          $(TD Pd) $(TD Dash_Punctuation)    $(TD Zp) $(TD Paragraph_Separator))
+        $(TR $(TD C) $(TD Other) 
+          $(TD Pe) $(TD Close_Punctuation) $(TD Zs) $(TD Space_Separator))
+        $(TR $(TD Cc) $(TD Control) $(TD Pf) 
+          $(TD Final_Punctuation)   $(TD -) $(TD Any))
+        $(TR $(TD Cf) $(TD Format) 
+          $(TD Pi) $(TD Initial_Punctuation) $(TD -) $(TD ASCII))
+    )
+    $(P Sets for other commonly useful properties that are 
+    accessible with $(LREF unicode).)
+    $(BOOKTABLE $(B Common binary properties),
+        $(TR $(TH Name) $(TH Name) $(TH Name))
+        $(TR $(TD Alphabetic)  $(TD Ideographic) $(TD Other_Uppercase))
+        $(TR $(TD ASCII_Hex_Digit) $(TD IDS_Binary_Operator) $(TD Pattern_Syntax))
+        $(TR $(TD Bidi_Control)    $(TD ID_Start)    $(TD Pattern_White_Space))
+        $(TR $(TD Cased)   $(TD IDS_Trinary_Operator)    $(TD Quotation_Mark))
+        $(TR $(TD Case_Ignorable)  $(TD Join_Control)    $(TD Radical))
+        $(TR $(TD Dash)    $(TD Logical_Order_Exception) $(TD Soft_Dotted))
+        $(TR $(TD Default_Ignorable_Code_Point)    $(TD Lowercase)   $(TD STerm))
+        $(TR $(TD Deprecated)  $(TD Math)    $(TD Terminal_Punctuation))
+        $(TR $(TD Diacritic)   $(TD Noncharacter_Code_Point) $(TD Unified_Ideograph))
+        $(TR $(TD Extender)    $(TD Other_Alphabetic)    $(TD Uppercase))
+        $(TR $(TD Grapheme_Base)   $(TD Other_Default_Ignorable_Code_Point)  $(TD Variation_Selector))
+        $(TR $(TD Grapheme_Extend) $(TD Other_Grapheme_Extend)   $(TD White_Space))
+        $(TR $(TD Grapheme_Link)   $(TD Other_ID_Continue)   $(TD XID_Continue))
+        $(TR $(TD Hex_Digit)   $(TD Other_ID_Start)  $(TD XID_Start))
+        $(TR $(TD Hyphen)  $(TD Other_Lowercase) )
+        $(TR $(TD ID_Continue) $(TD Other_Math)  )
+    )
+    $(P Bellow is the table with block names accepted by $(LREF unicode.block).
+    Note that the shorthand version $(LREF unicode) requires "In"  
+    to be prepended to the names of blocks so as to disambiguate
+    scripts and blocks.)
+
+    $(BOOKTABLE $(B Blocks),
+        $(TR $(TD Aegean Numbers)    $(TD Ethiopic Extended) $(TD Mongolian))
+        $(TR $(TD Alchemical Symbols)    $(TD Ethiopic Extended-A)   $(TD Musical Symbols))
+        $(TR $(TD Alphabetic Presentation Forms) $(TD Ethiopic Supplement)   $(TD Myanmar))
+        $(TR $(TD Ancient Greek Musical Notation)    $(TD General Punctuation)   $(TD Myanmar Extended-A))
+        $(TR $(TD Ancient Greek Numbers) $(TD Geometric Shapes)  $(TD New Tai Lue))
+        $(TR $(TD Ancient Symbols)   $(TD Georgian)  $(TD NKo))
+        $(TR $(TD Arabic)    $(TD Georgian Supplement)   $(TD Number Forms))
+        $(TR $(TD Arabic Extended-A) $(TD Glagolitic)    $(TD Ogham))
+        $(TR $(TD Arabic Mathematical Alphabetic Symbols)    $(TD Gothic)    $(TD Ol Chiki))
+        $(TR $(TD Arabic Presentation Forms-A)   $(TD Greek and Coptic)  $(TD Old Italic))
+        $(TR $(TD Arabic Presentation Forms-B)   $(TD Greek Extended)    $(TD Old Persian))
+        $(TR $(TD Arabic Supplement) $(TD Gujarati)  $(TD Old South Arabian))
+        $(TR $(TD Armenian)  $(TD Gurmukhi)  $(TD Old Turkic))
+        $(TR $(TD Arrows)    $(TD Halfwidth and Fullwidth Forms) $(TD Optical Character Recognition))
+        $(TR $(TD Avestan)   $(TD Hangul Compatibility Jamo) $(TD Oriya))
+        $(TR $(TD Balinese)  $(TD Hangul Jamo)   $(TD Osmanya))
+        $(TR $(TD Bamum) $(TD Hangul Jamo Extended-A)    $(TD Phags-pa))
+        $(TR $(TD Bamum Supplement)  $(TD Hangul Jamo Extended-B)    $(TD Phaistos Disc))
+        $(TR $(TD Basic Latin)   $(TD Hangul Syllables)  $(TD Phoenician))
+        $(TR $(TD Batak) $(TD Hanunoo)   $(TD Phonetic Extensions))
+        $(TR $(TD Bengali)   $(TD Hebrew)    $(TD Phonetic Extensions Supplement))
+        $(TR $(TD Block Elements)    $(TD High Private Use Surrogates)   $(TD Playing Cards))
+        $(TR $(TD Bopomofo)  $(TD High Surrogates)   $(TD Private Use Area))
+        $(TR $(TD Bopomofo Extended) $(TD Hiragana)  $(TD Rejang))
+        $(TR $(TD Box Drawing)   $(TD Ideographic Description Characters)    $(TD Rumi Numeral Symbols))
+        $(TR $(TD Brahmi)    $(TD Imperial Aramaic)  $(TD Runic))
+        $(TR $(TD Braille Patterns)  $(TD Inscriptional Pahlavi) $(TD Samaritan))
+        $(TR $(TD Buginese)  $(TD Inscriptional Parthian)    $(TD Saurashtra))
+        $(TR $(TD Buhid) $(TD IPA Extensions)    $(TD Sharada))
+        $(TR $(TD Byzantine Musical Symbols) $(TD Javanese)  $(TD Shavian))
+        $(TR $(TD Carian)    $(TD Kaithi)    $(TD Sinhala))
+        $(TR $(TD Chakma)    $(TD Kana Supplement)   $(TD Small Form Variants))
+        $(TR $(TD Cham)  $(TD Kanbun)    $(TD Sora Sompeng))
+        $(TR $(TD Cherokee)  $(TD Kangxi Radicals)   $(TD Spacing Modifier Letters))
+        $(TR $(TD CJK Compatibility) $(TD Kannada)   $(TD Specials))
+        $(TR $(TD CJK Compatibility Forms)   $(TD Katakana)  $(TD Sundanese))
+        $(TR $(TD CJK Compatibility Ideographs)  $(TD Katakana Phonetic Extensions)  $(TD Sundanese Supplement))
+        $(TR $(TD CJK Compatibility Ideographs Supplement)   $(TD Kayah Li)  $(TD Superscripts and Subscripts))
+        $(TR $(TD CJK Radicals Supplement)   $(TD Kharoshthi)    $(TD Supplemental Arrows-A))
+        $(TR $(TD CJK Strokes)   $(TD Khmer) $(TD Supplemental Arrows-B))
+        $(TR $(TD CJK Symbols and Punctuation)   $(TD Khmer Symbols) $(TD Supplemental Mathematical Operators))
+        $(TR $(TD CJK Unified Ideographs)    $(TD Lao)   $(TD Supplemental Punctuation))
+        $(TR $(TD CJK Unified Ideographs Extension A)    $(TD Latin-1 Supplement)    $(TD Supplementary Private Use Area-A))
+        $(TR $(TD CJK Unified Ideographs Extension B)    $(TD Latin Extended-A)  $(TD Supplementary Private Use Area-B))
+        $(TR $(TD CJK Unified Ideographs Extension C)    $(TD Latin Extended Additional) $(TD Syloti Nagri))
+        $(TR $(TD CJK Unified Ideographs Extension D)    $(TD Latin Extended-B)  $(TD Syriac))
+        $(TR $(TD Combining Diacritical Marks)   $(TD Latin Extended-C)  $(TD Tagalog))
+        $(TR $(TD Combining Diacritical Marks for Symbols)   $(TD Latin Extended-D)  $(TD Tagbanwa))
+        $(TR $(TD Combining Diacritical Marks Supplement)    $(TD Lepcha)    $(TD Tags))
+        $(TR $(TD Combining Half Marks)  $(TD Letterlike Symbols)    $(TD Tai Le))
+        $(TR $(TD Common Indic Number Forms) $(TD Limbu) $(TD Tai Tham))
+        $(TR $(TD Control Pictures)  $(TD Linear B Ideograms)    $(TD Tai Viet))
+        $(TR $(TD Coptic)    $(TD Linear B Syllabary)    $(TD Tai Xuan Jing Symbols))
+        $(TR $(TD Counting Rod Numerals) $(TD Lisu)  $(TD Takri))
+        $(TR $(TD Cuneiform) $(TD Low Surrogates)    $(TD Tamil))
+        $(TR $(TD Cuneiform Numbers and Punctuation) $(TD Lycian)    $(TD Telugu))
+        $(TR $(TD Currency Symbols)  $(TD Lydian)    $(TD Thaana))
+        $(TR $(TD Cypriot Syllabary) $(TD Mahjong Tiles) $(TD Thai))
+        $(TR $(TD Cyrillic)  $(TD Malayalam) $(TD Tibetan))
+        $(TR $(TD Cyrillic Extended-A)   $(TD Mandaic)   $(TD Tifinagh))
+        $(TR $(TD Cyrillic Extended-B)   $(TD Mathematical Alphanumeric Symbols) $(TD Transport And Map Symbols))
+        $(TR $(TD Cyrillic Supplement)   $(TD Mathematical Operators)    $(TD Ugaritic))
+        $(TR $(TD Deseret)   $(TD Meetei Mayek)  $(TD Unified Canadian Aboriginal Syllabics))
+        $(TR $(TD Devanagari)    $(TD Meetei Mayek Extensions)   $(TD Unified Canadian Aboriginal Syllabics Extended))
+        $(TR $(TD Devanagari Extended)   $(TD Meroitic Cursive)  $(TD Vai))
+        $(TR $(TD Dingbats)  $(TD Meroitic Hieroglyphs)  $(TD Variation Selectors))
+        $(TR $(TD Domino Tiles)  $(TD Miao)  $(TD Variation Selectors Supplement))
+        $(TR $(TD Egyptian Hieroglyphs)  $(TD Miscellaneous Mathematical Symbols-A)  $(TD Vedic Extensions))
+        $(TR $(TD Emoticons) $(TD Miscellaneous Mathematical Symbols-B)  $(TD Vertical Forms))
+        $(TR $(TD Enclosed Alphanumerics)    $(TD Miscellaneous Symbols) $(TD Yijing Hexagram Symbols))
+        $(TR $(TD Enclosed Alphanumeric Supplement)  $(TD Miscellaneous Symbols and Arrows)  $(TD Yi Radicals))
+        $(TR $(TD Enclosed CJK Letters and Months)   $(TD Miscellaneous Symbols And Pictographs) $(TD Yi Syllables))
+        $(TR $(TD Enclosed Ideographic Supplement)   $(TD Miscellaneous Technical)   )
+        $(TR $(TD Ethiopic)  $(TD Modifier Tone Letters) )
+    )
+
+    $(P Bellow is the table with script names accepted by $(LREF unicode.script) 
+    and by the shorthand version $(LREF unicode).)
+    $(BOOKTABLE $(B Scripts),
+        $(TR $(TD Arabic)  $(TD Hanunoo) $(TD Old_Italic))
+        $(TR $(TD Armenian)    $(TD Hebrew)  $(TD Old_Persian))
+        $(TR $(TD Avestan) $(TD Hiragana)    $(TD Old_South_Arabian))
+        $(TR $(TD Balinese)    $(TD Imperial_Aramaic)    $(TD Old_Turkic))
+        $(TR $(TD Bamum)   $(TD Inherited)   $(TD Oriya))
+        $(TR $(TD Batak)   $(TD Inscriptional_Pahlavi)   $(TD Osmanya))
+        $(TR $(TD Bengali) $(TD Inscriptional_Parthian)  $(TD Phags_Pa))
+        $(TR $(TD Bopomofo)    $(TD Javanese)    $(TD Phoenician))
+        $(TR $(TD Brahmi)  $(TD Kaithi)  $(TD Rejang))
+        $(TR $(TD Braille) $(TD Kannada) $(TD Runic))
+        $(TR $(TD Buginese)    $(TD Katakana)    $(TD Samaritan))
+        $(TR $(TD Buhid)   $(TD Kayah_Li)    $(TD Saurashtra))
+        $(TR $(TD Canadian_Aboriginal) $(TD Kharoshthi)  $(TD Sharada))
+        $(TR $(TD Carian)  $(TD Khmer)   $(TD Shavian))
+        $(TR $(TD Chakma)  $(TD Lao) $(TD Sinhala))
+        $(TR $(TD Cham)    $(TD Latin)   $(TD Sora_Sompeng))
+        $(TR $(TD Cherokee)    $(TD Lepcha)  $(TD Sundanese))
+        $(TR $(TD Common)  $(TD Limbu)   $(TD Syloti_Nagri))
+        $(TR $(TD Coptic)  $(TD Linear_B)    $(TD Syriac))
+        $(TR $(TD Cuneiform)   $(TD Lisu)    $(TD Tagalog))
+        $(TR $(TD Cypriot) $(TD Lycian)  $(TD Tagbanwa))
+        $(TR $(TD Cyrillic)    $(TD Lydian)  $(TD Tai_Le))
+        $(TR $(TD Deseret) $(TD Malayalam)   $(TD Tai_Tham))
+        $(TR $(TD Devanagari)  $(TD Mandaic) $(TD Tai_Viet))
+        $(TR $(TD Egyptian_Hieroglyphs)    $(TD Meetei_Mayek)    $(TD Takri))
+        $(TR $(TD Ethiopic)    $(TD Meroitic_Cursive)    $(TD Tamil))
+        $(TR $(TD Georgian)    $(TD Meroitic_Hieroglyphs)    $(TD Telugu))
+        $(TR $(TD Glagolitic)  $(TD Miao)    $(TD Thaana))
+        $(TR $(TD Gothic)  $(TD Mongolian)   $(TD Thai))
+        $(TR $(TD Greek)   $(TD Myanmar) $(TD Tibetan))
+        $(TR $(TD Gujarati)    $(TD New_Tai_Lue) $(TD Tifinagh))
+        $(TR $(TD Gurmukhi)    $(TD Nko) $(TD Ugaritic))
+        $(TR $(TD Han) $(TD Ogham)   $(TD Vai))
+        $(TR $(TD Hangul)  $(TD Ol_Chiki)    $(TD Yi))
+    )
+
+    $(P Bellow is the table of names accepted by $(LREF unicode.hangulSyllableType).)
+    $(BOOKTABLE $(B Hangul syllable type),
+        $(TR $(TH Abb.) $(TH Long form))
+        $(TR $(TD L)   $(TD Leading_Jamo))
+        $(TR $(TD LV)  $(TD LV_Syllable))
+        $(TR $(TD LVT) $(TD LVT_Syllable) )
+        $(TR $(TD T)   $(TD Trailing_Jamo))
+        $(TR $(TD V)   $(TD Vowel_Jamo))
+    )
     References:
         $(WEB www.digitalmars.com/d/ascii-table.html, ASCII Table),
         $(WEB en.wikipedia.org/wiki/Unicode, Wikipedia),
@@ -4456,7 +4647,7 @@ template SetSearcher(alias table, string kind)
         use $(D unicode.ScriptName).
 
         See also $(LREF block), $(LREF script) 
-        and not included in this search $(LREF hangulSyllableType).
+        and (not included in this search) $(LREF hangulSyllableType).
 
         Example:
         ---            
@@ -4493,6 +4684,8 @@ template SetSearcher(alias table, string kind)
         This version is provided for cases where $(D name) 
         is not known beforehand otherwise compile-time
         checked $(LREF opDispatch) is typically a better choice.
+
+        See $(S_LINK Unicode properties, table of properties) for available sets.
     */
     static auto opCall(C)(in C[] name)
         if(is(C : dchar))
@@ -4503,9 +4696,13 @@ template SetSearcher(alias table, string kind)
     /**
         Narrows down the search for sets of $(CODEPOINTS) to all Unicode blocks.
 
+        See also $(S_LINK Unicode properties, table of properties).
+
         Note: 
         Here block names are unambiguous as no scripts are searched 
         and thus to search use simply $(D unicode.block.BlockName) notation. 
+
+        See $(S_LINK Unicode properties, table of properties) for available sets.
 
         Example:
         ---
@@ -4520,6 +4717,8 @@ template SetSearcher(alias table, string kind)
 
     /**
         Narrows down the search for sets of $(CODEPOINTS) to all Unicode scripts.
+        
+        See $(S_LINK Unicode properties, table of properties) for available sets.
 
         Example:
         ---
@@ -4543,9 +4742,11 @@ template SetSearcher(alias table, string kind)
         Fetch a set of $(CODEPOINTS) that have the given hangul syllable type.
 
         Other non-binary properties (once supported) are following the same 
-        notation: $(D unicode.propertyName.propertyValue) for compile-time 
+        notation - $(D unicode.propertyName.propertyValue) for compile-time 
         checked access and $(D unicode.propertyName(propertyValue))
         for run-time checked one.
+
+        See $(S_LINK Unicode properties, table of properties) for available sets.
 
         Example:
         ---
@@ -4583,7 +4784,8 @@ private:
         throw new Exception("No unicode set by name "~name.to!string~" was found.");
     }
     
-    /// Disabled to prevent the mistake of creating instances of this pseudo-struct.
+    //FIXME: re-disable once the compiler is fixed
+    // Disabled to prevent the mistake of creating instances of this pseudo-struct.
     //@disable ~this();
 }
 
@@ -6538,4 +6740,3 @@ immutable upperCaseTrie = asTrie(upperCaseTrieEntries);
 immutable compositionJumpTrie = asTrie(compositionJumpTrieEntries);
 
 }// version(!std_uni_bootstrap)
-
