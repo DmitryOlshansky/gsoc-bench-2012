@@ -6700,7 +6700,7 @@ private:
 
 auto asTrie(T...)(in TrieEntry!T e)
 {
-    return CodepointTrie!T(e.offsets, e.sizes, e.data);
+    return const(CodepointTrie!T)(e.offsets, e.sizes, e.data);
 }
 
 immutable alphaTrie = asTrie(alphaTrieEntries);
