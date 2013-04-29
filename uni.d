@@ -38,7 +38,7 @@
         Decomposing and composing of individual character(s) according to canonical
         or compatibility rules, see $(LREF compose) and $(LREF decompose),
         including the specific version for Hangul syllables $(LREF composeJamo)
-        and $(LREF hangulDecompose).
+        and $(LREF decomposeHangul).
     )
     )
     $(P It's recognized that an application may need further enhancements
@@ -3900,7 +3900,7 @@ public template buildTrie(Value, Key, Args...)
 
     /*
         If $(D Value) is bool (or BitPacked!(bool, x)) then it's possible
-        to build $(D Trie) from a range of open-right intervals of ($D Key)s.
+        to build $(D Trie) from a range of open-right intervals of $(D Key)s.
         The requirement  on the ordering of keys (and the behavior on the
         violation of it) is the same as for Key-Value range overload.
 
@@ -5790,7 +5790,7 @@ void hangulRecompose(dchar[] seq)
 public:
 
 /**
-    Decomposes a Hangul syllable. If ($D ch) is not a composed syllable
+    Decomposes a Hangul syllable. If $(D ch) is not a composed syllable
     then this function returns $(LREF Grapheme) containing only $(D ch) as is.
 
     Example:
