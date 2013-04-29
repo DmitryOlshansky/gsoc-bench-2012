@@ -148,20 +148,8 @@
     module alone are marked as such. The descriptions are based on the formal
     definition as found in ($WEB http://www.unicode.org/versions/Unicode6.2.0/ch03.pdf,
     chapter three of The Unicode Standard Core Specification.)
+    )
 
-    $(P $(DEF Code point) Any value in the Unicode codespace;
-    that is, the range of integers from 0 to 10FFFF (hex).
-    Not all code points are assigned to encoded characters.
-    )
-    $(P $(DEF Code unit) The minimal bit combination that can represent
-    a unit of encoded text for processing or interchange.
-    Depending on the encoding this could be:
-    8-bit code units in the UTF-8 ($(D char)),
-    16-bit code units in the UTF-16 ($(D wchar)),
-    and 32-bit code units in the UTF-32 ($(D dchar)).
-    $(I Note that in UTF-32, a code unit is a code point
-    and is represented by the D $(D dchar) type.)
-    )
     $(P $(DEF Abstract character) A unit of information used for the organization,
     control, or representation of textual data.
     Note that:
@@ -171,7 +159,7 @@
         kind of data (for example, visual).)
 
         $(LI An abstract character has no concrete form
-        and should not be confused with a $(I glyph).)
+        and should not be confused with a $(S_LINK Glyph, glyph).)
 
         $(LI An abstract character does not necessarily
         correspond to what a user thinks of as a “character”
@@ -184,19 +172,98 @@
         encoded by the Unicode Standard can often be
         represented by the use of combining character sequences.)
         )
+    )
 
+    $(P $(DEF Canonical decomposition)
+    The decomposition of a character or character sequence
+    that results from recursively applying the canonical
+    mappings found in the Unicode Character Database
+    and these described in Conjoining Jamo Behavior
+    (section 12 of
+    $(WEB www.unicode.org/uni2book/ch03.pdf, Unicode Conformance)).
     )
-    $(P $(DEF Glyph) The actual, concrete image of a glyph representation
-    having been rasterized or otherwise imaged onto some display surface.
+    
+    $(P $(DEF Canonical composition)
+    The precise definition of the Canonical composition
+    is the algorithm as specified in $(WEB www.unicode.org/uni2book/ch03.pdf,
+    Unicode Conformance) section 11.
+    Informally it's the process that does the reverse of the canonical
+    decomposition with the addition of certain rules
+    that e.g. prevent legacy characters from appearing in the composed result.
     )
-    $(P $(DEF Encoded character) An association (or mapping)
-    between an abstract character and a code point.
+
+    $(P $(DEF Canonical equivalent)
+    Two character sequences are said to be canonical equivalents if
+    their full canonical decompositions are identical.
     )
+
     $(P $(DEF Character) Typically differs by context.
     For the purpose of this documentation the term $(I character)
     implies $(I encoded character), that is, a code point having
     an assigned abstract character (a symbolic meaning).
     )
+
+    $(P $(DEF Code point) Any value in the Unicode codespace;
+    that is, the range of integers from 0 to 10FFFF (hex).
+    Not all code points are assigned to encoded characters.
+    )
+    
+    $(P $(DEF Code unit) The minimal bit combination that can represent
+    a unit of encoded text for processing or interchange.
+    Depending on the encoding this could be:
+    8-bit code units in the UTF-8 ($(D char)),
+    16-bit code units in the UTF-16 ($(D wchar)),
+    and 32-bit code units in the UTF-32 ($(D dchar)).
+    $(I Note that in UTF-32, a code unit is a code point
+    and is represented by the D $(D dchar) type.)
+    )
+
+    $(P $(DEF Combining character) A character with the General Category
+     of Combining Mark(M).
+        $(UL
+            $(LI All characters with non-zero canonical combining class
+            are combining characters, but the reverse is not the case:
+            there are combining characters with a zero combining class.
+            )
+            $(LI These characters are not normally used in isolation
+            unless they are being described. They include such characters
+            as accents, diacritics, Hebrew points, Arabic vowel signs,
+            and Indic matras.
+            )
+        )
+    )
+
+    $(P $(DEF Combining class)
+        A numerical value used by the Unicode Canonical Ordering Algorithm 
+        to determine which sequences of combining marks are to be 
+        considered canonically equivalent and  which are not. 
+    )
+
+    $(P $(DEF Compatibility decomposition)
+    The decomposition of a character or character sequence that results
+    from recursively applying both the compatibility mappings and
+    the canonical mappings found in the Unicode Character Database, and those
+    described in Conjoining Jamo Behavior no characters
+    can be further decomposed.
+    )
+
+    $(P $(DEF Compatibility equivalent)
+    Two character sequences are said to be compatibility
+    equivalents if their full compatibility decompositions are identical.
+    )
+
+    $(P $(DEF Encoded character) An association (or mapping)
+    between an abstract character and a code point.
+    )
+
+    $(P $(DEF Glyph) The actual, concrete image of a glyph representation
+    having been rasterized or otherwise imaged onto some display surface.
+    )
+
+    $(P $(DEF Grapheme base) A character with the property
+     Grapheme_Base, or any standard Korean syllable block.
+    )
+    
     $(P $(DEF Grapheme cluster) Defined as the text between
         grapheme boundaries  as specified by Unicode Standard Annex #29,
         $(WEB www.unicode.org/reports/tr29/, Unicode text segmentation).
@@ -225,63 +292,14 @@
         as defined in the aforementioned standard annex.
         )
     )
-    $(P $(DEF Grapheme base) A character with the property
-     Grapheme_Base, or any standard Korean syllable block.
-    )
-    $(P $(DEF Combining character) A character with the General Category
-     of Combining Mark(M).
-        $(UL
-            $(LI All characters with non-zero canonical combining class
-            are combining characters, but the reverse is not the case:
-            there are combining characters with a zero combining class.
-            )
-            $(LI These characters are not normally used in isolation
-            unless they are being described. They include such characters
-            as accents, diacritics, Hebrew points, Arabic vowel signs,
-            and Indic matras.
-            )
-        )
-    )
+
+
     $(P $(DEF Nonspacing mark) A combining character with the
         General Category of Nonspacing Mark (Mn) or Enclosing Mark (Me).
     )
+
     $(P $(DEF Spacing mark) A combining character that is not a nonspacing mark.)
 
-    $(P $(DEF Canonical decomposition)
-    The decomposition of a character or character sequence
-    that results from recursively applying the canonical
-    mappings found in the Unicode Character Database
-    and these described in Conjoining Jamo Behavior
-    (section 12 of
-    $(WEB www.unicode.org/uni2book/ch03.pdf, Unicode Conformance)).
-    )
-
-    $(P $(DEF Compatibility decomposition)
-    The decomposition of a character or character sequence that results
-    from recursively applying both the compatibility mappings and
-    the canonical mappings found in the Unicode Character Database, and those
-    described in Conjoining Jamo Behavior no characters
-    can be further decomposed.
-    )
-
-    $(P $(DEF Canonical equivalent)
-    Two character sequences are said to be canonical equivalents if
-    their full canonical decompositions are identical.
-    )
-
-    $(P $(DEF Compatibility equivalent)
-    Two character sequences are said to be compatibility
-    equivalents if their full compatibility decompositions are identical.
-    )
-
-    $(P $(DEF Canonical composition)
-    The precise definition of the Canonical composition
-    is the algorithm as specified in $(WEB www.unicode.org/uni2book/ch03.pdf,
-    Unicode Conformance) section 11.
-    Informally it's the process that does the reverse of the canonical
-    decomposition with the addition of certain rules
-    that e.g. prevent legacy characters from appearing in the composed result.
-    )
 
     $(SECTION Normalization)
 
@@ -5563,15 +5581,7 @@ unittest
 }
 
 /++
-    Returns the combining class of $(D ch).
-
-    $(P The combining class is a numerical value used by the
-    Unicode Canonical Ordering Algorithm to determine which sequences
-    of combining marks are to be considered canonically equivalent and
-    which are not. )
-
-    $(P Canonical equivalence is the criterion used to determine whether two
-    $(CODEPOINT) sequences are considered identical for interpretation. )
+    $(P Returns the $(S_LINK Combining class, combining class) of $(D ch).)
 
     Example:
     ---
