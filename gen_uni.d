@@ -434,10 +434,16 @@ void loadDecompositions(string inp)
         //Decomp_Type&Mapping, 
         auto codepoint = fields[0];
         auto decomp = fields[5];
+        auto lowerCasePart = fields[12];
+        auto upperCasePart = fields[13];
+        auto titleCasePart = fields[14];
+        dchar src = parse!uint(codepoint, 16);
+        if(src == 'A' || src == 'a')
+            stderr.writeln(fields);
         if(!decomp.empty)
         {
             //stderr.writeln(codepoint, " ---> ", decomp);
-            dchar src = parse!uint(codepoint, 16);
+            
             dstring dest;
             bool compat = false;
             std.string.munch(decomp, " ");

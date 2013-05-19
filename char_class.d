@@ -1,9 +1,12 @@
 import bench_suite, std.algorithm, std.stdio, std.typetuple, std.conv, std.utf;
 
-version(std_uni)
+version(std_uni){
     import std.uni;
+    import std.internal.uni;
+    import std.internal.uni_tab;
+}
 else{
-    import uni;
+    import uni;    
     alias TypeTuple!(invAlpha, invMark, invNumber, invSymbol) invTests;
 } 
 
@@ -49,6 +52,8 @@ void myTest(Result[] data)
             writeln("\nBaselines");
             foreach(i, m; stdTests)
                 bench!(clasifyCall!m)("std-"~names[i], x.name, x.data);
+            //foreach(i, m)
+            bench!(clasifyIndex!alphaTrie)("old-trie-alpha", x.name, x.data);
         }
         else
         {
@@ -86,7 +91,10 @@ void main(string[] argv)
     testAll!(myTest)(argv);
 }
 
-version(std_uni){}
+version(std_uni){
+    alias Trie = CodepointTrie!8;
+    Trie alphaTrie = Trie(unicodeAlphabetic);
+}
 else
 {
     alias CodepointSet Set;
