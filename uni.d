@@ -6488,7 +6488,8 @@ bool isAlpha(dchar c)
             return true;
         return false;
     }
-
+    
+    static immutable alphaTrie = pAlpha; 
     return alphaTrie[c];
 }
 
@@ -6509,6 +6510,7 @@ bool isAlpha(dchar c)
 @safe pure nothrow
 bool isMark(dchar c)
 {
+    static immutable markTrie = pMark;
     return markTrie[c];
 }
 
@@ -6528,6 +6530,7 @@ bool isMark(dchar c)
 @safe pure nothrow
 bool isNumber(dchar c)
 {
+    static immutable numberTrie = pNumber;
     return numberTrie[c];
 }
 
@@ -6548,6 +6551,8 @@ bool isNumber(dchar c)
 @safe pure nothrow
 bool isPunctuation(dchar c)
 {
+    
+    static immutable punctuationTrie = pTrie;
     return punctuationTrie[c];
 }
 
@@ -6571,7 +6576,8 @@ unittest
 @safe pure nothrow
 bool isSymbol(dchar c)
 {
-   return symbolTrie[c];
+    static immutable symbolTrie = pSymbol;
+    return symbolTrie[c];
 }
 
 unittest
@@ -6615,7 +6621,8 @@ unittest
 +/
 @safe pure nothrow
 bool isGraphical(dchar c)
-{
+{        
+    static immutable graphicalTrie = pGraph;
     return graphicalTrie[c];
 }
 
@@ -6723,6 +6730,7 @@ bool isSurrogateLo(dchar c)
 @safe pure nothrow
 bool isNonCharacter(dchar c)
 {
+    static immutable nonCharacterTrie = pNonChar;
     return nonCharacterTrie[c]; 
 }
 
@@ -6747,13 +6755,6 @@ auto asTrie(T...)(in TrieEntry!T e)
     return const(CodepointTrie!T)(e.offsets, e.sizes, e.data);
 }
 
-immutable alphaTrie = asTrie(alphaTrieEntries);
-immutable markTrie = asTrie(markTrieEntries);
-immutable numberTrie = asTrie(numberTrieEntries);
-immutable punctuationTrie = asTrie(punctuationTrieEntries);
-immutable symbolTrie = asTrie(symbolTrieEntries);
-immutable graphicalTrie = asTrie(graphicalTrieEntries);
-immutable nonCharacterTrie  = asTrie(nonCharacterTrieEntries);
 
 immutable nfcQC = asTrie(nfcQCTrieEntries);
 immutable nfdQC = asTrie(nfdQCTrieEntries);
@@ -6773,6 +6774,15 @@ shared static this()
     hangLV = asSet(hangulLV);
     hangLVT = asSet(hangulLVT);
 }
+
+// paint data as tries, trick to decouple dependencies
+enum pAlpha = asTrie(alphaTrieEntries);
+enum pGraph = asTrie(graphicalTrieEntries);
+enum pTrie = asTrie(punctuationTrieEntries);
+enum pSymbol = asTrie(symbolTrieEntries);
+enum pNumber = asTrie(numberTrieEntries);
+enum pMark = asTrie(markTrieEntries);
+enum pNonChar = asTrie(nonCharacterTrieEntries);
 
 immutable combiningClassTrie = asTrie(combiningClassTrieEntries);
 immutable canonMapping = asTrie(canonMappingTrieEntries);
