@@ -352,8 +352,8 @@
         Split the number of bits in a key (code point, 21 bits) into 2 components 
         (e.g. 15 and 8).  The first is the number of bits in the index of the trie
          and the other is number of bits in each page of the trie.
-        The layout of the trie is then an array of size 2^^bits-of-index followed
-        an array of memory chunks of size 2^^bits-of-page/bits-per-element. 
+        The layout of the trie is then an index array of size 2^^bits-of-index followed
+        an array of elements of size 2^^bits-of-page. 
     )
 
     $(P The number of pages is variable (but no less then 1) 
@@ -367,10 +367,10 @@
         in one array at $(D pages), the pseudo-code is:
     )
     ---        
-    auto elemsPerPage = 2^^bits_per_page/Value.sizeOfInBits;
+    auto elemsPerPage = 2^^bits_per_page;
     pages[index[n>>bits_per_page]][n & (elemsPerPage-1)];
     ---
-    $(P Where if the $(D elemsPerPage) is a power of 2 the whole process is 
+    $(P Since the $(D elemsPerPage) is a power of 2 the whole process is 
     a handful of simple instructions and 2 array reads. Subsequent levels 
     of the trie are introduced by recursing on this notion - the index array
     is treated as values. The number of bits in index is then again 
