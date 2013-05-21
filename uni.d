@@ -624,6 +624,8 @@ import std.traits, std.typecons, std.range, std.algorithm,
 import std.array; //@@BUG UFCS doesn't work with 'local' imports
 import core.bitop;
 
+//version = debug_std_uni; // enable costly  O(n) asserts
+
 version(std_uni_bootstrap){}
 else
 {
@@ -779,16 +781,18 @@ size_t replicateBits(size_t times, size_t bits)(size_t val)
     else static if(times % 2)
         return (replicateBits!(times-1, bits)(val)<<bits) | val;
     else
-        return replicateBits!(times/2, bits*2)(val<<bits | val);
+        return replicateBits!(times/2, bits*2)((val<<bits) | val);
 }
 
 unittest
 {// for replicate
     size_t m = 0b111;
+    size_t m2 = 0b01;
     foreach(i; TypeTuple!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
     {
         assert(replicateBits!(i, 3)(m)+1 == (1<<(3*i)));
-        // writefln("%2d:%32b", i, replicateBits!(i, 3)(m));
+        assert(replicateBits!(i, 2)(m2) == iota(0, i).map!"2^^(2*a)".reduce!"a+b");
+        //writefln("%2d:%32b", i, replicateBits!(i, 2)(m2));
     }
 }
 
@@ -1187,14 +1191,12 @@ pure nothrow:
     }
     void opSliceAssign(TypeOfBitPacked!T val, size_t start, size_t end)
     {
-        // rounded to factor granuarity
-        // TODO: re-test and implement
-        /*size_t pad_start = (start+factor/2)/factor*factor;// rounded up
+        // rounded to factor granularity
+        size_t pad_start = (start+factor-1)/factor*factor;// rounded up
         size_t pad_end = end/factor*factor; // rounded down
         size_t i;
         for(i=start; i<pad_start; i++)
             this[i] = val;
-        writeln("!!~!~!!");
         // all in between is x*factor elements
         if(pad_start != pad_end)
         {
@@ -1203,9 +1205,12 @@ pure nothrow:
                 original[j] = repval;// so speed it up by factor
         }
         for(; i<end; i++)
-            this[i] = val;*/
-        for(size_t i=start; i<end; i++)
             this[i] = val;
+        version(debug_std_uni)
+        {
+            for(i=start; i<end; i++)
+                assert(this[i] == val);
+        }
     }
 
     auto opSlice(size_t from, size_t to)
