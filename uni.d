@@ -363,7 +363,7 @@
     $(P The recommended solution (see Unicode Implementation Guidelines)
     is using multi-stage tables that are an implementation of the
     $(WEB http://en.wikipedia.org/wiki/Trie, Trie) data structure with integer
-    keys and a fixed number of stages. For the reminder of the section
+    keys and a fixed number of stages. For the remainder of the section
     this will be called a fixed trie. The following describes a particular
     implementation that is aimed for the speed of access at the expense
     of ideal size savings.
