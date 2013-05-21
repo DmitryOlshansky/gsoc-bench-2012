@@ -37,7 +37,7 @@
         Decomposing and composing of individual character(s) according to canonical 
         or compatibility rules, see $(LREF compose) and $(LREF decompose), 
         including the specific version for Hangul syllables $(LREF composeJamo)
-        and $(LREF hangulDecompose).
+        and $(LREF decomposeHangul).
     )
     )
     $(P It's recognized that an application may need further enhancements 
