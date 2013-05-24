@@ -146,7 +146,8 @@ enum {
     hangulSyllableSrc = "HangulSyllableType.txt",
     combiningClassSrc = "DerivedCombiningClass.txt",
     unicodeDataSrc = "UnicodeData.txt",
-    compositionExclusionsSrc = "CompositionExclusions.txt"
+    compositionExclusionsSrc = "CompositionExclusions.txt",
+    specialCasing = "SpecialCasing.txt"
 };
 
 void main(string[] argv)
@@ -173,7 +174,8 @@ void main(string[] argv)
         downloadIfNotCached(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
         downloadIfNotCached(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
         downloadIfNotCached(prefix~unicodeDataSrc, unicodeDataSrc);
-        
+        downloadIfNotCached(prefix~specialCasing, specialCasing);
+
         loadBlocks(blocksSrc, blocks);
         loadProperties(propListSrc, general);
         loadProperties(corePropSrc, general);
