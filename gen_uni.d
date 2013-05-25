@@ -31,11 +31,19 @@ CodepointSet[string] normalization;
 //axuilary sets for case mapping
 CodepointSet lowerCaseSet, upperCaseSet;
 
+// sets for toLower/toUpper/toTitle
+uint[] toLowerTab;
+ushort[dchar] toLowerIndex;
+uint[] toUpperTab;
+ushort[dchar] toUpperIndex;
+uint[] toTitleTab;
+ushort[dchar] toTitleIndex;
+
 mixin(mixedCCEntry);
 
 //case folding mapping
 SimpleCaseEntry[] simpleTable;
-FullCaseEntry[] fullTable;   
+FullCaseEntry[] fullTable;
 
 ///canonical combining class
 CodepointSet[256] combiningClass;
@@ -49,6 +57,7 @@ dstring[dchar] compatDecomp;
 //canonical composition tables
 dchar[] canonicalyComposableLeft;
 dchar[] canonicalyComposableRight;
+
 
 //canonical composition exclusions
 CodepointSet compExclusions;
@@ -147,7 +156,7 @@ enum {
     combiningClassSrc = "DerivedCombiningClass.txt",
     unicodeDataSrc = "UnicodeData.txt",
     compositionExclusionsSrc = "CompositionExclusions.txt",
-    specialCasing = "SpecialCasing.txt"
+    specialCasingSrc = "SpecialCasing.txt"
 };
 
 void main(string[] argv)
@@ -174,7 +183,7 @@ void main(string[] argv)
         downloadIfNotCached(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
         downloadIfNotCached(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
         downloadIfNotCached(prefix~unicodeDataSrc, unicodeDataSrc);
-        downloadIfNotCached(prefix~specialCasing, specialCasing);
+        downloadIfNotCached(prefix~specialCasingSrc, specialCasingSrc);
 
         loadBlocks(blocksSrc, blocks);
         loadProperties(propListSrc, general);
@@ -183,12 +192,15 @@ void main(string[] argv)
         loadProperties(scriptsSrc, scripts);
         loadProperties(hangulSyllableSrc, hangul);
         
-        loadDecompositions(unicodeDataSrc);
+        loadUnicodeData(unicodeDataSrc);
+        loadSpecialCasing(specialCasingSrc);
         loadExclusions(compositionExclusionsSrc);        
         loadCaseFolding(caseFoldingSrc);
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
         
+        writeCaseCoversion();
+/*
         static void writeTableOfSets(string prefix, 
             string name, PropertyTable tab)
         {
@@ -197,6 +209,7 @@ void main(string[] argv)
             writeAliasTable(prefix, name, tab);   
         }
 
+
         writeTableOfSets("uniProp", "propsTab", general);
         writeTableOfSets("block", "blocksTab", blocks);
         writeTableOfSets("script", "scriptsTab", scripts);
@@ -204,13 +217,18 @@ void main(string[] argv)
 
         writefln("
 static if(size_t.sizeof == %d) {", size_t.sizeof);        
+        
+    
         writeTries();
         writeCombining();
         writeDecomposition();
         writeCompositionTable();
+    
         writeln("
 }\n");
         writeFunctions();
+*/
+
     }
     catch(Exception e)
     {
@@ -426,22 +444,34 @@ void loadNormalization(string inp)
     })(inp, r);
 }
 
-void loadDecompositions(string inp)
+void loadUnicodeData(string inp)
 {
     auto f = File(inp);
     foreach(line; f.byLine)
     {
         auto fields = split(line, ";");
         //codepoint, name, General_Category, Canonical_Combining_Class, Bidi_Class,
-        //Decomp_Type&Mapping, 
+        //Decomp_Type&Mapping, upper case mapping, lower case mapping, title case mapping
         auto codepoint = fields[0];
         auto decomp = fields[5];
-        auto lowerCasePart = fields[12];
-        auto upperCasePart = fields[13];
+        
+        auto upperCasePart = fields[12];
+        auto lowerCasePart = fields[13];
         auto titleCasePart = fields[14];
         dchar src = parse!uint(codepoint, 16);
-        if(src == 'A' || src == 'a')
-            stderr.writeln(fields);
+        void appendCaseTab(ref ushort[dchar] index,
+                    ref uint[] chars, char[] casePart){
+                if(!casePart.empty){
+                    uint ch = parse!uint(casePart, 16);
+                    chars ~= ch;
+                    assert(chars.length < ushort.max);
+                    index[src] = cast(ushort)(chars.length-1);
+                }
+            }
+        appendCaseTab(toLowerIndex, toLowerTab, lowerCasePart);
+        appendCaseTab(toUpperIndex, toUpperTab, upperCasePart);
+        appendCaseTab(toTitleIndex, toTitleTab, titleCasePart);
+
         if(!decomp.empty)
         {
             //stderr.writeln(codepoint, " ---> ", decomp);
@@ -466,6 +496,50 @@ void loadDecompositions(string inp)
             }
             compatDecomp[src] = dest;
         }
+    }
+}
+
+void loadSpecialCasing(string f)
+{
+    writefln("enum MAX_SIMPLE_LOWER = %d;", toLowerTab.length);
+    writefln("enum MAX_SIMPLE_UPPER = %d;", toUpperTab.length);
+    writefln("enum MAX_SIMPLE_TITLE = %d;", toTitleTab.length);
+    auto file = File(f);
+    auto r = regex(`([0-9A-F]+(?:\s*[0-9A-F]+)+);`, "g");
+    foreach(line; file.byLine)
+    {
+        if(line[0] == '#')
+            if(line.canFind("Conditional Mappings"))
+                break;
+            else
+                continue;
+        auto entries = line.match(r);
+        if(entries.empty)
+            continue; 
+        auto pieces = array(entries.map!"a[1]");
+        dchar ch = parse!uint(pieces[0], 16);
+        void processPiece(ref ushort[dchar] index,  
+            ref uint[] table, char[] piece)
+        {
+            uint[] mapped = piece.split
+                .map!(x=>parse!uint(x, 16)).array;
+            if(mapped.length == 1)
+            {
+                table ~= mapped[0];
+                index[ch] = cast(ushort)(table.length-1);
+            }
+            else 
+            {
+                ushort idx = cast(ushort)table.length;
+                table ~= mapped;
+                table[idx] |= (mapped.length<<24); //upper 8bits - length of sequence
+                index[ch] = idx;
+            }
+        }
+        // lower, title, upper
+        processPiece(toLowerIndex, toLowerTab, pieces[1]);
+        processPiece(toUpperIndex, toUpperTab, pieces[3]);
+        processPiece(toUpperIndex, toUpperTab, pieces[2]);
     }
 }
 
@@ -690,6 +764,18 @@ void writeTries()
     //few specifics for grapheme cluster breaking algorithm
     writeBest3Level("mc", props["Mc"]);
     writeBest3Level("graphemeExtend", props["Grapheme_Extend"]);
+}
+
+void writeCaseCoversion()
+{
+    writeBest3Level("toUpperIndex", toUpperIndex, ushort.max);
+    writeBest3Level("toLowerIndex", toLowerIndex, ushort.max);
+    writeBest3Level("toTitleIndex", toTitleIndex, ushort.max);
+
+    writefln("immutable uint[] toUpperTable = [%( 0x%x, %)];", toUpperTab);
+    writefln("immutable uint[] toLowerTable = [%( 0x%x, %)];", toLowerTab);
+    writefln("immutable uint[] toTitleTable = [%( 0x%x, %)];", toTitleTab);
+
 }
 
 void writeDecomposition()

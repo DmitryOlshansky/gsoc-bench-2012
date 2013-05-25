@@ -6355,7 +6355,7 @@ dchar toUniLower(dchar c)
     upper-lower mapping. Use overload of toLower which takes full string instead.
 +/
 @safe pure nothrow
-dchar toLower(dchar c)
+dchar toLower()(dchar c)
 {
      // optimize ASCII case
     if(c < 0xAA)
@@ -6396,6 +6396,47 @@ dchar toLower(dchar c)
     return c;
 }
 
+
+/++
+    Returns a new string which is identical to $(D s) except that all of its
+    characters are lowercase (in unicode, not just ASCII). If $(D s) does not
+    have any convertible characters, then $(D s) is returned.
+  +/
+S toLower(S)(S s) @trusted pure
+    if(isSomeString!S)
+{
+    static immutable toLowerCaseTrie = asTrie(toLowerIndexTrieEntries);
+    foreach(i, dchar cOuter; s)
+    {
+        ushort idx = toLowerCaseTrie[cOuter];
+        if(idx == short.min)
+            continue;
+        auto result = s[0.. i].dup;
+        foreach(dchar c; s[i .. $])
+        {
+            idx = toLowerCaseTrie[c];
+            if(idx == ushort.max)
+                result ~= c;
+            else if(idx < MAX_SIMPLE_LOWER)
+            {
+                c = toLowerTable[idx];
+                result ~= c;
+            }
+            else
+            {
+                uint len = toLowerTable[idx]>>24;
+                result ~= cast(dchar)(toLowerTable[idx] & 0xFF_FFFF);
+                //TODO: optimize this
+                foreach(dchar nCh; cast(dstring)toLowerTable[idx+1..idx+len])
+                    result ~= nCh;
+            }
+        }
+        return cast(S) result;
+    }
+    return s;
+}
+
+
 @trusted unittest //@@@BUG std.format is not @safe
 {
     import std.string : format;
@@ -6408,7 +6449,54 @@ dchar toLower(dchar c)
         dchar low = ch.toLower();
         assert(low == ch || isLower(low), format("%s -> %s", ch, low));
     }
+
+    assert(toLower("АЯ") == "ая");
 }
+
+
+
+unittest
+{
+    debug(std_uni) printf("std_uni.toLower.unittest\n");    
+
+    string s1 = "FoL";
+    string s2 = toLower(s1);
+    assert(cmp(s2, "fol") == 0, s2);
+    assert(s2 != s1);
+
+    char[] s3 = s1.dup;
+    //toLowerInPlace(s3);
+    //assert(s3 == s2, s3);
+
+    s1 = "A\u0100B\u0101d";
+    s2 = toLower(s1);
+    s3 = s1.dup;
+    assert(cmp(s2, "a\u0101b\u0101d") == 0);
+    assert(s2 !is s1);
+    //toLowerInPlace(s3);
+    //assert(s3 == s2, s3);
+
+    s1 = "A\u0460B\u0461d";
+    s2 = toLower(s1);
+    s3 = s1.dup;
+    assert(cmp(s2, "a\u0461b\u0461d") == 0);
+    assert(s2 !is s1);
+    //toLowerInPlace(s3);
+    //assert(s3 == s2, s3);
+
+    s1 = "\u0130";
+    s2 = toLower(s1);
+    s3 = s1.dup;
+    assert(s2 == "i\u0307");
+    assert(s2 !is s1);
+    //toLowerInPlace(s3);
+    //assert(s3 == s2, s3);
+
+    // Test on wchar and dchar strings.
+    assert(toLower("Some String"w) == "some string"w);
+    assert(toLower("Some String"d) == "some string"d);
+}
+
 
 deprecated("Please use std.uni.toUpper instead")
 @safe pure nothrow
