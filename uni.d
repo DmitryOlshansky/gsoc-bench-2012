@@ -6251,6 +6251,39 @@ version(std_uni_bootstrap)
 }
 else
 {
+
+//trusted -> avoid bounds check
+@trusted pure nothrow
+ushort toLowerIndex(dchar c)
+{
+    static immutable trie = asTrie(toLowerIndexTrieEntries);
+    return trie[c];
+}
+
+//trusted -> avoid bounds check
+@trusted pure nothrow
+dchar toLowerTab(size_t idx)
+{
+    static immutable tab = toLowerTable;
+    return tab[idx];
+}
+
+//trusted -> avoid bounds check
+@trusted pure nothrow
+ushort toUpperIndex(dchar c)
+{
+    static immutable trie = asTrie(toUpperIndexTrieEntries);
+    return trie[c];
+}
+
+//trusted -> avoid bounds check
+@trusted pure nothrow
+dchar toUpperTab(size_t idx)
+{
+    static immutable tab = toUpperTable;
+    return tab[idx];
+}
+
 public:
 
 /++
@@ -6347,6 +6380,7 @@ dchar toUniLower(dchar c)
     return toLower(c);
 }
 
+
 /++
     If $(D c) is a Unicode uppercase $(CHARACTER), then its lowercase equivalent
     is returned. Otherwise $(D c) is returned.
@@ -6364,38 +6398,50 @@ dchar toLower()(dchar c)
             return c;
         if(c <= 'Z')
             return c + 32;
+        return c;
     }
-    size_t idx = simpleCaseTrie[c];
-    alias simpleCaseTable stab;
-    if(idx != EMPTY_CASE_TRIE)
+    size_t idx = toLowerIndex(c);
+    if(idx < MAX_SIMPLE_LOWER)
     {
-        size_t sz = stab[idx].size;
-        idx = idx - stab[idx].n;
-        switch(sz){
-        default:
-            assert(false);// no even buckets of size 5 currently
-        case 5:
-            if(stab[idx+4].isLower)
-                return stab[idx+4].ch;
-            goto case;
-        case 4:
-            if(stab[idx+3].isLower)
-                return stab[idx+3].ch;
-            goto case;
-        case 3:
-            if(stab[idx+2].isLower)
-                return stab[idx+2].ch;
-            goto case;
-        case 2:
-            if(stab[idx+1].isLower)
-                return stab[idx+1].ch;
-            if(stab[idx].isLower)
-                return stab[idx].ch;
-        }
+        return toLowerTab(idx);
     }
     return c;
 }
 
+//generic toUpper/toLower on whole string, creates new or returns as is
+private S toCase(alias indexFn, uint maxIdx, alias tableFn, S)(S s) @trusted pure
+    if(isSomeString!S)
+{
+    foreach(i, dchar cOuter; s)
+    {
+        ushort idx = indexFn(cOuter);
+        if(idx == short.min)
+            continue;
+        auto result = s[0.. i].dup;
+        foreach(dchar c; s[i .. $])
+        {
+            idx = indexFn(c);
+            if(idx == ushort.max)
+                result ~= c;
+            else if(idx < maxIdx)
+            {
+                c = tableFn(idx);
+                result ~= c;
+            }
+            else
+            {
+                auto val = tableFn(idx);
+                //unpack length + codepoint
+                uint len = val>>24;
+                result ~= cast(dchar)(val & 0xFF_FFFF);
+                foreach(j; idx+1..idx+len)
+                    result ~= tableFn(j);
+            }
+        }
+        return cast(S) result;
+    }
+    return s;
+}
 
 /++
     Returns a new string which is identical to $(D s) except that all of its
@@ -6404,36 +6450,8 @@ dchar toLower()(dchar c)
   +/
 S toLower(S)(S s) @trusted pure
     if(isSomeString!S)
-{
-    static immutable toLowerCaseTrie = asTrie(toLowerIndexTrieEntries);
-    foreach(i, dchar cOuter; s)
-    {
-        ushort idx = toLowerCaseTrie[cOuter];
-        if(idx == short.min)
-            continue;
-        auto result = s[0.. i].dup;
-        foreach(dchar c; s[i .. $])
-        {
-            idx = toLowerCaseTrie[c];
-            if(idx == ushort.max)
-                result ~= c;
-            else if(idx < MAX_SIMPLE_LOWER)
-            {
-                c = toLowerTable[idx];
-                result ~= c;
-            }
-            else
-            {
-                uint len = toLowerTable[idx]>>24;
-                result ~= cast(dchar)(toLowerTable[idx] & 0xFF_FFFF);
-                //TODO: optimize this
-                foreach(dchar nCh; cast(dstring)toLowerTable[idx+1..idx+len])
-                    result ~= nCh;
-            }
-        }
-        return cast(S) result;
-    }
-    return s;
+{    
+    return toCase!(toLowerIndex, MAX_SIMPLE_LOWER, toLowerTab)(s);
 }
 
 
@@ -6514,7 +6532,7 @@ dchar toUniUpper(dchar c)
     upper-lower mapping. Use overload of toUpper which takes full string instead.
 +/
 @safe pure nothrow
-dchar toUpper(dchar c)
+dchar toUpper()(dchar c)
 {
     // optimize ASCII case
     if(c < 0xAA)
@@ -6523,34 +6541,12 @@ dchar toUpper(dchar c)
             return c;
         if(c <= 'z')
             return c - 32;
+        return c;
     }
-    size_t idx = simpleCaseTrie[c];
-    alias simpleCaseTable stab;
-    if(idx != EMPTY_CASE_TRIE)
+    size_t idx = toUpperIndex(c);
+    if(idx < MAX_SIMPLE_UPPER)
     {
-        size_t sz = stab[idx].size;
-        idx = idx - stab[idx].n;
-        switch(sz){
-        default:
-            assert(false);// no even buckets of size 5 currently
-        case 5:
-            if(stab[idx+4].isUpper)
-                return stab[idx+4].ch;
-            goto case;
-        case 4:
-            if(stab[idx+3].isUpper)
-                return stab[idx+3].ch;
-            goto case;
-        case 3:
-            if(stab[idx+2].isUpper)
-                return stab[idx+2].ch;
-            goto case;
-        case 2:
-            if(stab[idx+1].isUpper)
-                return stab[idx+1].ch;
-            if(stab[idx].isUpper)
-                return stab[idx].ch;
-        }
+        return toUpperTab(idx);
     }
     return c;
 }
@@ -6567,6 +6563,47 @@ dchar toUpper(dchar c)
         dchar up = ch.toUpper();
         assert(up == ch || isUpper(up), format("%s -> %s", ch, up));
     }
+}
+
+
+/++
+    Returns a string which is identical to $(D s) except that all of its
+    characters are uppercase (in unicode, not just ASCII). If $(D s) does not
+    have any lowercase characters, then $(D s) is returned.
++/
+S toUpper(S)(S s) @trusted pure
+    if(isSomeString!S)
+{    
+    return toCase!(toUpperIndex, MAX_SIMPLE_UPPER, toUpperTab)(s);
+}
+
+unittest
+{
+    debug(std_uni) printf("std_uni.toUpper.unittest\n");
+
+    string s1 = "FoL";
+    string s2;
+    char[] s3;
+
+    s2 = toUpper(s1);
+    //s3 = s1.dup; toUpperInPlace(s3);
+    //assert(s3 == s2, s3);
+    assert(cmp(s2, "FOL") == 0);
+    assert(s2 !is s1);
+
+    s1 = "a\u0100B\u0101d";
+    s2 = toUpper(s1);
+   // s3 = s1.dup; toUpperInPlace(s3);
+    //assert(s3 == s2);
+    assert(cmp(s2, "A\u0100B\u0100D") == 0);
+    assert(s2 !is s1);
+
+    s1 = "a\u0460B\u0461d";
+    s2 = toUpper(s1);
+    //s3 = s1.dup; toUpperInPlace(s3);
+    //assert(s3 == s2);
+    assert(cmp(s2, "A\u0460B\u0460D") == 0);
+    assert(s2 !is s1);
 }
 
 deprecated("Please use std.uni.isAlpha instead.")
