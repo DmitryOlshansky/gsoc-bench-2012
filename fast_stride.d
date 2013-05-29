@@ -102,7 +102,7 @@ unittest
     {
         char[1] buf;
         buf[0] = cast(char)ch;
-        int std, my;
+        size_t std, my;
         bool stdThrown = false, myThrown = false;
         try{
             std = stride(buf, 0);
@@ -155,6 +155,6 @@ int main(string argv[])
             static assert(0);
     }
     sw.stop();
-    writeln("Total time: ", sw.peek().msecs);
+    writeln(sw.peek().usecs);
     return len;
 }
