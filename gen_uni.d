@@ -8,7 +8,9 @@
 */
 import uni, std.stdio, std.traits, std.typetuple,
      std.exception, std.format, std.algorithm, std.typecons,
-     std.regex, std.range, std.conv, std.net.curl;
+     std.regex, std.range, std.conv;
+
+import randAA;
 
 import std.file:exists;
 static import std.ascii;
@@ -16,8 +18,8 @@ static import std.ascii;
 //common binary property sets and their aliases
 struct PropertyTable
 {
-    CodepointSet[string] table;
-    string[string] aliases;
+    RandAA!(string, CodepointSet) table;
+    RandAA!(string, string) aliases;
 }
 
 PropertyTable general;
@@ -26,18 +28,18 @@ PropertyTable scripts;
 PropertyTable hangul;
 
 //quick NO/MAYBE charaсter sets
-CodepointSet[string] normalization;
+RandAA!(string, CodepointSet) normalization;
 
 //axuilary sets for case mapping
 CodepointSet lowerCaseSet, upperCaseSet;
 
 // sets for toLower/toUpper/toTitle
 uint[] toLowerTab;
-ushort[dchar] toLowerIndex;
+RandAA!(dchar, ushort) toLowerIndex;
 uint[] toUpperTab;
-ushort[dchar] toUpperIndex;
+RandAA!(dchar, ushort) toUpperIndex;
 uint[] toTitleTab;
-ushort[dchar] toTitleIndex;
+RandAA!(dchar, ushort) toTitleIndex;
 
 mixin(mixedCCEntry);
 
@@ -48,11 +50,11 @@ FullCaseEntry[] fullTable;
 ///canonical combining class
 CodepointSet[256] combiningClass;
 //same but packaged per dchar
-ubyte[dchar] combiningMapping;
+RandAA!(dchar, ubyte) combiningMapping;
 
 //unrolled decompositions
-dstring[dchar] canonDecomp;
-dstring[dchar] compatDecomp;
+RandAA!(dchar, dstring) canonDecomp;
+RandAA!(dchar, dstring) compatDecomp;
 
 //canonical composition tables
 dchar[] canonicalyComposableLeft;
@@ -159,6 +161,11 @@ enum {
     specialCasingSrc = "SpecialCasing.txt"
 };
 
+auto toPairs(K, V)(RandAA!(K, V) aa)
+{
+    return aa.values.zip(aa.keys).array;
+}
+
 void main(string[] argv)
 {
     try
@@ -171,19 +178,25 @@ void main(string[] argv)
  *
  */
 //Automatically generated from Unicode Character Database files\n");
-        auto prefix = "http://www.unicode.org/Public/UNIDATA/";
-        downloadIfNotCached(prefix~caseFoldingSrc, caseFoldingSrc);
-        downloadIfNotCached(prefix~blocksSrc, blocksSrc);
-        downloadIfNotCached(prefix~propListSrc, propListSrc);
-        downloadIfNotCached(prefix~"extracted/"~generalPropSrc, generalPropSrc);
-        downloadIfNotCached(prefix~corePropSrc, corePropSrc);
-        downloadIfNotCached(prefix~scriptsSrc, scriptsSrc);
-        downloadIfNotCached(prefix~normalizationPropSrc, normalizationPropSrc);
-        downloadIfNotCached(prefix~hangulSyllableSrc, hangulSyllableSrc);
-        downloadIfNotCached(prefix~compositionExclusionsSrc,compositionExclusionsSrc);
-        downloadIfNotCached(prefix~"extracted/"~combiningClassSrc, combiningClassSrc);
-        downloadIfNotCached(prefix~unicodeDataSrc, unicodeDataSrc);
-        downloadIfNotCached(prefix~specialCasingSrc, specialCasingSrc);
+
+        general.table = new RandAA!(string, CodepointSet);
+        general.aliases = new RandAA!(string, string);
+        blocks.table = new RandAA!(string, CodepointSet);
+        blocks.aliases = new RandAA!(string, string);
+        scripts.table = new RandAA!(string, CodepointSet);
+        scripts.aliases = new RandAA!(string, string);
+        hangul.table = new RandAA!(string, CodepointSet);
+        hangul.aliases = new RandAA!(string, string);
+
+        normalization = new RandAA!(string, CodepointSet);
+
+        toLowerIndex = new RandAA!(dchar, ushort);
+        toUpperIndex = new RandAA!(dchar, ushort);
+        toTitleIndex = new RandAA!(dchar, ushort);
+
+        combiningMapping = new RandAA!(dchar, ubyte);
+        canonDecomp  = new RandAA!(dchar, dstring);
+        compatDecomp = new RandAA!(dchar, dstring);
 
         loadBlocks(blocksSrc, blocks);
         loadProperties(propListSrc, general);
@@ -200,7 +213,7 @@ void main(string[] argv)
         loadCombining(combiningClassSrc);
         
         writeCaseCoversion();
-/*
+
         static void writeTableOfSets(string prefix, 
             string name, PropertyTable tab)
         {
@@ -227,7 +240,6 @@ static if(size_t.sizeof == %d) {", size_t.sizeof);
         writeln("
 }\n");
         writeFunctions();
-*/
 
     }
     catch(Exception e)
@@ -238,7 +250,8 @@ static if(size_t.sizeof == %d) {", size_t.sizeof);
 
 void scanUniData(alias Fn)(string name, Regex!char r)
 {
-    foreach(line; File(name).byLine)
+    File f = File(name);
+    foreach(line; f.byLine)
     {
         auto m = match(line, r);
         if(!m.empty)
@@ -247,18 +260,11 @@ void scanUniData(alias Fn)(string name, Regex!char r)
 }
 
 
-void downloadIfNotCached(string url, string path)
-{
-    //TODO: check current date vs file data before using cache
-    if(!exists(path))
-        download(url, path);
-}
-
 
 void loadCaseFolding(string f)
 {
-    dchar[dchar] simple;
-    dstring[dchar] full;
+    auto simple  = new RandAA!(dchar, dchar);
+    auto full = new RandAA!(dchar, dstring);
 
     auto r = regex("([^;]*); ([CFS]);\\s*([^;]*);");
     scanUniData!((m){
@@ -459,7 +465,7 @@ void loadUnicodeData(string inp)
         auto lowerCasePart = fields[13];
         auto titleCasePart = fields[14];
         dchar src = parse!uint(codepoint, 16);
-        void appendCaseTab(ref ushort[dchar] index,
+        void appendCaseTab(ref RandAA!(dchar, ushort) index,
                     ref uint[] chars, char[] casePart){
                 if(!casePart.empty){
                     uint ch = parse!uint(casePart, 16);
@@ -508,7 +514,7 @@ void loadSpecialCasing(string f)
     auto r = regex(`([0-9A-F]+(?:\s*[0-9A-F]+)+);`, "g");
     foreach(line; file.byLine)
     {
-        if(line[0] == '#')
+        if(!line.empty && line[0] == '#')
             if(line.canFind("Conditional Mappings"))
                 break;
             else
@@ -518,7 +524,7 @@ void loadSpecialCasing(string f)
             continue; 
         auto pieces = array(entries.map!"a[1]");
         dchar ch = parse!uint(pieces[0], 16);
-        void processPiece(ref ushort[dchar] index,  
+        void processPiece(ref RandAA!(dchar, ushort) index,  
             ref uint[] table, char[] piece)
         {
             uint[] mapped = piece.split
@@ -543,10 +549,10 @@ void loadSpecialCasing(string f)
     }
 }
 
-auto recursivelyDecompose(dstring[dchar] decompTable)
+auto recursivelyDecompose(RandAA!(dchar, dstring) decompTable)
 {
     //apply recursively:
-    dstring[dchar] full;
+    auto full = new RandAA!(dchar, dstring);
     foreach(k, v; decompTable)
     {
         dstring old, decomp=v;
@@ -705,11 +711,11 @@ void writeEndPlatformDependent()
 
 void writeTries()
 {        
-    ushort[dchar] simpleIndices;
+    auto simpleIndices = new RandAA!(dchar, ushort);
     foreach(i, v; array(map!(x => x.ch)(simpleTable)))
         simpleIndices[v] = cast(ushort)i;
 
-    ushort[dchar] fullIndices;
+    auto fullIndices = new RandAA!(dchar, ushort);
     foreach(i, v; fullTable)
     {
         if(v.entry_len == 1)
@@ -717,8 +723,10 @@ void writeTries()
     }
 
     //these 2 only for verification of Trie code itself
-    auto st = codepointTrie!(ushort, 12, 9)(simpleIndices, ushort.max);
-    auto ft = codepointTrie!(ushort, 12, 9)(fullIndices, ushort.max);
+    auto st = codepointTrie!(ushort, 12, 9)(
+        zip(simpleIndices.values, simpleIndices.keys).array, ushort.max);
+    auto ft = codepointTrie!(ushort, 12, 9)(
+        zip(fullIndices.values, fullIndices.keys).array, ushort.max);
 
     foreach(k, v; simpleIndices){
         assert(st[k] == simpleIndices[k]);
@@ -787,8 +795,8 @@ void writeDecomposition()
     stderr.writeln("Canon flattened: ", decompCanonFlat.length);
     stderr.writeln("Compat flattened: ", decompCompatFlat.length);
    
-    ushort[dchar] mappingCanon;
-    ushort[dchar] mappingCompat;
+    auto mappingCanon = new RandAA!(dchar, ushort);
+    auto mappingCompat = new RandAA!(dchar, ushort);
     //0 serves as doesn't decompose value
     foreach(k, v; fullCanon)
     {
@@ -808,8 +816,10 @@ void writeDecomposition()
     enforce(decompCompatFlat.length < 2^^16);
 
     //these 2 are just self-test for Trie template code
-    auto compatTrie = codepointTrie!(ushort, 12, 9)(mappingCompat, 0);
-    auto canonTrie =  codepointTrie!(ushort, 12, 9)(mappingCanon, 0);
+    auto compatRange = zip(mappingCompat.values, mappingCompat.keys).array;
+    auto canonRange = zip(mappingCanon.values, mappingCanon.keys).array;
+    auto compatTrie = codepointTrie!(ushort, 12, 9)(compatRange, 0);
+    auto canonTrie =  codepointTrie!(ushort, 12, 9)(canonRange, 0);
     import std.string;
     foreach(k, v; fullCompat)
     {
@@ -858,7 +868,7 @@ void writeFunctions()
 
 void writeCompositionTable()
 {
-    dchar[dstring] composeTab;
+    auto composeTab = new RandAA!(dstring, dchar);
     //construct compositions table
     foreach(dchar k, dstring v; canonDecomp)
     {
@@ -878,7 +888,7 @@ void writeCompositionTable()
         triples ~= Tuple!(dchar, dchar, dchar)(key[0], key[1], val);    
     multiSort!("a[0] < b[0]", "a[1] < b[1]")(triples);
     //map to the triplets array
-    ushort[dchar] trimap;
+    auto trimap = new RandAA!(dchar, ushort);
     dchar old = triples[0][0]; 
     size_t idx = 0;
     auto r = triples[];
@@ -895,7 +905,8 @@ void writeCompositionTable()
         old = r[cnt][0];
         r = r[cnt..$];
     }
-    auto triT = codepointTrie!(ushort, 12, 9)(trimap, ushort.max);
+
+    auto triT = codepointTrie!(ushort, 12, 9)(trimap.toPairs, ushort.max);
     auto dupletes = triples.map!(x => tuple(x[1], x[2])).array;
     foreach(dstring key, dchar val; composeTab)
     {
@@ -919,7 +930,7 @@ void writeCompositionTable()
 
 void writeCombining()
 {
-    auto ct = codepointTrie!(ubyte, 7, 5, 9)(combiningMapping);
+    auto ct = codepointTrie!(ubyte, 7, 5, 9)(combiningMapping.toPairs);
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
     {
         foreach(ch; clazz.byCodepoint)
@@ -982,16 +993,17 @@ void writeBest2Level(Set)( string name, Set set)
     write();
 }
 
-void writeBest2Level(V, K)(string name, V[K] map, V defValue=V.init)
+void writeBest2Level(V, K)(string name, RandAA!(K,V) map, V defValue=V.init)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     size_t min = size_t.max;
     void delegate() write;    
+    auto range = zip(map.values, map.keys).array;
     foreach(lvl_1; List)
     {
         enum lvl_2 = 21-lvl_1;       
         alias codepointTrie!(V, lvl_1, lvl_2) CurTrie;
-        CurTrie t = CurTrie(map, defValue);
+        CurTrie t = CurTrie(range, defValue);
         if(t.bytes < min)
         {
             min = t.bytes;
@@ -1034,18 +1046,19 @@ auto writeBest3Level(Set)(string name, Set set)
     write();
 }
 
-void writeBest3Level(V, K)(string name, V[K] map, V defValue=V.init)
+void writeBest3Level(V, K)(string name, RandAA!(K, V) map, V defValue=V.init)
 {
     void delegate() write;
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
     size_t min = size_t.max;
+    auto range = zip(map.values, map.keys).array;
     foreach(lvl_1; List_1)//to have the first stage index fit in byte
     foreach(lvl_2; List)
     {
         static if(lvl_1 + lvl_2  <= 16)// into ushort
         {
-            enum lvl_3 = 21-lvl_2-lvl_1;
-            auto t = codepointTrie!(V, lvl_1, lvl_2, lvl_3) (map, defValue);
+            enum lvl_3 = 21-lvl_2-lvl_1;            
+            auto t = codepointTrie!(V, lvl_1, lvl_2, lvl_3) (range, defValue);
             if(t.bytes < min)
             {
                 min = t.bytes;

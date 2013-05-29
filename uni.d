@@ -3852,6 +3852,17 @@ public template codepointTrie(T, sizes...)
     {
         return buildTrie!(T, dchar, Prefix)(map, defValue);
     }
+
+    //unsorted range of pairs
+    auto codepointTrie(R)(R range, T defValue=T.init)
+        if(isInputRange!R 
+            && is(typeof(ElementType!R.init[0]) : T)
+            && is(typeof(ElementType!R.init[1]) : dchar))
+    {
+        //build from unsorted array of pairs
+        //TODO: expose index sorting functions for Trie
+        return buildTrie!(T, dchar, Prefix)(range, defValue, true);
+    }
 }
 
 unittest //codepointTrie example
@@ -3974,7 +3985,7 @@ public template buildTrie(Value, Key, Args...)
         if(isInputRange!Range && is(typeof(Range.init.front[0]) : Value)
             && is(typeof(Range.init.front[1]) : Key))
     {
-        auto builder = TrieBuilder!(Value, Key, maxIndex, Prefix)(filler);
+        auto builder = TrieBuilder!(Value, Key, Prefix)(filler);
         foreach(v; range)
             builder.putValue(v[1], v[0]);
         return builder.build();
@@ -3999,6 +4010,17 @@ public template buildTrie(Value, Key, Args...)
         foreach(ival; range)
             builder.putRange(ival[0], ival[1], !filler);
         return builder.build();
+    }
+
+    auto buildTrie(Range)(Range range, Value filler, bool unsorted)
+        if(isInputRange!Range
+            && is(typeof(Range.init.front[0]) : Value)
+            && is(typeof(Range.init.front[1]) : Key))
+    {
+        alias Comps = GetComparators!(Prefix.length);
+        if(unsorted)
+            multiSort!(Comps)(range);
+        return buildTrie(range, filler);        
     }
 
     /*
@@ -4036,15 +4058,10 @@ public template buildTrie(Value, Key, Args...)
     /*
         Builds $(D Trie) from associative array.
     */
-    auto buildTrie(Key, Value)(Value[Key] map, Value filler)
+    auto buildTrie(Key, Value)(Value[Key] map, Value filler=Value.init)
     {
         auto range = array(zip(map.values, map.keys));
-        alias Comps = GetComparators!(Prefix.length);
-        multiSort!(Comps)(range);
-        auto builder = TrieBuilder!(Value, Key, Prefix)(filler);
-        foreach(v; range)
-            builder.putValue(v[1], v[0]);
-        return builder.build();
+        return buildTrie(range, filler);
     }
 }
 
@@ -6415,7 +6432,7 @@ private S toCase(alias indexFn, uint maxIdx, alias tableFn, S)(S s) @trusted pur
     foreach(i, dchar cOuter; s)
     {
         ushort idx = indexFn(cOuter);
-        if(idx == short.min)
+        if(idx == ushort.min)
             continue;
         auto result = s[0.. i].dup;
         foreach(dchar c; s[i .. $])
