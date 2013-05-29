@@ -23,7 +23,7 @@ body
     return msbs;
 }
 
-size_t myStride(S)(auto ref S src, size_t idx)
+uint myStride(S)(auto ref S src, size_t idx)
     if (is(S : const char[]) ||
         (isRandomAccessRange!S && is(Unqual!(ElementType!S) == char)))
 {	
@@ -34,7 +34,7 @@ size_t myStride(S)(auto ref S src, size_t idx)
         return myStrideImpl(c, idx);
 }
 
-size_t myStrideImpl(size_t c, size_t idx)
+uint myStrideImpl(ubyte c, size_t idx)
 in
 {
     assert(c & 0x80);
@@ -46,7 +46,7 @@ body
     static if(size_t.sizeof == 4)
     {
         size_t shift = (c & 0b0111_1000) >> 2; //xxxx*2
-        auto ret = (mask >> shift) & 0x3;
+        uint ret = (mask >> shift) & 0x3;
         if(ret == 0)
             throw new UTFException("Invalid UTF-8 sequence", idx);
         return ret+1;
@@ -54,7 +54,7 @@ body
     else
     {
         size_t shift = (c & 0b0111_1000) >> 1; //xxxx*4
-        auto ret = (mask >> shift) & 0xf;
+        uint ret = (mask >> shift) & 0xf;
         if(ret == 0)
             throw new UTFException("Invalid UTF-8 sequence", idx);
         return ret;
