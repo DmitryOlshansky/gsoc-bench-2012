@@ -31,7 +31,7 @@ PropertyTable hangul;
 RandAA!(string, CodepointSet) normalization;
 
 //axuilary sets for case mapping
-CodepointSet lowerCaseSet, upperCaseSet;
+CodepointSet lowerCaseSet, upperCaseSet, titleCaseSet;
 
 // sets for toLower/toUpper/toTitle
 uint[] toLowerTab;
@@ -298,6 +298,7 @@ void loadCaseFolding(string f)
 
     lowerCaseSet = general.table["Lowercase"];
     upperCaseSet = general.table["Uppercase"];
+    titleCaseSet = general.table["Titlecase"];
 
     write(mixedCCEntry);
         
@@ -738,6 +739,7 @@ void writeTries()
 
     writeBest3Level("lowerCase", lowerCaseSet);
     writeBest3Level("upperCase", upperCaseSet);
+    writeBest3Level("titleCase", titleCaseSet);
     writeBest3Level("simpleCase", simpleIndices, ushort.max);
     writeBest3Level("fullCase", fullIndices, ushort.max);
 
