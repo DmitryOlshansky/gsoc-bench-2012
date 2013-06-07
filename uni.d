@@ -4061,7 +4061,7 @@ public template buildTrie(Value, Key, Args...)
     auto buildTrie(Key, Value)(Value[Key] map, Value filler=Value.init)
     {
         auto range = array(zip(map.values, map.keys));
-        return buildTrie(range, filler);
+        return buildTrie(range, filler, true); //sort it
     }
 }
 
@@ -5378,6 +5378,8 @@ private:
     }
 }
 
+static assert(Grapheme.sizeof == size_t.sizeof*4);
+
 //verify the example
 unittest
 {
@@ -6432,9 +6434,10 @@ private S toCase(alias indexFn, uint maxIdx, alias tableFn, S)(S s) @trusted pur
     foreach(i, dchar cOuter; s)
     {
         ushort idx = indexFn(cOuter);
-        if(idx == ushort.min)
+        import std.stdio;        
+        if(idx == ushort.max)
             continue;
-        auto result = s[0.. i].dup;
+        auto result = s[0 .. i].dup;
         foreach(dchar c; s[i .. $])
         {
             idx = indexFn(c);
@@ -6458,6 +6461,210 @@ private S toCase(alias indexFn, uint maxIdx, alias tableFn, S)(S s) @trusted pur
         return cast(S) result;
     }
     return s;
+}
+
+//TODO: helper, I wish std.utf was more flexible (and stright)
+private void encodeTo(char[] buf, ref size_t idx, dchar c) @trusted pure
+{
+    if (c <= 0x7F)
+    {
+        buf[idx++] = cast(char)c;
+    }
+    else if (c <= 0x7FF)
+    {
+        buf[idx++] = cast(char)(0xC0 | (c >> 6));
+        buf[idx++] = cast(char)(0x80 | (c & 0x3F));
+    }
+    else if (c <= 0xFFFF)
+    {
+        buf[idx++] = cast(char)(0xE0 | (c >> 12));
+        buf[idx++] = cast(char)(0x80 | ((c >> 6) & 0x3F));
+        buf[idx++] = cast(char)(0x80 | (c & 0x3F));
+    }
+    else if (c <= 0x10FFFF)
+    {
+        buf[idx++] = cast(char)(0xF0 | (c >> 18));
+        buf[idx++] = cast(char)(0x80 | ((c >> 12) & 0x3F));
+        buf[idx++] = cast(char)(0x80 | ((c >> 6) & 0x3F));
+        buf[idx++] = cast(char)(0x80 | (c & 0x3F));
+    }
+    else
+        assert(0);
+}
+
+unittest
+{
+    char[] s = "abcd".dup;
+    size_t i = 0;
+    encodeTo(s, i, 'X');
+    assert(s == "Xbcd");
+
+    encodeTo(s, i, cast(dchar)'\u00A9');
+    assert(s == "X\xC2\xA9d");
+}
+
+//TODO: helper, I wish std.utf was more flexible (and stright)
+private void encodeTo(wchar[] buf, ref size_t idx, dchar c) @trusted pure
+{
+    import std.utf;
+    if (c <= 0xFFFF)
+    {
+        if (0xD800 <= c && c <= 0xDFFF)
+            throw (new UTFException("Encoding an isolated surrogate code point in UTF-16")).setSequence(c);
+        buf[idx++] = cast(wchar)c;
+    }
+    else if (c <= 0x10FFFF)
+    {
+        buf[idx++] = cast(wchar)((((c - 0x10000) >> 10) & 0x3FF) + 0xD800);
+        buf[idx++] = cast(wchar)(((c - 0x10000) & 0x3FF) + 0xDC00);
+    }
+    else
+        assert(0);
+}
+
+private void toCaseInPlace(alias indexFn, uint maxIdx, alias tableFn, C)(ref C[] s) @trusted pure
+    if (is(C == char) || is(C == wchar)  || is(C == dchar))
+{
+    import std.utf;
+    size_t curIdx = 0;
+    size_t destIdx = 0;
+    while(curIdx != s.length)
+    {
+        dchar ch = decode(s, curIdx);
+        //TODO: special case for ASCII
+        auto caseIndex = indexFn(ch);
+        if(caseIndex == ushort.max) //unchanged, skip over
+        {
+            destIdx += codeLength!C(ch);
+        }
+        else if(caseIndex < maxIdx)  //1:1 codepoint mapping
+        {            
+            dchar lower = tableFn(ch);
+            auto sLen = codeLength!C(ch);
+            if(codeLength!C(lower) > sLen) //switch to slow codepath
+                return toCaseInPlaceAlloc!(indexFn, maxIdx, tableFn)(s, curIdx-sLen, destIdx);
+            else
+            {
+                C[dchar.sizeof/C.sizeof] buf=void;
+                size_t cnt = encode(buf, lower);
+                foreach(i; 0..cnt)
+                    s[destIdx++] = buf[i];
+            }
+        }
+        else  //1:m codepoint mapping, slow codepath
+        {
+            auto sLen = codeLength!C(ch);
+            return toCaseInPlaceAlloc!(indexFn, maxIdx, tableFn)(s, curIdx-sLen, destIdx);
+        }
+        assert(destIdx <= curIdx);
+    }
+    s = s[0..destIdx];
+}
+
+//helper to precalculate size of case-converted string
+private template toCaseLength(alias indexFn, uint maxIdx, alias tableFn)
+{
+    size_t toCaseLength(C)(in C[] str)
+    {
+        import std.utf;
+        size_t codeLen = 0;
+        size_t lastNonTrivial = 0;
+        size_t nextIdx = 0;
+        while(nextIdx != str.length)
+        {
+            size_t curIdx = nextIdx;
+            dchar ch = decode(str, nextIdx);
+            ushort caseIndex = indexFn(ch);
+            if(caseIndex == ushort.max)
+                codeLen += nextIdx - curIdx;
+            else if(caseIndex < MAX_SIMPLE_LOWER)
+            {
+                dchar low = toLowerTab(caseIndex);
+                codeLen += codeLength!C(low);
+            }
+            else
+            {
+                auto val = toLowerTab(caseIndex);
+                auto len = val>>24;
+                dchar low = val & 0xFF_FFFF;
+                codeLen += codeLength!C(low);
+                foreach(j; caseIndex+1..caseIndex+len)
+                    codeLen += codeLength!C(toLowerTab(j));
+            }
+        }
+        return codeLen;
+    }
+}
+
+unittest
+{
+    import std.conv;
+    alias toLowerLength = toCaseLength!(toLowerIndex, MAX_SIMPLE_LOWER, toLowerTab);
+    assert(toLowerLength("abcd") == 4);
+    assert(toLowerLength("абвгд456") == 10+3);
+}
+
+//slower code path that preallocates and then copies
+//case-converted stuf to the new string
+private void toCaseInPlaceAlloc(alias indexFn, uint maxIdx, alias tableFn, C)
+    (ref C[] s, size_t curIdx, size_t destIdx) @trusted pure
+    if (is(C == char) || is(C == wchar) || is(C == dchar))
+{
+    import std.utf;
+    alias caseLength = toCaseLength!(indexFn, maxIdx, tableFn);
+    auto trueLength = curIdx + caseLength(s[curIdx..$]);    
+    C[] ns = new C[trueLength];
+    ns[0..destIdx] = s[0..destIdx];
+    size_t lastUnchanged = curIdx;
+    while(curIdx != s.length)
+    {        
+        size_t startIdx = curIdx; //start of current codepoint
+        dchar ch = decode(s, curIdx);
+        auto caseIndex = indexFn(ch);
+        if(caseIndex == ushort.max) //skip over
+        {
+            continue;
+        }
+        else if(caseIndex < maxIdx)  //1:1 codepoint mapping
+        {
+            auto toCopy = startIdx - lastUnchanged;
+            ns[destIdx .. destIdx+toCopy] = s[lastUnchanged .. startIdx];
+            lastUnchanged = curIdx;
+            destIdx += toCopy;
+            encodeTo(ns, destIdx, tableFn(caseIndex));
+        }
+        else  //1:m codepoint mapping, slow codepath
+        {
+            auto toCopy = startIdx - lastUnchanged;
+            ns[destIdx .. destIdx+toCopy] = s[lastUnchanged .. startIdx];
+            lastUnchanged = curIdx;
+            destIdx += toCopy;
+            auto val = tableFn(caseIndex);
+            //unpack length + codepoint
+            uint len = val>>24;
+            encodeTo(ns, destIdx, cast(dchar)(val & 0xFF_FFFF));
+            foreach(j; caseIndex+1..caseIndex+len)
+                encodeTo(ns, destIdx, tableFn(j));
+        }
+    }
+    if(lastUnchanged != s.length)
+    {
+        auto toCopy = s.length - lastUnchanged;
+        ns[destIdx..destIdx+toCopy] = s[$-toCopy..$];
+    }
+    s = ns;
+}
+
+void toLowerInPlace(C)(ref C[] s) @trusted pure
+    if (is(C == char) || is(C == wchar) || is(C == dchar))
+{
+    toCaseInPlace!(toLowerIndex, MAX_SIMPLE_LOWER, toLowerTab)(s);
+}
+
+void toUpperInPlace(C)(ref C[] s) @trusted pure
+    if (is(C == char) || is(C == wchar) || is(C == dchar))
+{
+    toCaseInPlace!(toUpperIndex, MAX_SIMPLE_LOWER, toUpperTab)(s);
 }
 
 /++
@@ -6489,43 +6696,40 @@ S toLower(S)(S s) @trusted pure
 }
 
 
-
 unittest
-{
-    debug(std_uni) printf("std_uni.toLower.unittest\n");    
-
+{   
     string s1 = "FoL";
     string s2 = toLower(s1);
     assert(cmp(s2, "fol") == 0, s2);
     assert(s2 != s1);
 
     char[] s3 = s1.dup;
-    //toLowerInPlace(s3);
-    //assert(s3 == s2, s3);
+    toLowerInPlace(s3);
+    assert(s3 == s2);
 
     s1 = "A\u0100B\u0101d";
     s2 = toLower(s1);
     s3 = s1.dup;
     assert(cmp(s2, "a\u0101b\u0101d") == 0);
     assert(s2 !is s1);
-    //toLowerInPlace(s3);
-    //assert(s3 == s2, s3);
+    toLowerInPlace(s3);
+    assert(s3 == s2);
 
     s1 = "A\u0460B\u0461d";
     s2 = toLower(s1);
     s3 = s1.dup;
     assert(cmp(s2, "a\u0461b\u0461d") == 0);
     assert(s2 !is s1);
-    //toLowerInPlace(s3);
-    //assert(s3 == s2, s3);
+    toLowerInPlace(s3);
+    assert(s3 == s2);
 
     s1 = "\u0130";
     s2 = toLower(s1);
     s3 = s1.dup;
     assert(s2 == "i\u0307");
     assert(s2 !is s1);
-    //toLowerInPlace(s3);
-    //assert(s3 == s2, s3);
+    toLowerInPlace(s3);
+    assert(s3 == s2);
 
     // Test on wchar and dchar strings.
     assert(toLower("Some String"w) == "some string"w);
@@ -6603,22 +6807,22 @@ unittest
     char[] s3;
 
     s2 = toUpper(s1);
-    //s3 = s1.dup; toUpperInPlace(s3);
-    //assert(s3 == s2, s3);
+    s3 = s1.dup; toUpperInPlace(s3);
+    assert(s3 == s2, s3);
     assert(cmp(s2, "FOL") == 0);
     assert(s2 !is s1);
 
     s1 = "a\u0100B\u0101d";
     s2 = toUpper(s1);
-   // s3 = s1.dup; toUpperInPlace(s3);
-    //assert(s3 == s2);
+    s3 = s1.dup; toUpperInPlace(s3);
+    assert(s3 == s2);
     assert(cmp(s2, "A\u0100B\u0100D") == 0);
     assert(s2 !is s1);
 
     s1 = "a\u0460B\u0461d";
     s2 = toUpper(s1);
-    //s3 = s1.dup; toUpperInPlace(s3);
-    //assert(s3 == s2);
+    s3 = s1.dup; toUpperInPlace(s3);
+    assert(s3 == s2);
     assert(cmp(s2, "A\u0460B\u0460D") == 0);
     assert(s2 !is s1);
 }

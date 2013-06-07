@@ -8,7 +8,7 @@
 */
 import uni, std.stdio, std.traits, std.typetuple,
      std.exception, std.format, std.algorithm, std.typecons,
-     std.regex, std.range, std.conv;
+     std.regex, std.range, std.conv, std.getopt;
 
 import randAA;
 
@@ -31,14 +31,18 @@ PropertyTable hangul;
 RandAA!(string, CodepointSet) normalization;
 
 //axuilary sets for case mapping
-CodepointSet lowerCaseSet, upperCaseSet, titleCaseSet;
+CodepointSet lowerCaseSet, upperCaseSet;
+//CodepointSet titleCaseSet; //no sensible version found for isTitlecase
 
 // sets for toLower/toUpper/toTitle
 uint[] toLowerTab;
+ushort toLowerTabSimpleLen; //start of long mappings
 RandAA!(dchar, ushort) toLowerIndex;
 uint[] toUpperTab;
+ushort toUpperTabSimpleLen; //ditto for Upper
 RandAA!(dchar, ushort) toUpperIndex;
-uint[] toTitleTab;
+uint[] toTitleTab; 
+ushort toTitleTabSimpleLen; //ditto for Title
 RandAA!(dchar, ushort) toTitleIndex;
 
 mixin(mixedCCEntry);
@@ -170,7 +174,10 @@ void main(string[] argv)
 {
     try
     {
-        writeln("//Written in the D programming language
+        bool minimal = false;
+        getopt(argv, "min", &minimal);
+        if(!minimal)        
+            writeln("//Written in the D programming language
 /**
  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
  *
@@ -178,7 +185,6 @@ void main(string[] argv)
  *
  */
 //Automatically generated from Unicode Character Database files\n");
-
         general.table = new RandAA!(string, CodepointSet);
         general.aliases = new RandAA!(string, string);
         blocks.table = new RandAA!(string, CodepointSet);
@@ -212,8 +218,6 @@ void main(string[] argv)
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
         
-        writeCaseCoversion();
-
         static void writeTableOfSets(string prefix, 
             string name, PropertyTable tab)
         {
@@ -221,25 +225,24 @@ void main(string[] argv)
             writeSets(prefix, tab);
             writeAliasTable(prefix, name, tab);   
         }
-
-
-        writeTableOfSets("uniProp", "propsTab", general);
-        writeTableOfSets("block", "blocksTab", blocks);
-        writeTableOfSets("script", "scriptsTab", scripts);
-        writeTableOfSets("hangul", "hangulTab", hangul);
-
+        if(!minimal)
+        {
+            writeCaseFolding();
+            writeTableOfSets("uniProp", "propsTab", general);
+            writeTableOfSets("block", "blocksTab", blocks);
+            writeTableOfSets("script", "scriptsTab", scripts);
+            writeTableOfSets("hangul", "hangulTab", hangul);
+            writeFunctions();
+        }
         writefln("
-static if(size_t.sizeof == %d) {", size_t.sizeof);        
-        
-    
+static if(size_t.sizeof == %d) {", size_t.sizeof);
         writeTries();
         writeCombining();
         writeDecomposition();
         writeCompositionTable();
-    
+        writeCaseCoversion();
         writeln("
 }\n");
-        writeFunctions();
 
     }
     catch(Exception e)
@@ -298,10 +301,9 @@ void loadCaseFolding(string f)
 
     lowerCaseSet = general.table["Lowercase"];
     upperCaseSet = general.table["Uppercase"];
-    titleCaseSet = general.table["Titlecase"];
+    //titleCaseSet = general.table["Lt"];
 
-    write(mixedCCEntry);
-        
+    
     foreach(ch; simple.keys()){
         dchar[8] entry;
         int size=0;
@@ -338,21 +340,6 @@ void loadCaseFolding(string f)
             fullTable ~= FullCaseEntry(value, cast(ubyte)i, cast(ubyte)size);
         }
     }
-
-    writeln("immutable simpleCaseTable = [");
-    foreach(i, v; simpleTable)
-        writefln("    SimpleCaseEntry(0x%04x, %s, %s, %s, %s)%s", v.ch, v.n, v.size, cast(bool)v.isLower, cast(bool)v.isUpper
-                , i == simpleTable.length-1 ? "" : ",");
-    writeln("];");
-    
-    writeln("immutable fullCaseTable = [");
-    foreach(v; fullTable){
-            if(v.entry_len > 1)
-                assert(v.n >= 1); // meaning that start of bucket is always single char
-            writefln("    FullCaseEntry(\"%s\", %s, %s),", v.value, v.n, v.size);
-    }
-    writeln("];");
-
 }
 
 void loadBlocks(string f, ref PropertyTable target)
@@ -508,9 +495,9 @@ void loadUnicodeData(string inp)
 
 void loadSpecialCasing(string f)
 {
-    writefln("enum MAX_SIMPLE_LOWER = %d;", toLowerTab.length);
-    writefln("enum MAX_SIMPLE_UPPER = %d;", toUpperTab.length);
-    writefln("enum MAX_SIMPLE_TITLE = %d;", toTitleTab.length);
+    toLowerTabSimpleLen = cast(ushort)toLowerTab.length;
+    toUpperTabSimpleLen = cast(ushort)toUpperTab.length;
+    toTitleTabSimpleLen = cast(ushort)toTitleTab.length;
     auto file = File(f);
     auto r = regex(`([0-9A-F]+(?:\s*[0-9A-F]+)+);`, "g");
     foreach(line; file.byLine)
@@ -710,6 +697,25 @@ void writeEndPlatformDependent()
 }");
 }
 
+void writeCaseFolding()
+{
+    write(mixedCCEntry);
+    
+    writeln("immutable simpleCaseTable = [");
+    foreach(i, v; simpleTable)
+        writefln("    SimpleCaseEntry(0x%04x, %s, %s, %s, %s)%s", v.ch, v.n, v.size, cast(bool)v.isLower, cast(bool)v.isUpper
+                , i == simpleTable.length-1 ? "" : ",");
+    writeln("];");
+    
+    writeln("immutable fullCaseTable = [");
+    foreach(v; fullTable){
+            if(v.entry_len > 1)
+                assert(v.n >= 1); // meaning that start of bucket is always single char
+            writefln("    FullCaseEntry(\"%s\", %s, %s),", v.value, v.n, v.size);
+    }
+    writeln("];");
+}
+
 void writeTries()
 {        
     auto simpleIndices = new RandAA!(dchar, ushort);
@@ -739,7 +745,7 @@ void writeTries()
 
     writeBest3Level("lowerCase", lowerCaseSet);
     writeBest3Level("upperCase", upperCaseSet);
-    writeBest3Level("titleCase", titleCaseSet);
+    //writeBest3Level("titleCase", titleCaseSet);
     writeBest3Level("simpleCase", simpleIndices, ushort.max);
     writeBest3Level("fullCase", fullIndices, ushort.max);
 
@@ -778,6 +784,9 @@ void writeTries()
 
 void writeCaseCoversion()
 {
+    writefln("enum MAX_SIMPLE_LOWER = %d;", toLowerTabSimpleLen);
+    writefln("enum MAX_SIMPLE_UPPER = %d;", toUpperTabSimpleLen);
+    writefln("enum MAX_SIMPLE_TITLE = %d;", toTitleTabSimpleLen);
     writeBest3Level("toUpperIndex", toUpperIndex, ushort.max);
     writeBest3Level("toLowerIndex", toLowerIndex, ushort.max);
     writeBest3Level("toTitleIndex", toTitleIndex, ushort.max);
@@ -1099,7 +1108,7 @@ template createPrinter(Params...)
     void delegate() createPrinter(T)(string name, T trie)
     {
         return { 
-            writef("//%d bytes\nimmutable %sTrieEntries = TrieEntry!(%s", 
+            writef("//%d bytes\nenum %sTrieEntries = TrieEntry!(%s", 
                 trie.bytes, name, Unqual!(typeof(T.init[0])).stringof);
             foreach(lvl; Params[0..$])
                 writef(", %d", lvl);
