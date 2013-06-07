@@ -6664,7 +6664,7 @@ void toLowerInPlace(C)(ref C[] s) @trusted pure
 void toUpperInPlace(C)(ref C[] s) @trusted pure
     if (is(C == char) || is(C == wchar) || is(C == dchar))
 {
-    toCaseInPlace!(toUpperIndex, MAX_SIMPLE_LOWER, toUpperTab)(s);
+    toCaseInPlace!(toUpperIndex, MAX_SIMPLE_UPPER, toUpperTab)(s);
 }
 
 /++
