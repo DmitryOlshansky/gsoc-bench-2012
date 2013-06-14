@@ -701,13 +701,13 @@ void writeCaseFolding()
 {
     write(mixedCCEntry);
     
-    writeln("immutable simpleCaseTable = [");
+    writeln("enum simpleCaseTable = [");
     foreach(i, v; simpleTable)
         writefln("    SimpleCaseEntry(0x%04x, %s, %s, %s, %s)%s", v.ch, v.n, v.size, cast(bool)v.isLower, cast(bool)v.isUpper
                 , i == simpleTable.length-1 ? "" : ",");
     writeln("];");
     
-    writeln("immutable fullCaseTable = [");
+    writeln("enum fullCaseTable = [");
     foreach(v; fullTable){
             if(v.entry_len > 1)
                 assert(v.n >= 1); // meaning that start of bucket is always single char
@@ -791,9 +791,9 @@ void writeCaseCoversion()
     writeBest3Level("toLowerIndex", toLowerIndex, ushort.max);
     writeBest3Level("toTitleIndex", toTitleIndex, ushort.max);
 
-    writefln("immutable uint[] toUpperTable = [%( 0x%x, %)];", toUpperTab);
-    writefln("immutable uint[] toLowerTable = [%( 0x%x, %)];", toLowerTab);
-    writefln("immutable uint[] toTitleTable = [%( 0x%x, %)];", toTitleTab);
+    writefln("enum uint[] toUpperTable = [%( 0x%x, %)];", toUpperTab);
+    writefln("enum uint[] toLowerTable = [%( 0x%x, %)];", toLowerTab);
+    writefln("enum uint[] toTitleTable = [%( 0x%x, %)];", toTitleTab);
 
 }
 
@@ -851,8 +851,8 @@ void writeDecomposition()
 
     writeBest3Level("compatMapping", mappingCompat, cast(ushort)0);
     writeBest3Level("canonMapping", mappingCanon, cast(ushort)0);    
-    writefln("immutable dchar[] decompCanonTable = [%( 0x%x, %)];", decompCanonFlat);
-    writefln("immutable dchar[] decompCompatTable = [%( 0x%x, %)];", decompCompatFlat);
+    writefln("enum dchar[] decompCanonTable = [%( 0x%x, %)];", decompCanonFlat);
+    writefln("enum dchar[] decompCompatTable = [%( 0x%x, %)];", decompCompatFlat);
 }
 
 void writeFunctions()

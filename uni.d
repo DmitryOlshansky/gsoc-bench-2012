@@ -4939,6 +4939,8 @@ private static bool isRegionalIndicator(dchar ch)
 
 template genericDecodeGrapheme(bool getValue)
 {
+    static immutable graphemeExtend = asTrie(graphemeExtendTrieEntries);
+    static immutable spacingMark = asTrie(mcTrieEntries);
     static if(getValue)
         alias Grapheme Value;
     else
@@ -5043,7 +5045,6 @@ template genericDecodeGrapheme(bool getValue)
             }
         }
     L_End_Extend:
-
         while(!range.empty)
         {
             ch = range.front;
@@ -5494,7 +5495,8 @@ unittest
 +/
 int sicmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
 {
-    alias simpleCaseTable sTable;
+    static immutable simpleCaseTrie = asTrie(simpleCaseTrieEntries);
+    static immutable sTable = simpleCaseTable;
     size_t ridx=0;
     foreach(dchar lhs; str1)
     {
@@ -5534,7 +5536,8 @@ int sicmp(C1, C2)(const(C1)[] str1, const(C2)[] str2)
 
 private int fullCasedCmp(Range)(dchar lhs, dchar rhs, ref Range rtail)
 {
-    alias fullCaseTable fTable;
+    static immutable fullCaseTrie = asTrie(fullCaseTrieEntries);
+    static immutable fTable = fullCaseTable;
     size_t idx = fullCaseTrie[lhs];
     // fullCaseTrie is packed index table
     if(idx == EMPTY_CASE_TRIE)
@@ -5585,7 +5588,6 @@ int icmp(S1, S2)(S1 str1, S2 str2)
     if(isForwardRange!S1 && is(Unqual!(ElementType!S1) == dchar)
     && isForwardRange!S2 && is(Unqual!(ElementType!S2) == dchar))
 {
-
     for(;;)
     {
         if(str1.empty)
@@ -5664,6 +5666,7 @@ unittest
 +/
 ubyte combiningClass(dchar ch)
 {
+    static immutable combiningClassTrie = asTrie(combiningClassTrieEntries);
     return combiningClassTrie[ch];
 }
 
@@ -5720,6 +5723,7 @@ enum {
 +/
 public dchar compose(dchar first, dchar second)
 {
+    static immutable compositionJumpTrie = asTrie(compositionJumpTrieEntries);
     size_t packed = compositionJumpTrie[first];
     if(packed == ushort.max)
         return dchar.init;
@@ -5763,13 +5767,13 @@ public Grapheme decompose(UnicodeDecomposition decompType=Canonical)(dchar ch)
 {
     static if(decompType == Canonical)
     {
-        alias decompCanonTable table;
-        alias canonMapping mapping;
+        static immutable table = decompCanonTable;
+        static immutable mapping = asTrie(canonMappingTrieEntries);
     }
     else static if(decompType == Compatibility)
     {
-        alias decompCompatTable table;
-        alias compatMapping mapping;
+        static immutable table = decompCompatTable;
+        static immutable mapping = asTrie(compatMappingTrieEntries);
     }
     ushort idx = mapping[ch];
     if(!idx) // not found, check hangul arithmetic decomposition
@@ -6023,7 +6027,7 @@ inout(C)[] normalize(NormalizationForm norm=NFC, C)(inout(C)[] input)
 
         foreach(idx, dchar ch; decomposed)
         {
-            auto clazz = combiningClassTrie[ch];
+            auto clazz = combiningClass(ch);
             ccc[idx] = clazz;
             if(clazz == 0 && lastClazz != 0)
             {
@@ -6167,7 +6171,7 @@ private auto splitNormalized(NormalizationForm norm, C)(const(C)[] input)
                 lastCC = 0;
                 continue;
             }
-        ubyte CC = combiningClassTrie[ch];
+        ubyte CC = combiningClass(ch);
         if(lastCC > CC && CC != 0)
         {
             return seekStable!norm(idx, input);
@@ -6191,7 +6195,7 @@ private auto seekStable(NormalizationForm norm, C)(size_t idx, in C[] input)
         if(br.empty)// start is 0
             break;
         dchar ch = br.back;
-        if(combiningClassTrie[ch] == 0 && allowedIn!norm(ch))
+        if(combiningClass(ch) == 0 && allowedIn!norm(ch))
         {
             region_start = br.length - std.utf.codeLength!C(ch);
             break;
@@ -6202,7 +6206,7 @@ private auto seekStable(NormalizationForm norm, C)(size_t idx, in C[] input)
     size_t region_end=input.length;// end is $ by default
     foreach(i, dchar ch; input[idx..$])
     {
-        if(combiningClassTrie[ch] == 0 && allowedIn!norm(ch))
+        if(combiningClass(ch) == 0 && allowedIn!norm(ch))
         {
             region_end = i+idx;
             break;
@@ -6233,15 +6237,16 @@ public bool allowedIn(NormalizationForm norm)(dchar ch)
 private bool notAllowedIn(NormalizationForm norm)(dchar ch)
 {
     static if(norm == NFC)
-        return nfcQC[ch];
+        static immutable qcTrie = asTrie(nfcQCTrieEntries);
     else static if(norm == NFD)
-        return nfdQC[ch];
+        static immutable qcTrie = asTrie(nfdQCTrieEntries);
     else static if(norm == NFKC)
-        return nfkcQC[ch];
+        static immutable qcTrie = asTrie(nfkcQCTrieEntries);
     else static if(norm == NFKD)
-        return nfkdQC[ch];
+        static immutable qcTrie = asTrie(nfkdQCTrieEntries);
     else
         static assert("Unknown normalization form "~norm);
+    return qcTrie[ch];
 }
 
 unittest
@@ -6346,7 +6351,7 @@ bool isLower(dchar c)
 {
     if(std.ascii.isASCII(c))
         return std.ascii.isLower(c);
-
+    static immutable lowerCaseTrie = asTrie(lowerCaseTrieEntries);
     return lowerCaseTrie[c];
 }
 
@@ -6385,7 +6390,7 @@ bool isUpper(dchar c)
 {
     if(std.ascii.isASCII(c))
         return std.ascii.isUpper(c);
-
+    static immutable upperCaseTrie = asTrie(upperCaseTrieEntries);
     return upperCaseTrie[c];
 }
 
@@ -6443,15 +6448,10 @@ dchar toLower()(dchar c)
     return c;
 }
 
-/++
-    If $(CHARACTER) $(D c) has simple title case mapping, then it is returned.
-    Otherwise $(D c) itself is returned.
-
-    Warning: certain alphabets don't have a no 1:1 simple
-    titlecase mapping. Use overload of toTitlecase which takes full string instead.
-+/
+//TODO: Hidden for now, needs better API. 
+//Other transforms could use better API as well, but this one is a new primitive.
 @safe pure nothrow
-dchar toTitlecase(dchar c)
+private dchar toTitlecase(dchar c)
 {
     // optimize ASCII case
     if(c < 0xAA)
@@ -7010,7 +7010,7 @@ bool isAlpha(dchar c)
         return false;
     }
 
-    static immutable alphaTrie = pAlpha; 
+    static immutable alphaTrie = asTrie(alphaTrieEntries);
     return alphaTrie[c];
 }
 
@@ -7031,7 +7031,7 @@ bool isAlpha(dchar c)
 @safe pure nothrow
 bool isMark(dchar c)
 {
-    static immutable markTrie = pMark;
+    static immutable markTrie = asTrie(markTrieEntries);
     return markTrie[c];
 }
 
@@ -7051,7 +7051,7 @@ bool isMark(dchar c)
 @safe pure nothrow
 bool isNumber(dchar c)
 {
-    static immutable numberTrie = pNumber;
+    static immutable numberTrie = asTrie(numberTrieEntries);
     return numberTrie[c];
 }
 
@@ -7072,8 +7072,7 @@ bool isNumber(dchar c)
 @safe pure nothrow
 bool isPunctuation(dchar c)
 {
-    
-    static immutable punctuationTrie = pTrie;
+    static immutable punctuationTrie = asTrie(punctuationTrieEntries);
     return punctuationTrie[c];
 }
 
@@ -7097,7 +7096,7 @@ unittest
 @safe pure nothrow
 bool isSymbol(dchar c)
 {
-    static immutable symbolTrie = pSymbol;
+   static immutable symbolTrie = asTrie(symbolTrieEntries);
    return symbolTrie[c];
 }
 
@@ -7143,7 +7142,7 @@ unittest
 @safe pure nothrow
 bool isGraphical(dchar c)
 {
-    static immutable graphicalTrie = pGraph;
+    static immutable graphicalTrie = asTrie(graphicalTrieEntries);
     return graphicalTrie[c];
 }
 
@@ -7251,7 +7250,7 @@ bool isSurrogateLo(dchar c)
 @safe pure nothrow
 bool isNonCharacter(dchar c)
 {
-    static immutable nonCharacterTrie = pNonChar;
+    static immutable nonCharacterTrie = asTrie(nonCharacterTrieEntries);
     return nonCharacterTrie[c];
 }
 
@@ -7276,17 +7275,7 @@ auto asTrie(T...)(in TrieEntry!T e)
     return const(CodepointTrie!T)(e.offsets, e.sizes, e.data);
 }
 
-
-immutable nfcQC = asTrie(nfcQCTrieEntries);
-immutable nfdQC = asTrie(nfdQCTrieEntries);
-immutable nfkcQC = asTrie(nfkcQCTrieEntries);
-immutable nfkdQC = asTrie(nfkdQCTrieEntries);
-
-immutable graphemeExtend = asTrie(graphemeExtendTrieEntries);
-immutable spacingMark = asTrie(mcTrieEntries);
-
 // TODO: move sets below to Tries
-
 __gshared CodepointSet hangLV;
 __gshared CodepointSet hangLVT;
 
@@ -7295,23 +7284,5 @@ shared static this()
     hangLV = asSet(hangulLV);
     hangLVT = asSet(hangulLVT);
 }
-
-// paint data as tries, trick to decouple dependencies
-enum pAlpha = asTrie(alphaTrieEntries);
-enum pGraph = asTrie(graphicalTrieEntries);
-enum pTrie = asTrie(punctuationTrieEntries);
-enum pSymbol = asTrie(symbolTrieEntries);
-enum pNumber = asTrie(numberTrieEntries);
-enum pMark = asTrie(markTrieEntries);
-enum pNonChar = asTrie(nonCharacterTrieEntries);
-
-immutable combiningClassTrie = asTrie(combiningClassTrieEntries);
-immutable canonMapping = asTrie(canonMappingTrieEntries);
-immutable compatMapping = asTrie(compatMappingTrieEntries);
-immutable simpleCaseTrie = asTrie(simpleCaseTrieEntries);
-immutable fullCaseTrie = asTrie(fullCaseTrieEntries);
-immutable lowerCaseTrie = asTrie(lowerCaseTrieEntries);
-immutable upperCaseTrie = asTrie(upperCaseTrieEntries);
-immutable compositionJumpTrie = asTrie(compositionJumpTrieEntries);
 
 }// version(!std_uni_bootstrap)
