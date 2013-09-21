@@ -317,8 +317,9 @@ void loadCaseFolding(string f)
             if(v == x && !canFind(entry[], key)){
                 entry[size++] = key;
             }
-        }    
-        foreach(i, value; entry[0..size]){
+        }
+        sort(entry[0 .. size]);
+        foreach(i, value; entry[0 .. size]){
             simpleTable ~= SimpleCaseEntry(value, cast(ubyte)i
                 , cast(ubyte)size, value in lowerCaseSet, value in upperCaseSet);
         }
@@ -331,13 +332,16 @@ void loadCaseFolding(string f)
         auto x = full[ch];
         entry[size++] = x;
         
-        //full is many:1 mapping
+        //full is many:many mapping
+        //sort single-char versions, and let them come first        
         foreach(key, v; full){
             if(v == x && !canFind(entry[], [key])){
                 entry[size++] = [key];
             }
 
-        }    
+        }  
+        auto right = partition!(a => a.length == 1)(entry[0 .. size]);
+        sort(entry[0 .. size - right.length]);  
         foreach(i, value; entry[0..size]){
             fullTable ~= FullCaseEntry(value, cast(ubyte)i, cast(ubyte)size);
         }
