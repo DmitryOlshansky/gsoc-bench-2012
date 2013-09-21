@@ -6,10 +6,7 @@ uint stride(S)(auto ref S str, size_t index)
         (isRandomAccessRange!S && is(Unqual!(ElementType!S) == char)))
 {
     immutable c = str[index];
-    if (c < 0x80)
-        return 1;
-    else
-        return strideImpl(c, index);
+    return c < 0x80 ? 1 : strideImpl(c, index);
 }
 
 private uint strideImpl(char c, size_t index)
@@ -28,10 +25,7 @@ uint myStride(S)(auto ref S src, size_t idx)
         (isRandomAccessRange!S && is(Unqual!(ElementType!S) == char)))
 {	
     immutable c = src[idx];
-    if(c < 0x80)
-        return 1;
-    else
-        return myStrideImpl(c, idx);
+    return c < 0x80 ? 1 : myStrideImpl(c, idx);
 }
 
 uint myStrideImpl(ubyte c, size_t idx)

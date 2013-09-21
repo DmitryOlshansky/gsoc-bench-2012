@@ -1,4 +1,6 @@
 import bench_suite, std.algorithm, std.stdio, std.typetuple, std.conv, std.utf;
+//static import std.ascii;
+import alpha;
 
 version(std_uni){
     import std.uni;
@@ -45,15 +47,20 @@ else
 
 void myTest(Result[] data)
 {
-    alias names = TypeTuple!("alpha", "mark", "num", "sym", "white");
+    alias TypeTuple!("alpha", "mark", "num", "sym", "white") names;
     foreach(x; data)
     {
         version(std_uni){
             writeln("\nBaselines");
-            foreach(i, m; stdTests)
-                bench!(clasifyCall!m)("std-"~names[i], x.name, x.data);
+            bench!(clasifyCall!noop)("noop", x.name, x.data);  
+            bench!(clasifyCall!(stdIsAlpha))("std-ascii-alpha", x.name, x.data);
+            writeln(lastCount);
+            bench!(clasifyCall!(myIsAlpha))("new-ascii-alpha", x.name, x.data);
+            writeln(lastCount);
+            //foreach(i, m; stdTests)
+            //   bench!(clasifyCall!m)("std-"~names[i], x.name, x.data);
             //foreach(i, m)
-            bench!(clasifyIndex!alphaTrie)("old-trie-alpha", x.name, x.data);
+            //bench!(clasifyIndex!alphaTrie)("old-trie-alpha", x.name, x.data);
         }
         else
         {
@@ -92,9 +99,10 @@ void main(string[] argv)
 }
 
 version(std_uni){
-    alias Trie = CodepointTrie!8;
+    alias std.internal.uni.CodepointTrie!8 Trie;
     Trie alphaTrie = Trie(unicodeAlphabetic);
 }
+/*
 else
 {
     alias CodepointSet Set;
@@ -140,3 +148,4 @@ else
     }
 
 }
+*/

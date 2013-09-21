@@ -6,7 +6,9 @@
         Uses std.net.curl thus needs curl shared lib & internet connection.
 
 */
-import uni, std.stdio, std.traits, std.typetuple,
+module std.internal.gen_uni;
+
+import std.uni, std.stdio, std.traits, std.typetuple,
      std.exception, std.format, std.algorithm, std.typecons,
      std.regex, std.range, std.conv, std.getopt;
 
@@ -532,8 +534,8 @@ void loadSpecialCasing(string f)
         }
         // lower, title, upper
         processPiece(toLowerIndex, toLowerTab, pieces[1]);
+        processPiece(toTitleIndex, toTitleTab, pieces[2]);
         processPiece(toUpperIndex, toUpperTab, pieces[3]);
-        processPiece(toUpperIndex, toUpperTab, pieces[2]);
     }
 }
 
