@@ -690,7 +690,7 @@ void writeCaseFolding()
 {
     write(mixedCCEntry);
     
-    writeln("enum simpleCaseTable = [");
+    writeln("immutable simpleCaseTable = [");
     foreach(i, v; simpleTable)
     {
         writefln("    SimpleCaseEntry(0x%04x, %s, 0x%0x)%s", 
@@ -698,7 +698,7 @@ void writeCaseFolding()
     }
     writeln("];");
     static uint maxLen = 0;
-    writeln("enum fullCaseTable = [");
+    writeln("immutable fullCaseTable = [");
     foreach(v; fullTable)
     {
             maxLen = max(maxLen, v.entry_len);
