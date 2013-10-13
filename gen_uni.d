@@ -90,45 +90,17 @@ struct SimpleCaseEntry
     {
         return bucket & 0x80;
     }
-    this(uint dch, ubyte num, ubyte size, bool lower, bool upper)
-    {
-        ch = dch;
-        n = num;
-        bucket = size;
-        if(lower)
-            bucket |= 0x40;
-        if(upper)
-            bucket |= 0x80;
-        
-    }
 }
 
 struct FullCaseEntry
 {
-    union
-    {
-        dchar ch;
-        dstring seq;
-    }
+    dchar[3] seq;
     ubyte n, size;// n number in batch, size - size of batch
-    ubyte entry_len;// ==1 read ch, >1 - seq
+    ubyte entry_len;
 
     @property auto value() const  @trusted pure nothrow
     { 
-        return entry_len == 1 ? (&ch)[0..1] : cast(dstring)seq;
-    }
-
-    this(dstring value, ubyte num, ubyte batch_size)
-    {
-        assert(value.length < 255);
-        entry_len = cast(ubyte)value.length;
-        if(value.length == 1)
-            ch = value[0];
-        else{
-            seq = value;
-        }
-        n = num;
-        size = batch_size;
+        return seq[0..entry_len];
     }
 }
 
@@ -151,6 +123,13 @@ struct TrieEntry(T...)
 }
 
 `;
+
+auto fullCaseEntry(dstring value, ubyte num, ubyte batch_size)
+{
+    dchar[3] val;
+    val[0..value.length] = value[];
+    return FullCaseEntry(val, num, batch_size, cast(ubyte)value.length);
+}
 
 enum { 
     caseFoldingSrc = "CaseFolding.txt",
@@ -186,7 +165,8 @@ void main(string[] argv)
  * Authors: Dmitry Olshansky
  *
  */
-//Automatically generated from Unicode Character Database files\n");
+//Automatically generated from Unicode Character Database files\n
+module std.internal.unicode_tables;\n");
         general.table = new RandAA!(string, CodepointSet);
         general.aliases = new RandAA!(string, string);
         blocks.table = new RandAA!(string, CodepointSet);
@@ -319,9 +299,12 @@ void loadCaseFolding(string f)
             }
         }
         sort(entry[0 .. size]);
-        foreach(i, value; entry[0 .. size]){
-            simpleTable ~= SimpleCaseEntry(value, cast(ubyte)i
-                , cast(ubyte)size, value in lowerCaseSet, value in upperCaseSet);
+        foreach(i, value; entry[0 .. size])
+        {
+            auto withFlags = cast(ubyte)size | (value in lowerCaseSet ? 0x40 : 0)
+                 | (value in upperCaseSet ? 0x80 : 0);
+            simpleTable ~= SimpleCaseEntry(value, cast(ubyte)i,
+                cast(ubyte)withFlags);
         }
     }
 
@@ -343,7 +326,7 @@ void loadCaseFolding(string f)
         auto right = partition!(a => a.length == 1)(entry[0 .. size]);
         sort(entry[0 .. size - right.length]);  
         foreach(i, value; entry[0..size]){
-            fullTable ~= FullCaseEntry(value, cast(ubyte)i, cast(ubyte)size);
+            fullTable ~= fullCaseEntry(value, cast(ubyte)i, cast(ubyte)size);
         }
     }
 }
@@ -709,17 +692,25 @@ void writeCaseFolding()
     
     writeln("enum simpleCaseTable = [");
     foreach(i, v; simpleTable)
-        writefln("    SimpleCaseEntry(0x%04x, %s, %s, %s, %s)%s", v.ch, v.n, v.size, cast(bool)v.isLower, cast(bool)v.isUpper
-                , i == simpleTable.length-1 ? "" : ",");
-    writeln("];");
-    
-    writeln("enum fullCaseTable = [");
-    foreach(v; fullTable){
-            if(v.entry_len > 1)
-                assert(v.n >= 1); // meaning that start of bucket is always single char
-            writefln("    FullCaseEntry(\"%s\", %s, %s),", v.value, v.n, v.size);
+    {
+        writefln("    SimpleCaseEntry(0x%04x, %s, 0x%0x)%s", 
+                v.ch,  v.n, v.bucket, i == simpleTable.length-1 ? "" : ",");
     }
     writeln("];");
+    static uint maxLen = 0;
+    writeln("enum fullCaseTable = [");
+    foreach(v; fullTable)
+    {
+            maxLen = max(maxLen, v.entry_len);
+            if(v.entry_len > 1)
+            {
+                assert(v.n >= 1); // meaning that start of bucket is always single char
+            }
+            writefln("    FullCaseEntry(\"%s\", %s, %s, %s),", 
+                    v.value, v.n, v.size, v.entry_len);
+    }
+    writeln("];");
+    stderr.writefln("MAX FCF len = %d", maxLen);
 }
 
 void writeTries()
@@ -732,7 +723,7 @@ void writeTries()
     foreach(i, v; fullTable)
     {
         if(v.entry_len == 1)
-            fullIndices[v.ch] = cast(ushort)i;
+            fullIndices[v.seq[0]] = cast(ushort)i;
     }
 
     //these 2 only for verification of Trie code itself
