@@ -35,7 +35,7 @@ struct FullCaseEntry
     ubyte entry_len;
 
     @property auto value() const  @trusted pure nothrow
-    { 
+    {
         return seq[0..entry_len];
     }
 }
