@@ -43,7 +43,7 @@ RandAA!(dchar, ushort) toLowerIndex;
 uint[] toUpperTab;
 ushort toUpperTabSimpleLen; //ditto for Upper
 RandAA!(dchar, ushort) toUpperIndex;
-uint[] toTitleTab; 
+uint[] toTitleTab;
 ushort toTitleTabSimpleLen; //ditto for Title
 RandAA!(dchar, ushort) toTitleIndex;
 
@@ -78,15 +78,15 @@ struct SimpleCaseEntry
 {
     uint ch;
     ubyte n, bucket;// n - number in bucket
-    @property ubyte size() const @safe pure nothrow
+    @property ubyte size() const
     {
         return bucket & 0x3F;
     }
-    @property auto isLower() const @safe pure nothrow
+    @property auto isLower() const
     {
         return bucket & 0x40;
     }
-    @property auto isUpper() const @safe pure nothrow
+    @property auto isUpper() const
     {
         return bucket & 0x80;
     }
@@ -98,8 +98,8 @@ struct FullCaseEntry
     ubyte n, size;// n number in batch, size - size of batch
     ubyte entry_len;
 
-    @property auto value() const  @trusted pure nothrow
-    { 
+    @property auto value() const @trusted
+    {
         return seq[0..entry_len];
     }
 }
@@ -131,7 +131,7 @@ auto fullCaseEntry(dstring value, ubyte num, ubyte batch_size)
     return FullCaseEntry(val, num, batch_size, cast(ubyte)value.length);
 }
 
-enum { 
+enum {
     caseFoldingSrc = "CaseFolding.txt",
     blocksSrc = "Blocks.txt",
     propListSrc = "PropList.txt",
@@ -157,7 +157,7 @@ void main(string[] argv)
     {
         bool minimal = false;
         getopt(argv, "min", &minimal);
-        if(!minimal)        
+        if(!minimal)
             writeln("//Written in the D programming language
 /**
  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
@@ -166,7 +166,8 @@ void main(string[] argv)
  *
  */
 //Automatically generated from Unicode Character Database files\n
-module std.internal.unicode_tables;\n");
+module std.internal.unicode_tables;
+@safe pure nothrow:\n");
         general.table = new RandAA!(string, CodepointSet);
         general.aliases = new RandAA!(string, string);
         blocks.table = new RandAA!(string, CodepointSet);
@@ -192,28 +193,26 @@ module std.internal.unicode_tables;\n");
         loadProperties(generalPropSrc, general);
         loadProperties(scriptsSrc, scripts);
         loadProperties(hangulSyllableSrc, hangul);
-        
+
         loadUnicodeData(unicodeDataSrc);
         loadSpecialCasing(specialCasingSrc);
-        loadExclusions(compositionExclusionsSrc);        
+        loadExclusions(compositionExclusionsSrc);
         loadCaseFolding(caseFoldingSrc);
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
-        
-        static void writeTableOfSets(string prefix, 
-            string name, PropertyTable tab)
+
+        static void writeTableOfSets(string prefix, PropertyTable tab)
         {
             writeln();
-            writeSets(prefix, tab);
-            writeAliasTable(prefix, name, tab);   
+            writeAliasTable(prefix, tab);
         }
         if(!minimal)
         {
             writeCaseFolding();
-            writeTableOfSets("uniProp", "propsTab", general);
-            writeTableOfSets("block", "blocksTab", blocks);
-            writeTableOfSets("script", "scriptsTab", scripts);
-            writeTableOfSets("hangul", "hangulTab", hangul);
+            writeTableOfSets("uniProps", general);
+            writeTableOfSets("blocks", blocks);
+            writeTableOfSets("scripts", scripts);
+            writeTableOfSets("hangul", hangul);
             writeFunctions();
         }
         writefln("
@@ -262,8 +261,8 @@ void loadCaseFolding(string f)
                 auto right = parse!int(s2, 16);
                 simple[left] = right;
                 full[left] = [right];
-            }     
-            else if(code == 'S')                   
+            }
+            else if(code == 'S')
             {
                 auto right = parse!int(s2, 16);
                 simple[left] = right;
@@ -285,7 +284,7 @@ void loadCaseFolding(string f)
     upperCaseSet = general.table["Uppercase"];
     //titleCaseSet = general.table["Lt"];
 
-    
+
     foreach(ch; simple.keys()){
         dchar[8] entry;
         int size=0;
@@ -314,17 +313,17 @@ void loadCaseFolding(string f)
         entry[size++] = [ch];
         auto x = full[ch];
         entry[size++] = x;
-        
+
         //full is many:many mapping
-        //sort single-char versions, and let them come first        
+        //sort single-char versions, and let them come first
         foreach(key, v; full){
             if(v == x && !canFind(entry[], [key])){
                 entry[size++] = [key];
             }
 
-        }  
+        }
         auto right = partition!(a => a.length == 1)(entry[0 .. size]);
-        sort(entry[0 .. size - right.length]);  
+        sort(entry[0 .. size - right.length]);
         foreach(i, value; entry[0..size]){
             fullTable ~= fullCaseEntry(value, cast(ubyte)i, cast(ubyte)size);
         }
@@ -354,7 +353,7 @@ void loadProperties(string inp, ref PropertyTable target)
     auto set = CodepointSet.init;  //workaround @@@BUG 6178
     scanUniData!((m){
         auto name = to!string(m.captures[4]);
-        if(!acceptProp(name)) 
+        if(!acceptProp(name))
             return;
         if(!m.captures[5].empty)
             aliasStr = to!string(m.captures[5]);
@@ -365,7 +364,7 @@ void loadProperties(string inp, ref PropertyTable target)
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
             if(name !in target.table)
-            {         
+            {
                 target.table[name] = set;
             }
             target.table[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
@@ -398,7 +397,7 @@ void loadNormalization(string inp)
     auto r = regex(`^(?:([0-9A-F]+)\.\.([0-9A-F]+)|([0-9A-F]+))\s*;\s*(NFK?[CD]_QC)\s*;\s*([NM])|#\s*[a-zA-Z_0-9]+=([a-zA-Z_0-9]+)`);
     string aliasStr;
     CodepointSet set; //workaround @@@BUG 6178
-    scanUniData!((m){        
+    scanUniData!((m){
         auto name = to!string(m.captures[4]) ~ to!string(m.captures[5]);
         /*if(!m.captures[6].empty)
             aliasStr = to!string(m.captures[6]);
@@ -409,7 +408,7 @@ void loadNormalization(string inp)
             uint a = parse!uint(sa, 16);
             uint b = parse!uint(sb, 16);
             if(name !in normalization)
-            {                
+            {
                 normalization[name] = set;
             }
             normalization[name].add(a,b+1);
@@ -437,7 +436,7 @@ void loadUnicodeData(string inp)
         //Decomp_Type&Mapping, upper case mapping, lower case mapping, title case mapping
         auto codepoint = fields[0];
         auto decomp = fields[5];
-        
+
         auto upperCasePart = fields[12];
         auto lowerCasePart = fields[13];
         auto titleCasePart = fields[14];
@@ -458,7 +457,7 @@ void loadUnicodeData(string inp)
         if(!decomp.empty)
         {
             //stderr.writeln(codepoint, " ---> ", decomp);
-            
+
             dstring dest;
             bool compat = false;
             std.string.munch(decomp, " ");
@@ -498,10 +497,10 @@ void loadSpecialCasing(string f)
                 continue;
         auto entries = line.match(r);
         if(entries.empty)
-            continue; 
+            continue;
         auto pieces = array(entries.map!"a[1]");
         dchar ch = parse!uint(pieces[0], 16);
-        void processPiece(ref RandAA!(dchar, ushort) index,  
+        void processPiece(ref RandAA!(dchar, ushort) index,
             ref uint[] table, char[] piece)
         {
             uint[] mapped = piece.split
@@ -511,7 +510,7 @@ void loadSpecialCasing(string f)
                 table ~= mapped[0];
                 index[ch] = cast(ushort)(table.length-1);
             }
-            else 
+            else
             {
                 ushort idx = cast(ushort)table.length;
                 table ~= mapped;
@@ -585,7 +584,7 @@ void loadExclusions(string inp)
     scanUniData!((m){
         auto piece = m.captures[1];
         uint a = parse!uint(piece, 16);
-        compExclusions |= cast(dchar)a;   
+        compExclusions |= cast(dchar)a;
     })(inp, r);
 }
 
@@ -618,34 +617,38 @@ string uniformName(string s)
     return cast(string)app.data;
 }
 
-void writeSets(string prefix, PropertyTable src)
- {  
+void writeSets(PropertyTable src)
+{
+    writeln("private alias _T = ubyte[];");
     foreach(k, v; src.table)
     {
-        writef("immutable ubyte[] %s%s = ", prefix, identName(k));
+        writef("_T %s = ", identName(k));
         writeln(charsetString(v));
     }
 }
 
-void writeAliasTable(string prefix, string tabname, PropertyTable src)
+void writeAliasTable(string prefix, PropertyTable src)
 {
-    string tname = "immutable(UnicodeProperty)";
-    writef("\nimmutable %s[] %s = [\n", tname, tabname);
+    writeln("struct ", prefix);
+    writeln("{");
+    writeln("private alias _U = immutable(UnicodeProperty);");
+    writeln("@property static _U[] tab() { return _tab; }");
+    writeln("static immutable:");
+    writeSets(src);
+    writeln("_U[] _tab = [");
     string[] lines;
     string[] namesOnly;
     auto app = appender!(char[])();
     auto keys = src.table.keys;
     foreach(k; keys)
     {
-        formattedWrite(app, "%s(\"%s\", %s%s),\n",
-            tname, k, prefix, identName(k));        
+        formattedWrite(app, "_U(\"%s\", %s),\n", k, identName(k));
         lines ~= app.data.idup;
         namesOnly ~= uniformName(k);
         app.shrinkTo(0);
         if(k in src.aliases)
         {
-            formattedWrite(app, "%s(\"%s\", %s%s),\n",
-                tname, src.aliases[k], prefix, identName(k));
+            formattedWrite(app, "_U(\"%s\", %s),\n", src.aliases[k], identName(k));
             lines ~= app.data.idup;
             namesOnly ~= uniformName(src.aliases[k]);
             app.shrinkTo(0);
@@ -658,8 +661,8 @@ void writeAliasTable(string prefix, string tabname, PropertyTable src)
     {
         write(lines[i]);
     }
-
     writeln("];");
+    writeln("}");
 }
 
 void writeBeginPlatformDependent()
@@ -689,32 +692,42 @@ void writeEndPlatformDependent()
 void writeCaseFolding()
 {
     write(mixedCCEntry);
-    
-    writeln("immutable simpleCaseTable = [");
+
+    writeln("@property immutable(SimpleCaseEntry[]) simpleCaseTable()");
+    writeln("{");
+    writeln("alias SCE = SimpleCaseEntry;");
+    writeln("static immutable SCE[] t = [");
     foreach(i, v; simpleTable)
     {
-        writefln("    SimpleCaseEntry(0x%04x, %s, 0x%0x)%s", 
-                v.ch,  v.n, v.bucket, i == simpleTable.length-1 ? "" : ",");
+        writef("SCE(0x%04x, %s, 0x%0x),", v.ch,  v.n, v.bucket);
+        if (i % 4 == 0) writeln();
     }
     writeln("];");
+    writeln("return t;");
+    writeln("}");
     static uint maxLen = 0;
-    writeln("immutable fullCaseTable = [");
-    foreach(v; fullTable)
+    writeln("@property immutable(FullCaseEntry[]) fullCaseTable()");
+    writeln("{");
+    writeln("alias FCE = FullCaseEntry;");
+    writeln("static immutable FCE[] t = [");
+    foreach(i, v; fullTable)
     {
             maxLen = max(maxLen, v.entry_len);
             if(v.entry_len > 1)
             {
                 assert(v.n >= 1); // meaning that start of bucket is always single char
             }
-            writefln("    FullCaseEntry(\"%s\", %s, %s, %s),", 
-                    v.value, v.n, v.size, v.entry_len);
+            writef("FCE(\"%s\", %s, %s, %s),", v.value, v.n, v.size, v.entry_len);
+            if (i % 4 == 0) writeln();
     }
     writeln("];");
+    writeln("return t;");
+    writeln("}");
     stderr.writefln("MAX FCF len = %d", maxLen);
 }
 
 void writeTries()
-{        
+{
     auto simpleIndices = new RandAA!(dchar, ushort);
     foreach(i, v; array(map!(x => x.ch)(simpleTable)))
         simpleIndices[v] = cast(ushort)i;
@@ -756,7 +769,7 @@ void writeTries()
     CodepointSet symbol = props["Sm"] | props["Sc"] | props["Sk"] | props["So"];
     CodepointSet graphical = alpha | mark | number | punctuation | symbol | props["Zs"];
     CodepointSet nonCharacter = props["Cn"];
- 
+
     CodepointSet nfcQC = normalization["NFC_QCN"] | normalization["NFC_QCM"];
     CodepointSet nfdQC = normalization["NFD_QCN"];
     CodepointSet nfkcQC = normalization["NFKC_QCN"] | normalization["NFKC_QCM"];
@@ -788,10 +801,13 @@ void writeCaseCoversion()
     writeBest3Level("toLowerIndex", toLowerIndex, ushort.max);
     writeBest3Level("toTitleIndex", toTitleIndex, ushort.max);
 
-    writefln("enum uint[] toUpperTable = [%( 0x%x, %)];", toUpperTab);
-    writefln("enum uint[] toLowerTable = [%( 0x%x, %)];", toLowerTab);
-    writefln("enum uint[] toTitleTable = [%( 0x%x, %)];", toTitleTab);
-
+    writeln("@property");
+    writeln("{");
+    writeln("private alias _IUA = immutable(uint[]);");
+    writefln("_IUA toUpperTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toUpperTab);
+    writefln("_IUA toLowerTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toLowerTab);
+    writefln("_IUA toTitleTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toTitleTab);
+    writeln("}");
 }
 
 void writeDecomposition()
@@ -802,22 +818,22 @@ void writeDecomposition()
     dstring decompCompatFlat = "\0"~array(fullCompat.values).sort.uniq.join("\0")~"\0";
     stderr.writeln("Canon flattened: ", decompCanonFlat.length);
     stderr.writeln("Compat flattened: ", decompCompatFlat.length);
-   
+
     auto mappingCanon = new RandAA!(dchar, ushort);
     auto mappingCompat = new RandAA!(dchar, ushort);
     //0 serves as doesn't decompose value
     foreach(k, v; fullCanon)
     {
-        size_t idx = decompCanonFlat.countUntil(v~"\0");          
+        size_t idx = decompCanonFlat.countUntil(v~"\0");
         enforce(idx != 0);
-        enforce(decompCanonFlat[idx..idx+v.length] == v);        
+        enforce(decompCanonFlat[idx..idx+v.length] == v);
         mappingCanon[k] = cast(ushort)idx;
     }
     foreach(k, v; fullCompat)
     {
         size_t idx = decompCompatFlat.countUntil(v~"\0");
         enforce(idx != 0);
-        enforce(decompCompatFlat[idx..idx+v.length] == v);        
+        enforce(decompCompatFlat[idx..idx+v.length] == v);
         mappingCompat[k] = cast(ushort)idx;
     }
     enforce(decompCanonFlat.length < 2^^16);
@@ -834,7 +850,7 @@ void writeDecomposition()
         auto idx = compatTrie[k];
         enforce(idx == mappingCompat[k], "failed on compat");
         size_t len = decompCompatFlat[idx..$].countUntil(0);
-        enforce(decompCompatFlat[idx..idx+len] == v, 
+        enforce(decompCompatFlat[idx..idx+len] == v,
             format("failed on compat: '%( 0x0%5x %)' not found", v));
     }
     foreach(k, v; fullCanon)
@@ -847,16 +863,20 @@ void writeDecomposition()
     }
 
     writeBest3Level("compatMapping", mappingCompat, cast(ushort)0);
-    writeBest3Level("canonMapping", mappingCanon, cast(ushort)0);    
-    writefln("enum dchar[] decompCanonTable = [%( 0x%x, %)];", decompCanonFlat);
-    writefln("enum dchar[] decompCompatTable = [%( 0x%x, %)];", decompCompatFlat);
+    writeBest3Level("canonMapping", mappingCanon, cast(ushort)0);
+    writeln("@property");
+    writeln("{");
+    writeln("private alias _IDCA = immutable(dchar[]);");
+    writefln("_IDCA decompCanonTable() { static _IDCA t = [%( 0x%x, %)]; return t; }", decompCanonFlat);
+    writefln("_IDCA decompCompatTable() { static _IDCA t = [%( 0x%x, %)]; return t; }", decompCompatFlat);
+    writeln("}");
 }
 
 void writeFunctions()
 {
     auto format = general.table["Cf"];
     auto space = general.table["Zs"];
-    auto control = general.table["Cc"];    
+    auto control = general.table["Cc"];
     auto whitespace = general.table["White_Space"];
 
     //hangul L, V, T
@@ -883,9 +903,9 @@ void writeCompositionTable()
         if(v.length != 2)//singleton
             continue;
         if(v[0] in combiningMapping) //non-starter
-            continue; 
+            continue;
         if(k in combiningMapping) //combines to non-starter
-            continue; 
+            continue;
         if(compExclusions[k]) // non-derivable exclusions
             continue;
         composeTab[v] = k;
@@ -893,11 +913,11 @@ void writeCompositionTable()
 
     Tuple!(dchar, dchar, dchar)[] triples;
     foreach(dstring key, dchar val; composeTab)
-        triples ~= Tuple!(dchar, dchar, dchar)(key[0], key[1], val);    
+        triples ~= Tuple!(dchar, dchar, dchar)(key[0], key[1], val);
     multiSort!("a[0] < b[0]", "a[1] < b[1]")(triples);
     //map to the triplets array
     auto trimap = new RandAA!(dchar, ushort);
-    dchar old = triples[0][0]; 
+    dchar old = triples[0][0];
     size_t idx = 0;
     auto r = triples[];
     for(;;){
@@ -919,7 +939,7 @@ void writeCompositionTable()
     foreach(dstring key, dchar val; composeTab)
     {
         size_t pack = triT[key[0]];
-        assert(pack != ushort.max);        
+        assert(pack != ushort.max);
         size_t idx = pack & ((1<<11)-1), cnt = pack>>11;
         auto f = dupletes[idx..idx+cnt].find!(x => x[0] == key[1]);
         assert(!f.empty);
@@ -927,13 +947,18 @@ void writeCompositionTable()
         assert(f.front[1] == val);
     }
     writeln("enum composeIdxMask = (1<<11)-1, composeCntShift = 11;");
-    write("immutable compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
+    write("enum compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
     triT.store(stdout.lockingTextWriter());
     writeln(");");
-    write("immutable compositionTable = [");
+    writeln("@property immutable(CompEntry[]) compositionTable()");
+    writeln("{");
+    writeln("alias CE = CompEntry;");
+    write("static immutable CE[] t = [");
     foreach(pair; dupletes)
-        writef("CompEntry(0x%05x, 0x%05x),", pair[0], pair[1]);
+        writef("CE(0x%05x, 0x%05x),", pair[0], pair[1]);
     writeln("];");
+    writeln("return t;");
+    writeln("}");
 }
 
 void writeCombining()
@@ -987,10 +1012,10 @@ void writeBest2Level(Set)( string name, Set set)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     size_t min = size_t.max;
-    void delegate() write;    
+    void delegate() write;
     foreach(lvl_1; List)
     {
-        enum lvl_2 = 21-lvl_1;       
+        enum lvl_2 = 21-lvl_1;
         auto t = codepointSetTrie!(lvl_1, lvl_2)(set);
         if(t.bytes < min)
         {
@@ -1005,11 +1030,11 @@ void writeBest2Level(V, K)(string name, RandAA!(K,V) map, V defValue=V.init)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     size_t min = size_t.max;
-    void delegate() write;    
+    void delegate() write;
     auto range = zip(map.values, map.keys).array;
     foreach(lvl_1; List)
     {
-        enum lvl_2 = 21-lvl_1;       
+        enum lvl_2 = 21-lvl_1;
         alias codepointTrie!(V, lvl_1, lvl_2) CurTrie;
         CurTrie t = CurTrie(range, defValue);
         if(t.bytes < min)
@@ -1031,12 +1056,12 @@ auto writeBest3Level(Set)(string name, Set set)
     // 8-5-8: indexes are 21-8 = 13 bits, 13-5 = 8 bits, fits into a byte
     // 9-5-7: indexes are 21-7 = 14 bits, 14-5 = 9 bits, doesn't fit into a byte (!)
 
-    // e.g. 8-5-8 is one of hand picked that is a very close match 
+    // e.g. 8-5-8 is one of hand picked that is a very close match
     // to the best packing
     void delegate() write;
-    
+
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-    size_t min = size_t.max;        
+    size_t min = size_t.max;
     foreach(lvl_1; List_1)//to have the first stage index fit in byte
     foreach(lvl_2; List)
     {
@@ -1065,7 +1090,7 @@ void writeBest3Level(V, K)(string name, RandAA!(K, V) map, V defValue=V.init)
     {
         static if(lvl_1 + lvl_2  <= 16)// into ushort
         {
-            enum lvl_3 = 21-lvl_2-lvl_1;            
+            enum lvl_3 = 21-lvl_2-lvl_1;
             auto t = codepointTrie!(V, lvl_1, lvl_2, lvl_3) (range, defValue);
             if(t.bytes < min)
             {
@@ -1104,8 +1129,8 @@ template createPrinter(Params...)
 {
     void delegate() createPrinter(T)(string name, T trie)
     {
-        return { 
-            writef("//%d bytes\nenum %sTrieEntries = TrieEntry!(%s", 
+        return {
+            writef("//%d bytes\nenum %sTrieEntries = TrieEntry!(%s",
                 trie.bytes, name, Unqual!(typeof(T.init[0])).stringof);
             foreach(lvl; Params[0..$])
                 writef(", %d", lvl);
