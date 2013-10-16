@@ -788,9 +788,9 @@ void writeCaseCoversion()
     writeBest3Level("toLowerIndex", toLowerIndex, ushort.max);
     writeBest3Level("toTitleIndex", toTitleIndex, ushort.max);
 
-    writefln("enum uint[] toUpperTable = [%( 0x%x, %)];", toUpperTab);
-    writefln("enum uint[] toLowerTable = [%( 0x%x, %)];", toLowerTab);
-    writefln("enum uint[] toTitleTable = [%( 0x%x, %)];", toTitleTab);
+    writefln("immutable uint[] toUpperTable = [%( 0x%x, %)];", toUpperTab);
+    writefln("immutable uint[] toLowerTable = [%( 0x%x, %)];", toLowerTab);
+    writefln("immutable uint[] toTitleTable = [%( 0x%x, %)];", toTitleTab);
 
 }
 
@@ -848,8 +848,8 @@ void writeDecomposition()
 
     writeBest3Level("compatMapping", mappingCompat, cast(ushort)0);
     writeBest3Level("canonMapping", mappingCanon, cast(ushort)0);
-    writefln("enum dchar[] decompCanonTable = [%( 0x%x, %)];", decompCanonFlat);
-    writefln("enum dchar[] decompCompatTable = [%( 0x%x, %)];", decompCompatFlat);
+    writefln("immutable dchar[] decompCanonTable = [%( 0x%x, %)];", decompCanonFlat);
+    writefln("immutable dchar[] decompCompatTable = [%( 0x%x, %)];", decompCompatFlat);
 }
 
 void writeFunctions()
