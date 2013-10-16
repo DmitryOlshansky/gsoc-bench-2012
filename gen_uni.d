@@ -618,38 +618,37 @@ string uniformName(string s)
 }
 
 void writeSets(PropertyTable src)
- {
+{
+    writeln("private alias _T = ubyte[];");
     foreach(k, v; src.table)
     {
-        writef("ubyte[] %s = ", identName(k));
+        writef("_T %s = ", identName(k));
         writeln(charsetString(v));
     }
 }
 
 void writeAliasTable(string prefix, PropertyTable src)
 {
-    string tname = "immutable(UnicodeProperty)";
     writeln("struct ", prefix);
     writeln("{");
-    writefln("@property static %s[] tab() { return _tab; }", tname);
+    writeln("private alias _U = immutable(UnicodeProperty);");
+    writeln("@property static _U[] tab() { return _tab; }");
     writeln("static immutable:");
     writeSets(src);
-    writeln("UnicodeProperty[] _tab = [");
+    writeln("_U[] _tab = [");
     string[] lines;
     string[] namesOnly;
     auto app = appender!(char[])();
     auto keys = src.table.keys;
     foreach(k; keys)
     {
-        formattedWrite(app, "%s(\"%s\", %s),\n",
-            tname, k, identName(k));
+        formattedWrite(app, "_U(\"%s\", %s),\n", k, identName(k));
         lines ~= app.data.idup;
         namesOnly ~= uniformName(k);
         app.shrinkTo(0);
         if(k in src.aliases)
         {
-            formattedWrite(app, "%s(\"%s\", %s),\n",
-                tname, src.aliases[k], identName(k));
+            formattedWrite(app, "_U(\"%s\", %s),\n", src.aliases[k], identName(k));
             lines ~= app.data.idup;
             namesOnly ~= uniformName(src.aliases[k]);
             app.shrinkTo(0);
@@ -696,31 +695,33 @@ void writeCaseFolding()
 
     writeln("@property immutable(SimpleCaseEntry[]) simpleCaseTable()");
     writeln("{");
-    writeln("    static immutable tab = [");
+    writeln("alias SCE = SimpleCaseEntry;");
+    writeln("static immutable SCE[] t = [");
     foreach(i, v; simpleTable)
     {
-        writefln("    SimpleCaseEntry(0x%04x, %s, 0x%0x)%s",
-                v.ch,  v.n, v.bucket, i == simpleTable.length-1 ? "" : ",");
+        writef("SCE(0x%04x, %s, 0x%0x),", v.ch,  v.n, v.bucket);
+        if (i % 4 == 0) writeln();
     }
-    writeln("    ];");
-    writeln("    return tab;");
+    writeln("];");
+    writeln("return t;");
     writeln("}");
     static uint maxLen = 0;
     writeln("@property immutable(FullCaseEntry[]) fullCaseTable()");
     writeln("{");
-    writeln("    static immutable tab = [");
-    foreach(v; fullTable)
+    writeln("alias FCE = FullCaseEntry;");
+    writeln("static immutable FCE[] t = [");
+    foreach(i, v; fullTable)
     {
             maxLen = max(maxLen, v.entry_len);
             if(v.entry_len > 1)
             {
                 assert(v.n >= 1); // meaning that start of bucket is always single char
             }
-            writefln("    FullCaseEntry(\"%s\", %s, %s, %s),",
-                    v.value, v.n, v.size, v.entry_len);
+            writef("FCE(\"%s\", %s, %s, %s),", v.value, v.n, v.size, v.entry_len);
+            if (i % 4 == 0) writeln();
     }
-    writeln("    ];");
-    writeln("    return tab;");
+    writeln("];");
+    writeln("return t;");
     writeln("}");
     stderr.writefln("MAX FCF len = %d", maxLen);
 }
@@ -800,10 +801,13 @@ void writeCaseCoversion()
     writeBest3Level("toLowerIndex", toLowerIndex, ushort.max);
     writeBest3Level("toTitleIndex", toTitleIndex, ushort.max);
 
-    writefln("@property immutable(uint[]) toUpperTable() { static immutable uint[] tab = [%( 0x%x, %)]; return tab; }", toUpperTab);
-    writefln("@property immutable(uint[]) toLowerTable() { static immutable uint[] tab = [%( 0x%x, %)]; return tab; }", toLowerTab);
-    writefln("@property immutable(uint[]) toTitleTable() { static immutable uint[] tab = [%( 0x%x, %)]; return tab; }", toTitleTab);
-
+    writeln("@property");
+    writeln("{");
+    writeln("private alias _IUA = immutable(uint[]);");
+    writefln("_IUA toUpperTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toUpperTab);
+    writefln("_IUA toLowerTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toLowerTab);
+    writefln("_IUA toTitleTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toTitleTab);
+    writeln("}");
 }
 
 void writeDecomposition()
@@ -860,8 +864,12 @@ void writeDecomposition()
 
     writeBest3Level("compatMapping", mappingCompat, cast(ushort)0);
     writeBest3Level("canonMapping", mappingCanon, cast(ushort)0);
-    writefln("@property immutable(dchar[]) decompCanonTable() { static immutable dchar[] tab = [%( 0x%x, %)]; return tab; }", decompCanonFlat);
-    writefln("@property immutable(dchar[]) decompCompatTable() { static immutable dchar[] tab = [%( 0x%x, %)]; return tab; }", decompCompatFlat);
+    writeln("@property");
+    writeln("{");
+    writeln("private alias _IDCA = immutable(dchar[]);");
+    writefln("_IDCA decompCanonTable() { static _IDCA t = [%( 0x%x, %)]; return t; }", decompCanonFlat);
+    writefln("_IDCA decompCompatTable() { static _IDCA t = [%( 0x%x, %)]; return t; }", decompCompatFlat);
+    writeln("}");
 }
 
 void writeFunctions()
@@ -942,10 +950,15 @@ void writeCompositionTable()
     write("enum compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
     triT.store(stdout.lockingTextWriter());
     writeln(");");
-    write("@property immutable(CompEntry[]) compositionTable() { static immutable tab = [");
+    writeln("@property immutable(CompEntry[]) compositionTable()");
+    writeln("{");
+    writeln("alias CE = CompEntry;");
+    write("static immutable CE[] t = [");
     foreach(pair; dupletes)
-        writef("CompEntry(0x%05x, 0x%05x),", pair[0], pair[1]);
-    writeln("]; return tab; }");
+        writef("CE(0x%05x, 0x%05x),", pair[0], pair[1]);
+    writeln("];");
+    writeln("return t;");
+    writeln("}");
 }
 
 void writeCombining()
