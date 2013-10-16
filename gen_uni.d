@@ -691,15 +691,21 @@ void writeCaseFolding()
 {
     write(mixedCCEntry);
 
-    writeln("immutable simpleCaseTable = [");
+    writeln("@property immutable(SimpleCaseEntry[]) simpleCaseTable()");
+    writeln("{");
+    writeln("    static immutable tab = [");
     foreach(i, v; simpleTable)
     {
         writefln("    SimpleCaseEntry(0x%04x, %s, 0x%0x)%s",
                 v.ch,  v.n, v.bucket, i == simpleTable.length-1 ? "" : ",");
     }
-    writeln("];");
+    writeln("    ];");
+    writeln("    return tab;");
+    writeln("}");
     static uint maxLen = 0;
-    writeln("immutable fullCaseTable = [");
+    writeln("@property immutable(FullCaseEntry[]) fullCaseTable()");
+    writeln("{");
+    writeln("    static immutable tab = [");
     foreach(v; fullTable)
     {
             maxLen = max(maxLen, v.entry_len);
@@ -710,7 +716,9 @@ void writeCaseFolding()
             writefln("    FullCaseEntry(\"%s\", %s, %s, %s),",
                     v.value, v.n, v.size, v.entry_len);
     }
-    writeln("];");
+    writeln("    ];");
+    writeln("    return tab;");
+    writeln("}");
     stderr.writefln("MAX FCF len = %d", maxLen);
 }
 
@@ -789,9 +797,9 @@ void writeCaseCoversion()
     writeBest3Level("toLowerIndex", toLowerIndex, ushort.max);
     writeBest3Level("toTitleIndex", toTitleIndex, ushort.max);
 
-    writefln("immutable uint[] toUpperTable = [%( 0x%x, %)];", toUpperTab);
-    writefln("immutable uint[] toLowerTable = [%( 0x%x, %)];", toLowerTab);
-    writefln("immutable uint[] toTitleTable = [%( 0x%x, %)];", toTitleTab);
+    writefln("@property immutable(uint[]) toUpperTable() { static immutable uint[] tab = [%( 0x%x, %)]; return tab; }", toUpperTab);
+    writefln("@property immutable(uint[]) toLowerTable() { static immutable uint[] tab = [%( 0x%x, %)]; return tab; }", toLowerTab);
+    writefln("@property immutable(uint[]) toTitleTable() { static immutable uint[] tab = [%( 0x%x, %)]; return tab; }", toTitleTab);
 
 }
 
@@ -849,8 +857,8 @@ void writeDecomposition()
 
     writeBest3Level("compatMapping", mappingCompat, cast(ushort)0);
     writeBest3Level("canonMapping", mappingCanon, cast(ushort)0);
-    writefln("immutable dchar[] decompCanonTable = [%( 0x%x, %)];", decompCanonFlat);
-    writefln("immutable dchar[] decompCompatTable = [%( 0x%x, %)];", decompCompatFlat);
+    writefln("@property immutable(dchar[]) decompCanonTable() { static immutable dchar[] tab = [%( 0x%x, %)]; return tab; }", decompCanonFlat);
+    writefln("@property immutable(dchar[]) decompCompatTable() { static immutable dchar[] tab = [%( 0x%x, %)]; return tab; }", decompCompatFlat);
 }
 
 void writeFunctions()
@@ -931,10 +939,10 @@ void writeCompositionTable()
     write("enum compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
     triT.store(stdout.lockingTextWriter());
     writeln(");");
-    write("immutable compositionTable = [");
+    write("@property immutable(CompEntry[]) compositionTable() { static immutable tab = [");
     foreach(pair; dupletes)
         writef("CompEntry(0x%05x, 0x%05x),", pair[0], pair[1]);
-    writeln("];");
+    writeln("]; return tab; }");
 }
 
 void writeCombining()
