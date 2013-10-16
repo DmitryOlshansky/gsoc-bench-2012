@@ -201,20 +201,18 @@ module std.internal.unicode_tables;
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
 
-        static void writeTableOfSets(string prefix,
-            string name, PropertyTable tab)
+        static void writeTableOfSets(string prefix, PropertyTable tab)
         {
             writeln();
-            writeSets(prefix, tab);
-            writeAliasTable(prefix, name, tab);
+            writeAliasTable(prefix, tab);
         }
         if(!minimal)
         {
             writeCaseFolding();
-            writeTableOfSets("uniProp", "propsTab", general);
-            writeTableOfSets("block", "blocksTab", blocks);
-            writeTableOfSets("script", "scriptsTab", scripts);
-            writeTableOfSets("hangul", "hangulTab", hangul);
+            writeTableOfSets("uniProps", general);
+            writeTableOfSets("blocks", blocks);
+            writeTableOfSets("scripts", scripts);
+            writeTableOfSets("hangul", hangul);
             writeFunctions();
         }
         writefln("
@@ -619,34 +617,39 @@ string uniformName(string s)
     return cast(string)app.data;
 }
 
-void writeSets(string prefix, PropertyTable src)
+void writeSets(PropertyTable src)
  {
     foreach(k, v; src.table)
     {
-        writef("immutable ubyte[] %s%s = ", prefix, identName(k));
+        writef("ubyte[] %s = ", identName(k));
         writeln(charsetString(v));
     }
 }
 
-void writeAliasTable(string prefix, string tabname, PropertyTable src)
+void writeAliasTable(string prefix, PropertyTable src)
 {
     string tname = "immutable(UnicodeProperty)";
-    writef("\nimmutable %s[] %s = [\n", tname, tabname);
+    writeln("struct ", prefix);
+    writeln("{");
+    writefln("@property static %s[] tab() { return _tab; }", tname);
+    writeln("static immutable:");
+    writeSets(src);
+    writeln("UnicodeProperty[] _tab = [");
     string[] lines;
     string[] namesOnly;
     auto app = appender!(char[])();
     auto keys = src.table.keys;
     foreach(k; keys)
     {
-        formattedWrite(app, "%s(\"%s\", %s%s),\n",
-            tname, k, prefix, identName(k));
+        formattedWrite(app, "%s(\"%s\", %s),\n",
+            tname, k, identName(k));
         lines ~= app.data.idup;
         namesOnly ~= uniformName(k);
         app.shrinkTo(0);
         if(k in src.aliases)
         {
-            formattedWrite(app, "%s(\"%s\", %s%s),\n",
-                tname, src.aliases[k], prefix, identName(k));
+            formattedWrite(app, "%s(\"%s\", %s),\n",
+                tname, src.aliases[k], identName(k));
             lines ~= app.data.idup;
             namesOnly ~= uniformName(src.aliases[k]);
             app.shrinkTo(0);
@@ -659,8 +662,8 @@ void writeAliasTable(string prefix, string tabname, PropertyTable src)
     {
         write(lines[i]);
     }
-
     writeln("];");
+    writeln("}");
 }
 
 void writeBeginPlatformDependent()
