@@ -927,7 +927,7 @@ void writeCompositionTable()
         assert(f.front[1] == val);
     }
     writeln("enum composeIdxMask = (1<<11)-1, composeCntShift = 11;");
-    write("immutable compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
+    write("enum compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
     triT.store(stdout.lockingTextWriter());
     writeln(");");
     write("immutable compositionTable = [");
