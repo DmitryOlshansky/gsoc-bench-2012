@@ -8,21 +8,22 @@
 //Automatically generated from Unicode Character Database files
 
 module std.internal.unicode_tables;
+@safe pure nothrow:
 
 
 struct SimpleCaseEntry
 {
     uint ch;
     ubyte n, bucket;// n - number in bucket
-    @property ubyte size() const @safe pure nothrow
+    @property ubyte size() const
     {
         return bucket & 0x3F;
     }
-    @property auto isLower() const @safe pure nothrow
+    @property auto isLower() const
     {
         return bucket & 0x40;
     }
-    @property auto isUpper() const @safe pure nothrow
+    @property auto isUpper() const
     {
         return bucket & 0x80;
     }
@@ -34,7 +35,7 @@ struct FullCaseEntry
     ubyte n, size;// n number in batch, size - size of batch
     ubyte entry_len;
 
-    @property auto value() const  @trusted pure nothrow
+    @property auto value() const @trusted
     {
         return seq[0..entry_len];
     }
