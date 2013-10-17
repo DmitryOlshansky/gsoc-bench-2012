@@ -155,10 +155,22 @@ void main(string[] argv)
 {
     try
     {
+        string mode = "a";
+        
         bool minimal = false;
         getopt(argv, "min", &minimal);
         if(!minimal)
-            writeln("//Written in the D programming language
+        {
+            mode = "w";            
+        }        
+        auto baseSink = File("unicode_tables.d", mode);
+        auto compSink = File("unicode_comp.d", mode);
+        auto decompSink = File("unicode_decomp.d", mode);
+        auto normSink = File("unicode_norm.d", mode);
+        auto graphSink = File("unicode_grapheme.d", mode);
+        if(!minimal)
+        {
+            baseSink.writeln("//Written in the D programming language
 /**
  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
  *
@@ -168,6 +180,15 @@ void main(string[] argv)
 //Automatically generated from Unicode Character Database files\n
 module std.internal.unicode_tables;
 @safe pure nothrow:\n");
+            compSink.writeln("module std.internal.unicode_comp;");
+            compSink.writeln("import std.internal.unicode_tables;");
+            decompSink.writeln("module std.internal.unicode_decomp;");
+            decompSink.writeln("import std.internal.unicode_tables;");
+            normSink.writeln("module std.internal.unicode_norm;");
+            normSink.writeln("import std.internal.unicode_tables;");
+            graphSink.writeln("module std.internal.unicode_grapheme;");
+            graphSink.writeln("import std.internal.unicode_tables;");
+        }
         general.table = new RandAA!(string, CodepointSet);
         general.aliases = new RandAA!(string, string);
         blocks.table = new RandAA!(string, CodepointSet);
@@ -201,30 +222,53 @@ module std.internal.unicode_tables;
         loadNormalization(normalizationPropSrc);
         loadCombining(combiningClassSrc);
 
-        static void writeTableOfSets(string prefix, PropertyTable tab)
+        static void writeTableOfSets(File sink, string prefix, PropertyTable tab)
         {
-            writeln();
-            writeAliasTable(prefix, tab);
+            sink.writeln();
+            writeAliasTable(sink, prefix, tab);
         }
+
         if(!minimal)
         {
-            writeCaseFolding();
-            writeTableOfSets("uniProps", general);
-            writeTableOfSets("blocks", blocks);
-            writeTableOfSets("scripts", scripts);
-            writeTableOfSets("hangul", hangul);
-            writeFunctions();
+            writeCaseFolding(baseSink);
+            writeTableOfSets(baseSink, "uniProps", general);
+            writeTableOfSets(baseSink, "blocks", blocks);
+            writeTableOfSets(baseSink, "scripts", scripts);
+            writeTableOfSets(baseSink, "hangul", hangul);
+            writeFunctions(baseSink);
         }
-        writefln("
-static if(size_t.sizeof == %d) {", size_t.sizeof);
-        writeTries();
-        writeCombining();
-        writeDecomposition();
-        writeCompositionTable();
-        writeCaseCoversion();
-        writeln("
-}\n");
 
+        static void trieProlog(File file)
+        {
+            file.writefln("
+static if(size_t.sizeof == %d) {", size_t.sizeof);
+        }
+
+        static void trieEpilog(File file)
+        {
+            file.writeln("
+}\n");
+        }
+
+        trieProlog(baseSink);
+        trieProlog(compSink);
+        trieProlog(decompSink);
+        trieProlog(graphSink);
+        trieProlog(normSink);
+
+        writeTries(baseSink);
+        writeNormalizationTries(normSink);
+        writeGraphemeTries(graphSink);
+        writeCaseCoversion(baseSink);
+        writeCombining(compSink);
+        writeDecomposition(decompSink);
+        writeCompositionTable(compSink);
+
+        trieEpilog(decompSink);
+        trieEpilog(compSink);
+        trieEpilog(baseSink);
+        trieEpilog(graphSink);
+        trieEpilog(normSink);
     }
     catch(Exception e)
     {
@@ -617,25 +661,31 @@ string uniformName(string s)
     return cast(string)app.data;
 }
 
-void writeSets(PropertyTable src)
+void writeSets(File sink, PropertyTable src)
 {
-    writeln("private alias _T = ubyte[];");
-    foreach(k, v; src.table)
+    with(sink)
     {
-        writef("_T %s = ", identName(k));
-        writeln(charsetString(v));
+        writeln("private alias _T = ubyte[];");
+        foreach(k, v; src.table)
+        {
+            writef("_T %s = ", identName(k));
+            writeln(charsetString(v));
+        }
     }
 }
 
-void writeAliasTable(string prefix, PropertyTable src)
+void writeAliasTable(File sink, string prefix, PropertyTable src)
 {
-    writeln("struct ", prefix);
-    writeln("{");
-    writeln("private alias _U = immutable(UnicodeProperty);");
-    writeln("@property static _U[] tab() { return _tab; }");
-    writeln("static immutable:");
-    writeSets(src);
-    writeln("_U[] _tab = [");
+    with(sink)
+    {
+        writeln("struct ", prefix);
+        writeln("{");
+        writeln("private alias _U = immutable(UnicodeProperty);");
+        writeln("@property static _U[] tab() { return _tab; }");
+        writeln("static immutable:");
+        writeSets(sink, src);
+        writeln("_U[] _tab = [");
+    }
     string[] lines;
     string[] namesOnly;
     auto app = appender!(char[])();
@@ -657,76 +707,58 @@ void writeAliasTable(string prefix, PropertyTable src)
     static bool ucmp(T)(T a, T b) { return propertyNameLess(a[0], b[0]); }
     sort!ucmp(zip(namesOnly, lines));
 
-    foreach(i, v; lines)
+    with(sink)
     {
-        write(lines[i]);
+        foreach(i, v; lines)
+        {
+            write(lines[i]);
+        }
+        writeln("];");
+        writeln("}");
     }
-    writeln("];");
-    writeln("}");
 }
 
-void writeBeginPlatformDependent()
+void writeCaseFolding(File sink)
 {
-    version(LittleEndian)
-        string endian = "LittleEndian";
-    else
-        string endian = "BigEndian";
-    writefln("version (%s)
-{
-    static if(size_t.sizeof == %d)
+    with(sink)
     {
-", endian, size_t.sizeof);
-}
+        write(mixedCCEntry);
 
-void writeEndPlatformDependent()
-{
-    version(LittleEndian)
-        string endian = "LittleEndian";
-    else
-        string endian = "BigEndian";
-    writeln("
-    }
-}");
-}
-
-void writeCaseFolding()
-{
-    write(mixedCCEntry);
-
-    writeln("@property immutable(SimpleCaseEntry[]) simpleCaseTable()");
-    writeln("{");
-    writeln("alias SCE = SimpleCaseEntry;");
-    writeln("static immutable SCE[] t = [");
-    foreach(i, v; simpleTable)
-    {
-        writef("SCE(0x%04x, %s, 0x%0x),", v.ch,  v.n, v.bucket);
-        if (i % 4 == 0) writeln();
-    }
-    writeln("];");
-    writeln("return t;");
-    writeln("}");
-    static uint maxLen = 0;
-    writeln("@property immutable(FullCaseEntry[]) fullCaseTable()");
-    writeln("{");
-    writeln("alias FCE = FullCaseEntry;");
-    writeln("static immutable FCE[] t = [");
-    foreach(i, v; fullTable)
-    {
-            maxLen = max(maxLen, v.entry_len);
-            if(v.entry_len > 1)
-            {
-                assert(v.n >= 1); // meaning that start of bucket is always single char
-            }
-            writef("FCE(\"%s\", %s, %s, %s),", v.value, v.n, v.size, v.entry_len);
+        writeln("@property immutable(SimpleCaseEntry[]) simpleCaseTable()");
+        writeln("{");
+        writeln("alias SCE = SimpleCaseEntry;");
+        writeln("static immutable SCE[] t = [");
+        foreach(i, v; simpleTable)
+        {
+            writef("SCE(0x%04x, %s, 0x%0x),", v.ch,  v.n, v.bucket);
             if (i % 4 == 0) writeln();
+        }
+        writeln("];");
+        writeln("return t;");
+        writeln("}");
+        static uint maxLen = 0;
+        writeln("@property immutable(FullCaseEntry[]) fullCaseTable()");
+        writeln("{");
+        writeln("alias FCE = FullCaseEntry;");
+        writeln("static immutable FCE[] t = [");
+        foreach(i, v; fullTable)
+        {
+                maxLen = max(maxLen, v.entry_len);
+                if(v.entry_len > 1)
+                {
+                    assert(v.n >= 1); // meaning that start of bucket is always single char
+                }
+                writef("FCE(\"%s\", %s, %s, %s),", v.value, v.n, v.size, v.entry_len);
+                if (i % 4 == 0) writeln();
+        }
+        writeln("];");
+        writeln("return t;");
+        writeln("}");
+        stderr.writefln("MAX FCF len = %d", maxLen);
     }
-    writeln("];");
-    writeln("return t;");
-    writeln("}");
-    stderr.writefln("MAX FCF len = %d", maxLen);
 }
 
-void writeTries()
+void writeTries(File sink)
 {
     auto simpleIndices = new RandAA!(dchar, ushort);
     foreach(i, v; array(map!(x => x.ch)(simpleTable)))
@@ -753,11 +785,11 @@ void writeTries()
         assert(ft[k] == fullIndices[k]);
     }
 
-    writeBest3Level("lowerCase", lowerCaseSet);
-    writeBest3Level("upperCase", upperCaseSet);
+    writeBest3Level(sink, "lowerCase", lowerCaseSet);
+    writeBest3Level(sink, "upperCase", upperCaseSet);
     //writeBest3Level("titleCase", titleCaseSet);
-    writeBest3Level("simpleCase", simpleIndices, ushort.max);
-    writeBest3Level("fullCase", fullIndices, ushort.max);
+    writeBest3Level(sink, "simpleCase", simpleIndices, ushort.max);
+    writeBest3Level(sink, "fullCase", fullIndices, ushort.max);
 
     //common isXXX properties
     auto props = general.table;
@@ -770,47 +802,62 @@ void writeTries()
     CodepointSet graphical = alpha | mark | number | punctuation | symbol | props["Zs"];
     CodepointSet nonCharacter = props["Cn"];
 
+ 
+    writeBest3Level(sink, "alpha", alpha);
+    writeBest3Level(sink, "mark", mark);
+    writeBest3Level(sink, "number", number);
+    writeBest3Level(sink, "punctuation", punctuation);
+    writeBest3Level(sink, "symbol", symbol);
+    writeBest3Level(sink, "graphical", graphical);
+    writeBest4Level(sink, "nonCharacter", nonCharacter);  
+   
+}
+
+void writeNormalizationTries(File sink)
+{
     CodepointSet nfcQC = normalization["NFC_QCN"] | normalization["NFC_QCM"];
     CodepointSet nfdQC = normalization["NFD_QCN"];
     CodepointSet nfkcQC = normalization["NFKC_QCN"] | normalization["NFKC_QCM"];
     CodepointSet nfkdQC = normalization["NFKD_QCN"];
-    writeBest3Level("alpha", alpha);
-    writeBest3Level("mark", mark);
-    writeBest3Level("number", number);
-    writeBest3Level("punctuation", punctuation);
-    writeBest3Level("symbol", symbol);
-    writeBest3Level("graphical", graphical);
-    writeBest4Level("nonCharacter", nonCharacter);
-
-    writeBest3Level("nfcQC", nfcQC);
-    writeBest3Level("nfdQC", nfdQC);
-    writeBest3Level("nfkcQC", nfkcQC);
-    writeBest3Level("nfkdQC", nfkdQC);
-
-    //few specifics for grapheme cluster breaking algorithm
-    writeBest3Level("mc", props["Mc"]);
-    writeBest3Level("graphemeExtend", props["Grapheme_Extend"]);
+    writeBest3Level(sink, "nfcQC", nfcQC);
+    writeBest3Level(sink, "nfdQC", nfdQC);
+    writeBest3Level(sink, "nfkcQC", nfkcQC);
+    writeBest3Level(sink, "nfkdQC", nfkdQC);
 }
 
-void writeCaseCoversion()
+void writeGraphemeTries(File sink)
 {
-    writefln("enum MAX_SIMPLE_LOWER = %d;", toLowerTabSimpleLen);
-    writefln("enum MAX_SIMPLE_UPPER = %d;", toUpperTabSimpleLen);
-    writefln("enum MAX_SIMPLE_TITLE = %d;", toTitleTabSimpleLen);
-    writeBest3Level("toUpperIndex", toUpperIndex, ushort.max);
-    writeBest3Level("toLowerIndex", toLowerIndex, ushort.max);
-    writeBest3Level("toTitleIndex", toTitleIndex, ushort.max);
-
-    writeln("@property");
-    writeln("{");
-    writeln("private alias _IUA = immutable(uint[]);");
-    writefln("_IUA toUpperTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toUpperTab);
-    writefln("_IUA toLowerTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toLowerTab);
-    writefln("_IUA toTitleTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toTitleTab);
-    writeln("}");
+    //few specifics for grapheme cluster breaking algorithm
+    //
+    auto props = general.table;
+    writeBest3Level(sink, "hangulLV", hangul.table["LV"]);
+    writeBest3Level(sink, "hangulLVT", hangul.table["LVT"]);
+    writeBest3Level(sink, "mc", props["Mc"]);
+    writeBest3Level(sink, "graphemeExtend", props["Grapheme_Extend"]);
 }
 
-void writeDecomposition()
+void writeCaseCoversion(File sink)
+{
+    sink.writefln("enum MAX_SIMPLE_LOWER = %d;", toLowerTabSimpleLen);
+    sink.writefln("enum MAX_SIMPLE_UPPER = %d;", toUpperTabSimpleLen);
+    sink.writefln("enum MAX_SIMPLE_TITLE = %d;", toTitleTabSimpleLen);
+    writeBest3Level(sink, "toUpperIndex", toUpperIndex, ushort.max);
+    writeBest3Level(sink, "toLowerIndex", toLowerIndex, ushort.max);
+    writeBest3Level(sink, "toTitleIndex", toTitleIndex, ushort.max);
+
+    with(sink)
+    {
+        writeln("@property");
+        writeln("{");
+        writeln("private alias _IUA = immutable(uint[]);");
+        writefln("_IUA toUpperTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toUpperTab);
+        writefln("_IUA toLowerTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toLowerTab);
+        writefln("_IUA toTitleTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toTitleTab);
+        writeln("}");
+    }
+}
+
+void writeDecomposition(File sink)
 {
     auto fullCanon = recursivelyDecompose(canonDecomp);
     auto fullCompat = recursivelyDecompose(compatDecomp);
@@ -862,17 +909,20 @@ void writeDecomposition()
             format("failed on canon: '%( 0x%5x %)' not found", v));
     }
 
-    writeBest3Level("compatMapping", mappingCompat, cast(ushort)0);
-    writeBest3Level("canonMapping", mappingCanon, cast(ushort)0);
-    writeln("@property");
-    writeln("{");
-    writeln("private alias _IDCA = immutable(dchar[]);");
-    writefln("_IDCA decompCanonTable() { static _IDCA t = [%( 0x%x, %)]; return t; }", decompCanonFlat);
-    writefln("_IDCA decompCompatTable() { static _IDCA t = [%( 0x%x, %)]; return t; }", decompCompatFlat);
-    writeln("}");
+    writeBest3Level(sink, "compatMapping", mappingCompat, cast(ushort)0);
+    writeBest3Level(sink, "canonMapping", mappingCanon, cast(ushort)0);
+    with(sink)
+    {
+        writeln("@property");
+        writeln("{");
+        writeln("private alias _IDCA = immutable(dchar[]);");
+        writefln("_IDCA decompCanonTable() { static _IDCA t = [%( 0x%x, %)]; return t; }", decompCanonFlat);
+        writefln("_IDCA decompCompatTable() { static _IDCA t = [%( 0x%x, %)]; return t; }", decompCompatFlat);
+        writeln("}");
+    }
 }
 
-void writeFunctions()
+void writeFunctions(File sink)
 {
     auto format = general.table["Cf"];
     auto space = general.table["Zs"];
@@ -883,18 +933,20 @@ void writeFunctions()
     auto hangL = hangul.table["L"];
     auto hangV = hangul.table["V"];
     auto hangT = hangul.table["T"];
-
-    writeln(format.toSourceCode("isFormatGen"));
-    writeln(control.toSourceCode("isControlGen"));
-    writeln(space.toSourceCode("isSpaceGen"));
-    writeln(whitespace.toSourceCode("isWhiteGen"));
-    writeln(hangL.toSourceCode("isHangL"));
-    writeln(hangV.toSourceCode("isHangV"));
-    writeln(hangT.toSourceCode("isHangT"));
+    with(sink)
+    {
+        writeln(format.toSourceCode("isFormatGen"));
+        writeln(control.toSourceCode("isControlGen"));
+        writeln(space.toSourceCode("isSpaceGen"));
+        writeln(whitespace.toSourceCode("isWhiteGen"));
+        writeln(hangL.toSourceCode("isHangL"));
+        writeln(hangV.toSourceCode("isHangV"));
+        writeln(hangT.toSourceCode("isHangT"));
+    }
 }
 
 
-void writeCompositionTable()
+void writeCompositionTable(File sink)
 {
     auto composeTab = new RandAA!(dstring, dchar);
     //construct compositions table
@@ -946,22 +998,25 @@ void writeCompositionTable()
         // & starts with the right value
         assert(f.front[1] == val);
     }
-    writeln("enum composeIdxMask = (1<<11)-1, composeCntShift = 11;");
-    write("enum compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
-    triT.store(stdout.lockingTextWriter());
-    writeln(");");
-    writeln("@property immutable(CompEntry[]) compositionTable()");
-    writeln("{");
-    writeln("alias CE = CompEntry;");
-    write("static immutable CE[] t = [");
-    foreach(pair; dupletes)
-        writef("CE(0x%05x, 0x%05x),", pair[0], pair[1]);
-    writeln("];");
-    writeln("return t;");
-    writeln("}");
+    with(sink)
+    {
+        writeln("enum composeIdxMask = (1<<11)-1, composeCntShift = 11;");
+        write("enum compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
+        triT.store(sink.lockingTextWriter());
+        writeln(");");
+        writeln("@property immutable(CompEntry[]) compositionTable()");
+        writeln("{");
+        writeln("alias CE = CompEntry;");
+        write("static immutable CE[] t = [");
+        foreach(pair; dupletes)
+            writef("CE(0x%05x, 0x%05x),", pair[0], pair[1]);
+        writeln("];");
+        writeln("return t;");
+        writeln("}");
+    }
 }
 
-void writeCombining()
+void writeCombining(File sink)
 {
     auto ct = codepointTrie!(ubyte, 7, 5, 9)(combiningMapping.toPairs);
     foreach(i, clazz; combiningClass[1..255])//0 is a default for all of 1M+ codepoints
@@ -969,7 +1024,7 @@ void writeCombining()
         foreach(ch; clazz.byCodepoint)
             assert(ct[ch] == i+1);
     }
-    writeBest3Level("combiningClass", combiningMapping);
+    writeBest3Level(sink, "combiningClass", combiningMapping);
 }
 
 //fussy compare for unicode property names as per UTS-18
@@ -1007,12 +1062,12 @@ bool propertyNameLess(Char)(const(Char)[] a, const(Char)[] b)
 
 //meta helpers to generate and pick the best trie by size & levels
 
-void writeBest2Level(Set)( string name, Set set)
+void writeBest2Level(Set)(File sink, string name, Set set)
     if(isCodepointSet!Set)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     size_t min = size_t.max;
-    void delegate() write;
+    void delegate(File) write;
     foreach(lvl_1; List)
     {
         enum lvl_2 = 21-lvl_1;
@@ -1023,14 +1078,14 @@ void writeBest2Level(Set)( string name, Set set)
             write = createPrinter!(lvl_1, lvl_2)(name, t);
         }
     }
-    write();
+    write(sink);
 }
 
-void writeBest2Level(V, K)(string name, RandAA!(K,V) map, V defValue=V.init)
+void writeBest2Level(V, K)(File sink, string name, RandAA!(K,V) map, V defValue=V.init)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     size_t min = size_t.max;
-    void delegate() write;
+    void delegate(File) write;
     auto range = zip(map.values, map.keys).array;
     foreach(lvl_1; List)
     {
@@ -1043,12 +1098,12 @@ void writeBest2Level(V, K)(string name, RandAA!(K,V) map, V defValue=V.init)
             write = createPrinter!(lvl_1, lvl_2)(name, t);
         }
     }
-    write();
+    write(sink);
 }
 
 alias List_1 = TypeTuple!(4, 5, 6, 7, 8);
 
-auto writeBest3Level(Set)(string name, Set set)
+auto writeBest3Level(Set)(File sink, string name, Set set)
     if(isCodepointSet!Set)
 {
     // access speed trumps size, power of 2 is faster to access
@@ -1058,7 +1113,7 @@ auto writeBest3Level(Set)(string name, Set set)
 
     // e.g. 8-5-8 is one of hand picked that is a very close match
     // to the best packing
-    void delegate() write;
+    void delegate(File) write;
 
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
     size_t min = size_t.max;
@@ -1076,12 +1131,12 @@ auto writeBest3Level(Set)(string name, Set set)
             }
         }
     }
-    write();
+    write(sink);
 }
 
-void writeBest3Level(V, K)(string name, RandAA!(K, V) map, V defValue=V.init)
+void writeBest3Level(V, K)(File sink, string name, RandAA!(K, V) map, V defValue=V.init)
 {
-    void delegate() write;
+    void delegate(File) write;
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
     size_t min = size_t.max;
     auto range = zip(map.values, map.keys).array;
@@ -1099,14 +1154,14 @@ void writeBest3Level(V, K)(string name, RandAA!(K, V) map, V defValue=V.init)
             }
         }
     }
-    write();
+    write(sink);
 }
 
-void writeBest4Level(Set)(string name, Set set)
+void writeBest4Level(Set)(File sink, string name, Set set)
 {
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
     size_t min = size_t.max;
-    void delegate() write;
+    void delegate(File) write;
     foreach(lvl_1; List_1)//to have the first stage index fit in byte
     foreach(lvl_2; List)
     foreach(lvl_3; List)
@@ -1122,21 +1177,21 @@ void writeBest4Level(Set)(string name, Set set)
             }
         }
     }
-    write();
+    write(sink);
 }
 
 template createPrinter(Params...)
 {
-    void delegate() createPrinter(T)(string name, T trie)
+    void delegate(File) createPrinter(T)(string name, T trie)
     {
-        return {
-            writef("//%d bytes\nenum %sTrieEntries = TrieEntry!(%s",
+        return (File sink){
+            sink.writef("//%d bytes\nenum %sTrieEntries = TrieEntry!(%s",
                 trie.bytes, name, Unqual!(typeof(T.init[0])).stringof);
             foreach(lvl; Params[0..$])
-                writef(", %d", lvl);
-            write(")(");
-            trie.store(stdout.lockingTextWriter());
-            writeln(");");
+                sink.writef(", %d", lvl);
+            sink.write(")(");
+            trie.store(sink.lockingTextWriter());
+            sink.writeln(");");
         };
     }
 }
