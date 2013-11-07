@@ -56,21 +56,45 @@ int countDecodePlusTable(alias table)(in char[] datum)
     return count;   
 }
 
+int decodeOnly(in char[] datum)
+{
+    int count;
+    size_t idx = 0;
+    while(idx != datum.length)
+    {
+        decode(datum, idx);
+        count++;
+    }
+    return count;
+}
+
+int noop(in char[] datum)
+{
+    int count;
+    for(size_t i=0; i<datum.length; i++)
+    {
+        if(datum[i] > 0x20)
+            count++;
+    }
+    return count;
+}
+
 alias m8List = staticMap!(countMatcher, u8mAlpha, u8mMark, u8mSymbol, u8mNumber);
 alias oldList = staticMap!(countDecodePlusTable, alphaTrie, triAlpha);
-alias methods = TypeTuple!(m8List, oldList);
+alias methods = TypeTuple!(m8List, oldList, decodeOnly, noop);
 
 void main(string[] argv)
 {
     import std.string;
     import core.memory;
-    enum iters = 10;
-    string[] titles = "m8-Alpha m8-Mark m8-Symbol m8-Number trie-Alpha new-trie-alpha"
-        .split;
+    enum iters = 25;
+    string[] titles = "m8-Alpha m8-Mark m8-Symbol m8-Number 
+        trie-Alpha new-trie-alpha decode-only noop".split;
     StopWatch sw;
     foreach(name; argv[1..$])
     {
         auto text = cast(char[])std.file.read(name);
+        writeln("====================");
         GC.disable();        
         foreach(j, mtd; methods)
         {
