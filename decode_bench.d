@@ -7,7 +7,8 @@ import std.uni;
 static import std.internal.uni;
 import std.internal.uni_tab;
 
-__gshared Utf8Matcher u8mAlpha, u8mMark, u8mSymbol, u8mNumber;
+alias Matcher = typeof(buildUtf8Matcher(CodepointSet.init));
+__gshared Matcher u8mAlpha, u8mMark, u8mSymbol, u8mNumber;
 alias u8Matchers = TypeTuple!(u8mAlpha, u8mMark, u8mSymbol, u8mNumber);
 
 __gshared CodepointSetTrie!(8, 5, 8) triAlpha;
