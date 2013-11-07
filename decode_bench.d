@@ -10,6 +10,8 @@ import std.internal.uni_tab;
 __gshared Utf8Matcher u8mAlpha, u8mMark, u8mSymbol, u8mNumber;
 alias u8Matchers = TypeTuple!(u8mAlpha, u8mMark, u8mSymbol, u8mNumber);
 
+__gshared CodepointSetTrie!(8, 5, 8) triAlpha;
+
 alias std.internal.uni.CodepointTrie!8 OldTrie;
 __gshared OldTrie alphaTrie = OldTrie(unicodeAlphabetic);
 
@@ -21,6 +23,9 @@ shared static this()
     invMark = unicode("Mark");
     invSymbol = unicode("Symbol");
     invNumber = unicode("number");
+    
+    triAlpha =  codepointSetTrie!(8,5,8)(invAlpha);
+
     u8mAlpha = buildUtf8Matcher(invAlpha);
     u8mMark = buildUtf8Matcher(invMark);
     u8mNumber = buildUtf8Matcher(invNumber);
@@ -51,7 +56,7 @@ int countDecodePlusTable(alias table)(in char[] datum)
 }
 
 alias m8List = staticMap!(countMatcher, u8mAlpha, u8mMark, u8mSymbol, u8mNumber);
-alias oldList = staticMap!(countDecodePlusTable, alphaTrie);
+alias oldList = staticMap!(countDecodePlusTable, alphaTrie, triAlpha);
 alias methods = TypeTuple!(m8List, oldList);
 
 void main(string[] argv)
@@ -59,13 +64,13 @@ void main(string[] argv)
     import std.string;
     import core.memory;
     enum iters = 10;
-    string[] titles = "m8-Alpha m8-Mark m8-Symbol m8-Number trie-Alpha".split;
+    string[] titles = "m8-Alpha m8-Mark m8-Symbol m8-Number trie-Alpha new-trie-alpha"
+        .split;
+    StopWatch sw;
     foreach(name; argv[1..$])
     {
         auto text = cast(char[])std.file.read(name);
-        GC.disable();
-        StopWatch sw;
-
+        GC.disable();        
         foreach(j, mtd; methods)
         {
             sw.start();
