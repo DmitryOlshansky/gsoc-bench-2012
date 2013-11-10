@@ -1,4 +1,4 @@
-import std.algorithm, std.file, std.datetime, std.stdio, 
+import std.algorithm, std.range, std.file, std.datetime, std.stdio, 
     std.typetuple, std.conv, std.utf;
 
 import alpha;
@@ -7,7 +7,7 @@ import std.uni;
 static import std.internal.uni;
 import std.internal.uni_tab;
 
-alias Matcher = typeof(buildUtf8Matcher(CodepointSet.init));
+alias Matcher = typeof(utfMatcher!char(CodepointSet.init));
 __gshared Matcher u8mAlpha, u8mMark, u8mSymbol, u8mNumber;
 alias u8Matchers = TypeTuple!(u8mAlpha, u8mMark, u8mSymbol, u8mNumber);
 
@@ -27,18 +27,18 @@ shared static this()
     
     triAlpha =  codepointSetTrie!(8,5,8)(invAlpha);
 
-    u8mAlpha = buildUtf8Matcher(invAlpha);
-    u8mMark = buildUtf8Matcher(invMark);
-    u8mNumber = buildUtf8Matcher(invNumber);
-    u8mSymbol = buildUtf8Matcher(invSymbol);
+    u8mAlpha = utfMatcher!char(invAlpha);
+    u8mMark = utfMatcher!char(invMark);
+    u8mNumber = utfMatcher!char(invNumber);
+    u8mSymbol = utfMatcher!char(invSymbol);
 }
 
 int countMatcher(alias matcher)(in char[] datum)
 {
     int count;
-    auto codec = datum.units;
-    while(!codec.empty)
-        if(matcher(codec))
+    auto s = datum[];
+    while(!s.empty)
+        if(matcher.skip(s))
             count++;
     return count;
 }
