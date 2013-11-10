@@ -37,7 +37,7 @@ int countMatcher(alias matcher)(in char[] datum)
 {
     int count;
     auto s = datum[];
-    while(!s.empty)
+    while(s.length) //sadly .empty is not inlined with LDC...
         if(matcher.skip(s))
             count++;
     return count;
