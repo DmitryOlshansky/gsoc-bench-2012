@@ -6,10 +6,9 @@ import std.traits, std.uni;
 
 S[] stdSplit(S)(S s)
 {
+    S[] result;
     size_t istart;
     bool inword = false;
-    S[] result;
-
     foreach (i, dchar c ; s)
     {
         if (std.uni.isWhite(c))
@@ -47,6 +46,7 @@ S[] newSplit(S)(S s)
     S[] result;
     bool inword=false;
     size_t restLen;
+    size_t startLen;
     auto r = s;
     while (s.length)
     {
@@ -67,6 +67,45 @@ S[] newSplit(S)(S s)
     }
     if (inword)
         result ~= r[0..$-restLen];
+    return result;
+}
+
+S[] newSplit2(S)(S s)
+    if (isSomeString!S)
+{
+    S[] result;
+    S r;
+    for(;;)
+    {
+        size_t len, len2;
+        r = s;
+        while (s.length)
+        {
+            // len will be $ - "offset of first non-space"
+            len = s.length;
+            if(!mWhite8.skip(s))
+               break; 
+        }
+        //either end or found first non-space
+        if (!s.length)
+        {
+            break;
+        }
+        for(;;)
+        {  
+            len2 = s.length;
+            if(s.length == 0)
+                break;
+            if(mWhite8.skip(s))
+                break;
+        }
+        if (!s.length)
+        {            
+            result ~= r[$-len..$-len2];
+            break;
+        }
+        result ~= r[$-len..$-len2];        
+    }    
     return result;
 }
 
@@ -96,6 +135,8 @@ unittest
                 format("got: %s, expected: %s.", entry[0].split(), entry[1]));
             assert(entry[0].newSplit() == entry[1], 
                 format("got: %s, expected: %s.", entry[0].newSplit(), entry[1]));
+            assert(entry[0].newSplit2() == entry[1], 
+                format("got: %s, expected: %s.", entry[0].newSplit2(), entry[1]));
         }
     }
 
@@ -105,42 +146,42 @@ unittest
 }
 
 
+
 void main(string argv[])
 {
     import std.file :  read;
     import std.stdio, std.datetime, core.memory;
     if (argv.length != 3)
     {
-        writefln("Usage %s {std|new} <file>", argv[0]);
+        writefln("Usage %s {std|new|new2} <file>", argv[0]);
         return;
     }
     char[] buf = cast(char[])read(argv[2]);
     bool useStd = false;
+    size_t runTest(alias splitFn)(size_t n)
+    {
+        StopWatch sw;
+        sw.start();
+        size_t count;
+        foreach(_; 0..n)
+            count += splitFn(buf).length;
+        sw.stop();
+        writefln("Done %s pieces in %s us", count, sw.peek().usecs);
+        return count;
+    }
     switch (argv[1])
     {
     case "std":
-        useStd = true;
+        runTest!stdSplit(10);
         break;
     case "new":
+        runTest!newSplit(10);
+        break;
+    case "new2":
+        runTest!newSplit2(10);
         break;
     default:
-        writefln("Usage %s {std|new} <file>", argv[0]);
+        writefln("Usage %s {std|new|new2} <file>", argv[0]);
         return;
     }
-    StopWatch sw;
-    GC.disable();
-    size_t count;
-    sw.start();
-    if (useStd)
-    {
-        foreach(_; 0..10)
-            count += stdSplit(buf).length;
-    }
-    else
-    {
-        foreach(_; 0..10)
-            count += stdSplit(buf).length;
-    }
-    sw.stop();
-    writefln("Done %s pieces in %s us", count, sw.peek().usecs);
 }
