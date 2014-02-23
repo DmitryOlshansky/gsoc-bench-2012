@@ -681,7 +681,7 @@ void writeAliasTable(File sink, string prefix, PropertyTable src)
         writeln("struct ", prefix);
         writeln("{");
         writeln("private alias _U = immutable(UnicodeProperty);");
-        writeln("@property static _U[] tab() { return _tab; }");
+        writeln("@property static _U[] tab() pure { return _tab; }");
         writeln("static immutable:");
         writeSets(sink, src);
         writeln("_U[] _tab = [");
