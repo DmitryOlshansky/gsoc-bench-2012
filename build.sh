@@ -1,16 +1,14 @@
 #!/bin/sh
-DMD="dmd -O -release -noboundscheck -inline"
-LDC="ldc2  -O3 -release -d-version=$ver  -disable-boundscheck fast_stride.d"
+SRCS="char_class.d bench_suite.d alpha.d"
+DMD="dmd -O -release -noboundscheck -inline $SRCS"
+LDC="ldc2  -O3 -release -d-version=$ver  -disable-boundscheck $SRCS"
 
-for CMD in DMD LDC
+for CMD in "$DMD"
 do
 for arch in 32 64
 do
-    for ver in my std
-    do
-        ARGS="-m$arch -of$ver$arch"
-        echo $CMD $ARGS
-        $CMD $ARGS
-    done
+    ARGS="-m$arch -ofchar-class-$arch"
+    echo $CMD $ARGS
+    $CMD $ARGS
 done
 done
