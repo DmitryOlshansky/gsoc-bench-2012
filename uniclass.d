@@ -42,7 +42,7 @@ void classifyRaw(alias matcher)(string inp, bool lazyRange)
 
 void classifyDec(alias table)(string inp, bool lazyRange)
 {
-
+	
 }
 
 enum MatcherType {
@@ -80,7 +80,7 @@ int main(string[] args)
 		case utrie:
 			{
 				auto ut = utfMatcher!char(set);
-				//processor = &classifyRaw!ut;
+				processor = &classifyRaw!ut;
 			}
 			break;
 		case dtrie2:
