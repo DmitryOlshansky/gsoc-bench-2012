@@ -1,7 +1,7 @@
 // Unicode character classifier. Think "wc on steroids"
 module uniclass;
 
-import  std.datetime, std.file, std.getopt, std.range, std.stdio, std.uni;
+import  std.datetime, std.file, std.getopt, std.range, std.stdio, std.uni, std.utf;
 
 size_t codepointCount(const(char)[] text)
 {
@@ -42,7 +42,18 @@ void classifyRaw(alias matcher)(string inp, bool lazyRange)
 
 void classifyDec(alias table)(string inp, bool lazyRange)
 {
-	
+	size_t count=0;
+	auto text = cast(char[])std.file.read(inp);
+	StopWatch sw;
+    sw.start();
+	foreach(dchar ch; text.byUTF!dchar)
+    {
+        if(table[ch])
+            count++;
+    }
+    sw.stop();
+    auto points = codepointCount(text);
+    writefln("%d / %d; %.3f M/s", count, points, cast(double)points/sw.peek().usecs);
 }
 
 enum MatcherType {
@@ -84,7 +95,16 @@ int main(string[] args)
 			}
 			break;
 		case dtrie2:
+			{
+				auto dt2 = set.toTrie!2;
+				processor = &classifyDec!dt2;
+			}
+			break;
 		case dtrie3:
+			{
+				auto dt3 = set.toTrie!3;
+				processor = &classifyDec!dt3;
+			}
 			break;
 		default:
 			assert(0);
