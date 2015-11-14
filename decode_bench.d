@@ -4,17 +4,12 @@ import std.algorithm, std.range, std.file, std.datetime, std.stdio,
 import alpha;
 
 import std.uni;
-static import std.internal.uni;
-import std.internal.uni_tab;
 
 alias Matcher = typeof(utfMatcher!char(CodepointSet.init));
 __gshared Matcher u8mAlpha, u8mMark, u8mSymbol, u8mNumber;
 alias u8Matchers = TypeTuple!(u8mAlpha, u8mMark, u8mSymbol, u8mNumber);
 
 __gshared CodepointSetTrie!(8, 5, 8) triAlpha;
-
-alias std.internal.uni.CodepointTrie!8 OldTrie;
-__gshared OldTrie alphaTrie = OldTrie(unicodeAlphabetic);
 
 
 shared static this()
@@ -68,6 +63,16 @@ int decodeOnly(in char[] datum)
     return count;
 }
 
+int decodeNothrow(in char[] datum) nothrow
+{
+    int count;
+    foreach(ch; datum.byUTF!dchar)
+    {
+        count++;
+    }
+    return count;
+}
+
 int noop(in char[] datum)
 {
     int count;
@@ -80,8 +85,8 @@ int noop(in char[] datum)
 }
 
 alias m8List = staticMap!(countMatcher, u8mAlpha, u8mMark, u8mSymbol, u8mNumber);
-alias oldList = staticMap!(countDecodePlusTable, alphaTrie, triAlpha);
-alias methods = TypeTuple!(m8List, oldList, decodeOnly, noop);
+alias oldList = staticMap!(countDecodePlusTable, triAlpha);
+alias methods = TypeTuple!(m8List, oldList, decodeOnly, decodeNothrow, noop);
 
 void main(string[] argv)
 {
@@ -89,7 +94,7 @@ void main(string[] argv)
     import core.memory;
     enum iters = 25;
     string[] titles = "m8-Alpha m8-Mark m8-Symbol m8-Number 
-        trie-Alpha new-trie-alpha decode-only noop".split;
+        trie-Alpha decode-only decode-nothrow noop".split;
     StopWatch sw;
     foreach(name; argv[1..$])
     {
