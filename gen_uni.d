@@ -724,7 +724,7 @@ void writeCaseFolding(File sink)
     {
         write(mixedCCEntry);
 
-        writeln("@property immutable(SimpleCaseEntry[]) simpleCaseTable()");
+        writeln("@property immutable(SimpleCaseEntry[]) simpleCaseTable()  nothrow @nogc @safe pure");
         writeln("{");
         writeln("alias SCE = SimpleCaseEntry;");
         writeln("static immutable SCE[] t = [");
@@ -737,7 +737,7 @@ void writeCaseFolding(File sink)
         writeln("return t;");
         writeln("}");
         static uint maxLen = 0;
-        writeln("@property immutable(FullCaseEntry[]) fullCaseTable()");
+        writeln("@property immutable(FullCaseEntry[]) fullCaseTable()  nothrow @nogc @safe pure");
         writeln("{");
         writeln("alias FCE = FullCaseEntry;");
         writeln("static immutable FCE[] t = [");
@@ -850,9 +850,9 @@ void writeCaseCoversion(File sink)
         writeln("@property");
         writeln("{");
         writeln("private alias _IUA = immutable(uint[]);");
-        writefln("_IUA toUpperTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toUpperTab);
-        writefln("_IUA toLowerTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toLowerTab);
-        writefln("_IUA toTitleTable() { static _IUA t = [%( 0x%x, %)]; return t; }", toTitleTab);
+        writefln("_IUA toUpperTable() nothrow @nogc @safe pure { static _IUA t = [%( 0x%x, %)]; return t; }", toUpperTab);
+        writefln("_IUA toLowerTable() nothrow @nogc @safe pure { static _IUA t = [%( 0x%x, %)]; return t; }", toLowerTab);
+        writefln("_IUA toTitleTable() nothrow @nogc @safe pure { static _IUA t = [%( 0x%x, %)]; return t; }", toTitleTab);
         writeln("}");
     }
 }
@@ -1004,7 +1004,7 @@ void writeCompositionTable(File sink)
         write("enum compositionJumpTrieEntries = TrieEntry!(ushort, 12, 9)(");
         triT.store(sink.lockingTextWriter());
         writeln(");");
-        writeln("@property immutable(CompEntry[]) compositionTable()");
+        writeln("@property immutable(CompEntry[]) compositionTable() nothrow pure @nogc @safe");
         writeln("{");
         writeln("alias CE = CompEntry;");
         write("static immutable CE[] t = [");
