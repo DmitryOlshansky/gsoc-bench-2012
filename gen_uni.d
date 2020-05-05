@@ -12,16 +12,14 @@ import std.uni, std.stdio, std.traits, std.typetuple,
      std.exception, std.format, std.algorithm, std.typecons,
      std.regex, std.range, std.conv, std.getopt;
 
-import randAA;
-
 import std.file:exists;
 static import std.ascii, std.string;
 
 //common binary property sets and their aliases
 struct PropertyTable
 {
-    RandAA!(string, CodepointSet) table;
-    RandAA!(string, string) aliases;
+    CodepointSet[string] table;
+    string[string] aliases;
 }
 
 PropertyTable general;
@@ -30,7 +28,7 @@ PropertyTable scripts;
 PropertyTable hangul;
 
 //quick NO/MAYBE charaсter sets
-RandAA!(string, CodepointSet) normalization;
+CodepointSet[string] normalization;
 
 //axuilary sets for case mapping
 CodepointSet lowerCaseSet, upperCaseSet;
@@ -39,13 +37,13 @@ CodepointSet lowerCaseSet, upperCaseSet;
 // sets for toLower/toUpper/toTitle
 uint[] toLowerTab;
 ushort toLowerTabSimpleLen; //start of long mappings
-RandAA!(dchar, ushort) toLowerIndex;
+ushort[dchar] toLowerIndex;
 uint[] toUpperTab;
 ushort toUpperTabSimpleLen; //ditto for Upper
-RandAA!(dchar, ushort) toUpperIndex;
+ushort[dchar] toUpperIndex;
 uint[] toTitleTab;
 ushort toTitleTabSimpleLen; //ditto for Title
-RandAA!(dchar, ushort) toTitleIndex;
+ushort[dchar] toTitleIndex;
 
 mixin(mixedCCEntry);
 
@@ -56,11 +54,11 @@ FullCaseEntry[] fullTable;
 ///canonical combining class
 CodepointSet[256] combiningClass;
 //same but packaged per dchar
-RandAA!(dchar, ubyte) combiningMapping;
+ubyte[dchar] combiningMapping;
 
 //unrolled decompositions
-RandAA!(dchar, dstring) canonDecomp;
-RandAA!(dchar, dstring) compatDecomp;
+dstring[dchar] canonDecomp;
+dstring[dchar] compatDecomp;
 
 //canonical composition tables
 dchar[] canonicalyComposableLeft;
@@ -135,145 +133,117 @@ enum {
     caseFoldingSrc = "CaseFolding.txt",
     blocksSrc = "Blocks.txt",
     propListSrc = "PropList.txt",
-    generalPropSrc = "DerivedGeneralCategory.txt",
     corePropSrc = "DerivedCoreProperties.txt",
     normalizationPropSrc = "DerivedNormalizationProps.txt",
     scriptsSrc = "Scripts.txt",
     hangulSyllableSrc = "HangulSyllableType.txt",
-    combiningClassSrc = "DerivedCombiningClass.txt",
     unicodeDataSrc = "UnicodeData.txt",
     compositionExclusionsSrc = "CompositionExclusions.txt",
     specialCasingSrc = "SpecialCasing.txt"
 };
 
-auto toPairs(K, V)(RandAA!(K, V) aa)
+auto toPairs(K, V)(V[K] aa)
 {
     return aa.values.zip(aa.keys).array;
 }
 
 void main(string[] argv)
 {
-    try
+    string mode = "a";
+    
+    bool minimal = false;
+    getopt(argv, "min", &minimal);
+    if(!minimal) {
+        mode = "w";            
+    }        
+    auto baseSink = File("unicode_tables.d", mode);
+    auto compSink = File("unicode_comp.d", mode);
+    auto decompSink = File("unicode_decomp.d", mode);
+    auto normSink = File("unicode_norm.d", mode);
+    auto graphSink = File("unicode_grapheme.d", mode);
+    if(!minimal)
     {
-        string mode = "a";
-        
-        bool minimal = false;
-        getopt(argv, "min", &minimal);
-        if(!minimal)
-        {
-            mode = "w";            
-        }        
-        auto baseSink = File("unicode_tables.d", mode);
-        auto compSink = File("unicode_comp.d", mode);
-        auto decompSink = File("unicode_decomp.d", mode);
-        auto normSink = File("unicode_norm.d", mode);
-        auto graphSink = File("unicode_grapheme.d", mode);
-        if(!minimal)
-        {
-            baseSink.writeln("//Written in the D programming language
+        baseSink.writeln("//Written in the D programming language
 /**
- * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
- *
- * Authors: Dmitry Olshansky
- *
- */
+* License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+*
+* Authors: Dmitry Olshansky
+*
+*/
 //Automatically generated from Unicode Character Database files\n
 module std.internal.unicode_tables;
 @safe pure nothrow:\n");
-            compSink.writeln("module std.internal.unicode_comp;");
-            compSink.writeln("import std.internal.unicode_tables;");
-            decompSink.writeln("module std.internal.unicode_decomp;");
-            decompSink.writeln("import std.internal.unicode_tables;");
-            normSink.writeln("module std.internal.unicode_norm;");
-            normSink.writeln("import std.internal.unicode_tables;");
-            graphSink.writeln("module std.internal.unicode_grapheme;");
-            graphSink.writeln("import std.internal.unicode_tables;");
-        }
-        general.table = new RandAA!(string, CodepointSet);
-        general.aliases = new RandAA!(string, string);
-        blocks.table = new RandAA!(string, CodepointSet);
-        blocks.aliases = new RandAA!(string, string);
-        scripts.table = new RandAA!(string, CodepointSet);
-        scripts.aliases = new RandAA!(string, string);
-        hangul.table = new RandAA!(string, CodepointSet);
-        hangul.aliases = new RandAA!(string, string);
-
-        normalization = new RandAA!(string, CodepointSet);
-
-        toLowerIndex = new RandAA!(dchar, ushort);
-        toUpperIndex = new RandAA!(dchar, ushort);
-        toTitleIndex = new RandAA!(dchar, ushort);
-
-        combiningMapping = new RandAA!(dchar, ubyte);
-        canonDecomp  = new RandAA!(dchar, dstring);
-        compatDecomp = new RandAA!(dchar, dstring);
-
-        loadBlocks(blocksSrc, blocks);
-        loadProperties(propListSrc, general);
-        loadProperties(corePropSrc, general);
-        loadProperties(generalPropSrc, general);
-        loadProperties(scriptsSrc, scripts);
-        loadProperties(hangulSyllableSrc, hangul);
-
-        loadUnicodeData(unicodeDataSrc);
-        loadSpecialCasing(specialCasingSrc);
-        loadExclusions(compositionExclusionsSrc);
-        loadCaseFolding(caseFoldingSrc);
-        loadNormalization(normalizationPropSrc);
-        loadCombining(combiningClassSrc);
-
-        static void writeTableOfSets(File sink, string prefix, PropertyTable tab)
-        {
-            sink.writeln();
-            writeAliasTable(sink, prefix, tab);
-        }
-
-        if(!minimal)
-        {
-            writeCaseFolding(baseSink);
-            writeTableOfSets(baseSink, "uniProps", general);
-            writeTableOfSets(baseSink, "blocks", blocks);
-            writeTableOfSets(baseSink, "scripts", scripts);
-            writeTableOfSets(baseSink, "hangul", hangul);
-            writeFunctions(baseSink);
-        }
-
-        static void trieProlog(File file)
-        {
-            file.writefln("
-static if(size_t.sizeof == %d) {", size_t.sizeof);
-        }
-
-        static void trieEpilog(File file)
-        {
-            file.writeln("
-}\n");
-        }
-
-        trieProlog(baseSink);
-        trieProlog(compSink);
-        trieProlog(decompSink);
-        trieProlog(graphSink);
-        trieProlog(normSink);
-
-        writeTries(baseSink);
-        writeNormalizationTries(normSink);
-        writeGraphemeTries(graphSink);
-        writeCaseCoversion(baseSink);
-        writeCombining(compSink);
-        writeDecomposition(decompSink);
-        writeCompositionTable(compSink);
-
-        trieEpilog(decompSink);
-        trieEpilog(compSink);
-        trieEpilog(baseSink);
-        trieEpilog(graphSink);
-        trieEpilog(normSink);
+        compSink.writeln("module std.internal.unicode_comp;");
+        compSink.writeln("import std.internal.unicode_tables;");
+        decompSink.writeln("module std.internal.unicode_decomp;");
+        decompSink.writeln("import std.internal.unicode_tables;");
+        normSink.writeln("module std.internal.unicode_norm;");
+        normSink.writeln("import std.internal.unicode_tables;");
+        graphSink.writeln("module std.internal.unicode_grapheme;");
+        graphSink.writeln("import std.internal.unicode_tables;");
     }
-    catch(Exception e)
+    
+    loadBlocks(blocksSrc, blocks);
+    loadProperties(propListSrc, general);
+    loadProperties(corePropSrc, general);
+    loadProperties(scriptsSrc, scripts);
+    loadProperties(hangulSyllableSrc, hangul);
+
+    loadUnicodeData(unicodeDataSrc);
+    loadSpecialCasing(specialCasingSrc);
+    loadExclusions(compositionExclusionsSrc);
+    loadCaseFolding(caseFoldingSrc);
+    loadNormalization(normalizationPropSrc);
+    // TODO: restore combining class from unicodeDataSrc
+    // loadCombining(combiningClassSrc);
+
+    static void writeTableOfSets(File sink, string prefix, PropertyTable tab)
     {
-        stderr.writeln(e.msg);
+        sink.writeln();
+        writeAliasTable(sink, prefix, tab);
     }
+
+    if(!minimal)
+    {
+        writeCaseFolding(baseSink);
+        writeTableOfSets(baseSink, "uniProps", general);
+        writeTableOfSets(baseSink, "blocks", blocks);
+        writeTableOfSets(baseSink, "scripts", scripts);
+        writeTableOfSets(baseSink, "hangul", hangul);
+        writeFunctions(baseSink);
+    }
+
+    static void trieProlog(File file)
+    {
+        file.writefln("
+static if(size_t.sizeof == %d) {", size_t.sizeof);
+    }
+
+    static void trieEpilog(File file)
+    {
+        file.writeln("
+}\n");
+    }
+
+    trieProlog(baseSink);
+    trieProlog(compSink);
+    trieProlog(decompSink);
+    trieProlog(graphSink);
+    trieProlog(normSink);
+
+    writeTries(baseSink);
+    writeNormalizationTries(normSink);
+    writeGraphemeTries(graphSink);
+    writeCaseCoversion(baseSink);
+    writeCombining(compSink);
+    writeDecomposition(decompSink);
+    writeCompositionTable(compSink);
+
+    trieEpilog(decompSink);
+    trieEpilog(compSink);
+    trieEpilog(baseSink);
+    trieEpilog(graphSink);
+    trieEpilog(normSink);   
 }
 
 void scanUniData(alias Fn)(string name, Regex!char r)
@@ -287,12 +257,10 @@ void scanUniData(alias Fn)(string name, Regex!char r)
     }
 }
 
-
-
 void loadCaseFolding(string f)
 {
-    auto simple  = new RandAA!(dchar, dchar);
-    auto full = new RandAA!(dchar, dstring);
+    dchar[dchar] simple;
+    dstring[dchar] full;
 
     auto r = regex("([^;]*); ([CFS]);\\s*([^;]*);");
     scanUniData!((m){
@@ -411,7 +379,8 @@ void loadProperties(string inp, ref PropertyTable target)
             {
                 target.table[name] = set;
             }
-            target.table[name].add(a,b+1); // unicode lists [a, b] we need [a,b)
+            auto p = name in target.table;
+            p.add(a,b+1); // unicode lists [a, b] we need [a,b)
             if(!aliasStr.empty)
             {
                 target.aliases[name] = aliasStr;
@@ -426,7 +395,8 @@ void loadProperties(string inp, ref PropertyTable target)
             {
                 target.table[name] = set;
             }
-            target.table[name] |= x;
+            auto p = name in target.table;
+            *p |= x;
             if(!aliasStr.empty)
             {
                 target.aliases[name] = aliasStr;
@@ -434,6 +404,8 @@ void loadProperties(string inp, ref PropertyTable target)
             }
         }
     })(inp, r);
+    writeln(inp, " aliases: ", target.aliases);
+    writeln(inp, " props: ", target.table.keys);
 }
 
 void loadNormalization(string inp)
@@ -455,7 +427,8 @@ void loadNormalization(string inp)
             {
                 normalization[name] = set;
             }
-            normalization[name].add(a,b+1);
+            auto p = name in normalization;
+            p.add(a,b+1);
         }
         else if(!m.captures[3].empty)
         {
@@ -465,7 +438,8 @@ void loadNormalization(string inp)
             {
                 normalization[name] = set;
             }
-            normalization[name] |= x;
+            auto p = name in normalization;
+            *p |= x;
         }
     })(inp, r);
 }
@@ -473,6 +447,7 @@ void loadNormalization(string inp)
 void loadUnicodeData(string inp)
 {
     auto f = File(inp);
+    CodepointSet all;
     foreach(line; f.byLine)
     {
         auto fields = split(line, ";");
@@ -481,12 +456,12 @@ void loadUnicodeData(string inp)
         auto codepoint = fields[0];
         auto decomp = fields[5];
 
+        auto generalCategory = fields[2];
         auto upperCasePart = fields[12];
         auto lowerCasePart = fields[13];
         auto titleCasePart = fields[14];
         dchar src = parse!uint(codepoint, 16);
-        void appendCaseTab(ref RandAA!(dchar, ushort) index,
-                    ref uint[] chars, char[] casePart){
+        void appendCaseTab(ref ushort[dchar] index, ref uint[] chars, char[] casePart){
                 if(!casePart.empty){
                     uint ch = parse!uint(casePart, 16);
                     chars ~= ch;
@@ -494,6 +469,11 @@ void loadUnicodeData(string inp)
                     index[src] = cast(ushort)(chars.length-1);
                 }
             }
+        if (generalCategory !in general.table) {
+            general.table[generalCategory.idup] = CodepointSet.init;
+        }
+        all.add(src, src+1);
+        general.table[generalCategory].add(src, src+1);
         appendCaseTab(toLowerIndex, toLowerTab, lowerCasePart);
         appendCaseTab(toUpperIndex, toUpperTab, upperCasePart);
         appendCaseTab(toTitleIndex, toTitleTab, titleCasePart);
@@ -516,13 +496,15 @@ void loadUnicodeData(string inp)
                 if(!v.empty)
                     dest ~= cast(dchar)parse!uint(v, 16);
             }
-            if(!compat){
+            if(!compat) {
                 assert(dest.length <= 2, "cannonical decomposition has more then 2 codepoints?!");
                 canonDecomp[src] = dest;
             }
             compatDecomp[src] = dest;
         }
     }
+    // compute Cn as all dchar we have not found in UnicodeData.txt
+    general.table["Cn"] = all.inverted;
 }
 
 void loadSpecialCasing(string f)
@@ -544,8 +526,7 @@ void loadSpecialCasing(string f)
             continue;
         auto pieces = array(entries.map!"a[1]");
         dchar ch = parse!uint(pieces[0], 16);
-        void processPiece(ref RandAA!(dchar, ushort) index,
-            ref uint[] table, char[] piece)
+        void processPiece(ref ushort[dchar] index, ref uint[] table, char[] piece)
         {
             uint[] mapped = piece.split
                 .map!(x=>parse!uint(x, 16)).array;
@@ -569,10 +550,10 @@ void loadSpecialCasing(string f)
     }
 }
 
-auto recursivelyDecompose(RandAA!(dchar, dstring) decompTable)
+auto recursivelyDecompose(dstring[dchar] decompTable)
 {
     //apply recursively:
-    auto full = new RandAA!(dchar, dstring);
+    dstring[dchar] full;
     foreach(k, v; decompTable)
     {
         dstring old, decomp=v;
@@ -760,11 +741,11 @@ void writeCaseFolding(File sink)
 
 void writeTries(File sink)
 {
-    auto simpleIndices = new RandAA!(dchar, ushort);
+    ushort[dchar] simpleIndices;
     foreach(i, v; array(map!(x => x.ch)(simpleTable)))
         simpleIndices[v] = cast(ushort)i;
 
-    auto fullIndices = new RandAA!(dchar, ushort);
+    ushort[dchar] fullIndices;
     foreach(i, v; fullTable)
     {
         if(v.entry_len == 1)
@@ -866,8 +847,8 @@ void writeDecomposition(File sink)
     stderr.writeln("Canon flattened: ", decompCanonFlat.length);
     stderr.writeln("Compat flattened: ", decompCompatFlat.length);
 
-    auto mappingCanon = new RandAA!(dchar, ushort);
-    auto mappingCompat = new RandAA!(dchar, ushort);
+    ushort[dchar] mappingCanon;
+    ushort[dchar] mappingCompat;
     //0 serves as doesn't decompose value
     foreach(k, v; fullCanon)
     {
@@ -948,7 +929,7 @@ void writeFunctions(File sink)
 
 void writeCompositionTable(File sink)
 {
-    auto composeTab = new RandAA!(dstring, dchar);
+    dchar[dstring] composeTab;
     //construct compositions table
     foreach(dchar k, dstring v; canonDecomp)
     {
@@ -968,11 +949,10 @@ void writeCompositionTable(File sink)
         triples ~= Tuple!(dchar, dchar, dchar)(key[0], key[1], val);
     multiSort!("a[0] < b[0]", "a[1] < b[1]")(triples);
     //map to the triplets array
-    auto trimap = new RandAA!(dchar, ushort);
+    ushort[dchar] trimap;
     dchar old = triples[0][0];
-    size_t idx = 0;
     auto r = triples[];
-    for(;;){
+    for(size_t idx = 0;;){
         ptrdiff_t cnt = countUntil!(x => x[0] != old)(r);
         if(cnt == -1)//end of input
             cnt = r.length;
@@ -1081,7 +1061,7 @@ void writeBest2Level(Set)(File sink, string name, Set set)
     write(sink);
 }
 
-void writeBest2Level(V, K)(File sink, string name, RandAA!(K,V) map, V defValue=V.init)
+void writeBest2Level(V, K)(File sink, string name, V[K] map, V defValue=V.init)
 {
     alias List = TypeTuple!(5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     size_t min = size_t.max;
@@ -1134,7 +1114,7 @@ auto writeBest3Level(Set)(File sink, string name, Set set)
     write(sink);
 }
 
-void writeBest3Level(V, K)(File sink, string name, RandAA!(K, V) map, V defValue=V.init)
+void writeBest3Level(V, K)(File sink, string name, V[K] map, V defValue=V.init)
 {
     void delegate(File) write;
     alias List = TypeTuple!(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
