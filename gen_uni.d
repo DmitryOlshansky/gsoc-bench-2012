@@ -15,7 +15,7 @@ import std.uni, std.stdio, std.traits, std.typetuple,
 import randAA;
 
 import std.file:exists;
-static import std.ascii;
+static import std.ascii, std.string;
 
 //common binary property sets and their aliases
 struct PropertyTable
