@@ -1,5 +1,5 @@
 /*
-    Benchmarking strign split performance 
+    Benchmarking string split performance 
     decode + isWhite vs UTF-matcher(White_Space).
 */
 import std.traits, std.uni;
